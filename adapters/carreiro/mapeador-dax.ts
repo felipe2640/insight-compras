@@ -1,0 +1,351 @@
+/**
+ * Mapeador e Normalizador de Dados do DAX Power BI Fabric
+ * Camada: Adapters / Carreiro
+ * 100% em Português do Brasil (pt-BR).
+ *
+ * Converte payloads tabulares brutos do Power BI Fabric REST API para
+ * os modelos e entidades de domínio estritos e imutáveis do Core.
+ */
+
+import {
+  Produto,
+  EstoqueFilial,
+  HistoricoVendasFilial,
+} from "@core/dominio";
+import { inferirLotePadraoPorCategoria } from "@core/travas";
+import {
+  EntradaNFeDoDia,
+  ItemSimilarIntercambiavel,
+} from "../AdaptadorInventario";
+import { normalizarLinhaDax } from "./cliente-dax";
+
+/**
+ * Nomes e códigos oficiais das filiais da Rede Carreiro mapeados no M0.
+ */
+export const NOMES_FILIAIS_CARREIRO: Readonly<Record<number, string>> = {
+  1: "Carreiro Pedro II (Matriz)",
+  2: "Melo / Piripiri",
+  3: "Carreiro Poranga",
+  4: "Ceará Auto Peças (Campo Maior)",
+  5: "Carreiro José de Freitas",
+};
+
+/**
+ * Identifica o código inteiro (1 a 5) e o nome oficial da filial a partir
+ * de GUIDs do CADEMP, códigos numéricos ou strings de nome.
+ */
+export function mapearFilialCarreiro(valor: unknown): { filialId: number; nomeFilial: string } {
+  if (typeof valor === "number") {
+    const id = Math.floor(valor);
+    if (id >= 1 && id <= 5) {
+      return { filialId: id, nomeFilial: NOMES_FILIAIS_CARREIRO[id] };
+    }
+  }
+
+  const texto = String(valor ?? "").trim();
+
+  // Mapeamento por GUIDs oficiais do CADEMP auditados no M0
+  if (texto.includes("e2adc241") || texto === "1" || /pedro\s*ii/i.test(texto) || /matriz/i.test(texto)) {
+    return { filialId: 1, nomeFilial: NOMES_FILIAIS_CARREIRO[1] };
+  }
+  if (texto.includes("cd87703f") || texto === "2" || /piripiri|melo/i.test(texto)) {
+    return { filialId: 2, nomeFilial: NOMES_FILIAIS_CARREIRO[2] };
+  }
+  if (texto.includes("a5172ddc") || texto === "3" || /poranga/i.test(texto)) {
+    return { filialId: 3, nomeFilial: NOMES_FILIAIS_CARREIRO[3] };
+  }
+  if (texto.includes("c9432abf") || texto === "4" || /campo\s*maior|cear[aá]/i.test(texto)) {
+    return { filialId: 4, nomeFilial: NOMES_FILIAIS_CARREIRO[4] };
+  }
+  if (texto.includes("d624d502") || texto === "5" || /jos[eé]\s*de\s*freitas/i.test(texto)) {
+    return { filialId: 5, nomeFilial: NOMES_FILIAIS_CARREIRO[5] };
+  }
+
+  // Fallback numérico
+  const numeroExtraido = parseInt(texto, 10);
+  if (!isNaN(numeroExtraido) && numeroExtraido >= 1 && numeroExtraido <= 5) {
+    return { filialId: numeroExtraido, nomeFilial: NOMES_FILIAIS_CARREIRO[numeroExtraido] };
+  }
+
+  return { filialId: 1, nomeFilial: NOMES_FILIAIS_CARREIRO[1] };
+}
+
+/**
+ * Converte linhas tabulares de produtos retornadas pelo DAX para a entidade Produto.
+ * Deduplica produtos que aparecem com registros em múltiplas lojas.
+ */
+export function mapearProdutosDax(
+  linhasDax: readonly Record<string, unknown>[]
+): readonly Produto[] {
+  const produtosPorId = new Map<number, Produto>();
+
+  for (const linhaBruta of linhasDax) {
+    const linha = normalizarLinhaDax(linhaBruta);
+
+    const id = Number(linha.Produto ?? linha.ACODPRODUTO ?? linha.id ?? 0);
+    if (!id || id <= 0 || produtosPorId.has(id)) {
+      continue;
+    }
+
+    const descricao = String(linha.Descricao ?? linha.ADESCRICAO ?? linha.descricao ?? "").trim();
+    const marca = String(linha.Marca ?? linha.AMARCA ?? linha.marca ?? "GENERICA").trim();
+    const fabricante = String(
+      linha.Fabricante ?? linha.AFABRICANTE ?? linha.fabricante ?? marca ?? "GENERICO"
+    ).trim();
+    const refFabricante = linha.RefFabricante ?? linha.AREFFABRICA ?? linha.referenciaFabricante;
+    const refStr = refFabricante !== undefined && refFabricante !== null ? String(refFabricante).trim() : null;
+
+    const secaoVal = linha.Secao ?? linha.ASECAO ?? linha.secaoId;
+    const secaoId = secaoVal !== undefined && secaoVal !== null ? Number(secaoVal) : null;
+    const nomeSecao = linha.NomeSecao ?? linha.nomeSecao ? String(linha.NomeSecao ?? linha.nomeSecao).trim() : null;
+
+    const fornecedorVal = linha.Fornecedor ?? linha.ACODFORNECEDOR ?? linha.fornecedorId ?? 1;
+    const fornecedorId = Number(fornecedorVal) || 1;
+    const nomeFornecedor = String(
+      linha.NomeFornecedor ?? linha.nomeFornecedor ?? `Fornecedor ${fornecedorId}`
+    ).trim();
+
+    const precoCusto = Math.max(
+      0,
+      Number(linha.PrecoCompraERP ?? linha.NPRECOCOMPRA ?? linha.precoCusto ?? 0)
+    );
+    const precoVenda = Math.max(
+      precoCusto,
+      Number(linha.PrecoVenda ?? linha.precoVenda ?? precoCusto * 1.5)
+    );
+
+    const aplicacao = linha.Aplicacao ?? linha.aplicacaoVeicular ? String(linha.Aplicacao ?? linha.aplicacaoVeicular).trim() : null;
+    const familia = linha.FamiliaId ?? linha.familiaId ? String(linha.FamiliaId ?? linha.familiaId).trim() : null;
+
+    const loteMultiplo = inferirLotePadraoPorCategoria(descricao);
+
+    const produto: Produto = {
+      id,
+      codigoSku: String(linha.Produto ?? linha.ACODPRODUTO ?? id).trim(),
+      descricao,
+      marca,
+      fabricante,
+      referenciaFabricante: refStr && refStr.length > 0 ? refStr : null,
+      aplicacaoVeicular: aplicacao && aplicacao.length > 0 ? aplicacao : null,
+      familiaId: familia && familia.length > 0 ? familia : null,
+      secaoId,
+      nomeSecao,
+      fornecedorId,
+      nomeFornecedor,
+      precoCusto,
+      precoVenda,
+      loteMultiplo,
+    };
+
+    produtosPorId.set(id, produto);
+  }
+
+  return Array.from(produtosPorId.values());
+}
+
+/**
+ * Converte linhas tabulares de produtos/estoque retornadas pelo DAX para Map de EstoqueFilial.
+ * Chave do Map: `${produtoId}:${filialId}`
+ */
+export function mapearEstoquesDax(
+  linhasDax: readonly Record<string, unknown>[]
+): Map<string, EstoqueFilial> {
+  const mapaEstoques = new Map<string, EstoqueFilial>();
+
+  for (const linhaBruta of linhasDax) {
+    const linha = normalizarLinhaDax(linhaBruta);
+
+    const produtoId = Number(linha.Produto ?? linha.ACODPRODUTO ?? linha.id ?? 0);
+    if (!produtoId || produtoId <= 0) continue;
+
+    const { filialId, nomeFilial } = mapearFilialCarreiro(
+      linha.Empresa ?? linha.ACODEMPRESA ?? linha.filialId ?? 1
+    );
+
+    const chave = `${produtoId}:${filialId}`;
+
+    const saldoFisico = Number(linha.EstoqueQtd ?? linha.NESTOQATUAL ?? linha.AESTOQUE_ATUAL ?? 0);
+    const estoqueMinimoSeguranca = Math.max(
+      0,
+      Number(linha.EstoqueMinimo ?? linha.AESTOQUE_MINIMO ?? 0)
+    );
+    const quantidadeJaPedida = Math.max(
+      0,
+      Number(linha.QuantidadePedida ?? linha.AQUANTIDADE_PEDIDA ?? 0)
+    );
+    const consumoMedioDiarioErp = Math.max(
+      0,
+      Number(linha.ConsumoMedioDiario ?? linha.ACONSUMO_MEDIO_DIARIO ?? 0)
+    );
+
+    const ultVenda = linha.UltimaVenda ?? linha.DULTIMAVENDA ?? linha.dataUltimaVenda;
+    const dataUltimaVenda = ultVenda ? String(ultVenda).trim() : null;
+
+    const ultCompra = linha.UltimaCompra ?? linha.ADATA_ULTIMA_COMPRA ?? linha.dataUltimaCompra;
+    const dataUltimaCompra = ultCompra ? String(ultCompra).trim() : null;
+
+    const estoque: EstoqueFilial = {
+      filialId,
+      nomeFilial,
+      produtoId,
+      saldoFisico,
+      estoqueMinimoSeguranca,
+      quantidadeJaPedida,
+      consumoMedioDiarioErp,
+      dataUltimaVenda,
+      dataUltimaCompra,
+    };
+
+    mapaEstoques.set(chave, estoque);
+  }
+
+  return mapaEstoques;
+}
+
+/**
+ * Converte linhas tabulares de vendas/histórico retornadas pelo DAX para Map de HistoricoVendasFilial.
+ * Chave do Map: `${produtoId}:${filialId}`
+ */
+export function mapearHistoricoVendasDax(
+  linhasDax: readonly Record<string, unknown>[]
+): Map<string, HistoricoVendasFilial> {
+  const mapaHistoricos = new Map<string, HistoricoVendasFilial>();
+
+  for (const linhaBruta of linhasDax) {
+    const linha = normalizarLinhaDax(linhaBruta);
+
+    const produtoId = Number(linha.Produto ?? linha.ACODPRODUTO ?? linha.id ?? 0);
+    if (!produtoId || produtoId <= 0) continue;
+
+    const { filialId } = mapearFilialCarreiro(
+      linha.Empresa ?? linha.ACODEMP ?? linha.ACODEMPRESA ?? linha.filialId ?? 1
+    );
+
+    const chave = `${produtoId}:${filialId}`;
+
+    const vendasLiquidas30dias = Math.max(
+      0,
+      Number(linha.VendasQtd30d ?? linha.QtdVenda30d ?? 0)
+    );
+    const vendasLiquidas90dias = Math.max(
+      vendasLiquidas30dias,
+      Number(linha.VendasQtd90d ?? linha.QtdVenda90d ?? 0)
+    );
+    const vendasLiquidas180dias = Math.max(
+      vendasLiquidas90dias,
+      Number(linha.VendasQtd180d ?? linha.QtdVenda180d ?? 0)
+    );
+
+    const devolucoes90dias = Math.max(0, Number(linha.Devolucoes90d ?? 0));
+    const notasFiscaisVenda90dias = Math.max(
+      0,
+      Number(linha.NotasVenda90d ?? linha.QuantidadeNotas90d ?? 0)
+    );
+    const notasFiscaisDevolucao90dias = Math.max(
+      0,
+      Number(linha.NotasDevolucao90d ?? 0)
+    );
+    const diasRuptura90dias = Math.max(0, Number(linha.DiasRuptura90d ?? 0));
+    const diasObservados = Math.max(1, Number(linha.DiasObservados ?? 180));
+
+    const primVenda = linha.DataPrimeiraVenda ?? linha.dataPrimeiraVendaRegistrada;
+    const dataPrimeiraVendaRegistrada = primVenda ? String(primVenda).trim() : null;
+
+    const historico: HistoricoVendasFilial = {
+      produtoId,
+      filialId,
+      vendasLiquidas30dias,
+      vendasLiquidas90dias,
+      vendasLiquidas180dias,
+      devolucoes90dias,
+      notasFiscaisVenda90dias,
+      notasFiscaisDevolucao90dias,
+      diasRuptura90dias,
+      diasObservados,
+      dataPrimeiraVendaRegistrada,
+    };
+
+    mapaHistoricos.set(chave, historico);
+  }
+
+  return mapaHistoricos;
+}
+
+/**
+ * Converte linhas tabulares de MOVESTOQ (entradas do dia) para lista de EntradaNFeDoDia.
+ */
+export function mapearEntradasNFeDax(
+  linhasDax: readonly Record<string, unknown>[],
+  produtosPorId?: ReadonlyMap<number, Produto>
+): readonly EntradaNFeDoDia[] {
+  const entradas: EntradaNFeDoDia[] = [];
+
+  for (const linhaBruta of linhasDax) {
+    const linha = normalizarLinhaDax(linhaBruta);
+
+    const produtoId = Number(linha.Produto ?? linha.ACODPRODUTO ?? 0);
+    if (!produtoId || produtoId <= 0) continue;
+
+    const { filialId } = mapearFilialCarreiro(
+      linha.Filial ?? linha.ACODEMPRESA ?? linha.filialId ?? 1
+    );
+
+    const produto = produtosPorId?.get(produtoId);
+    const obs = String(linha.Observacao ?? linha.AOBSERVACAO ?? "").trim();
+    const numeroNota = obs.length > 0 ? obs : `NF-${Math.floor(100000 + Math.random() * 900000)}`;
+    const quantidadeEntrada = Math.max(1, Number(linha.Quantidade ?? linha.NQTDEMOV ?? 1));
+    const precoUnitario = produto?.precoCusto ?? 50;
+
+    entradas.push({
+      numeroNotaFiscal: numeroNota,
+      produtoId,
+      filialId,
+      fornecedorNome: produto?.nomeFornecedor ?? "Distribuidora Carreiro",
+      quantidadeEntrada,
+      valorEntrada: quantidadeEntrada * precoUnitario,
+      dataHoraChegada: String(linha.DataHora ?? linha.DATA_HORA ?? new Date().toISOString()),
+    });
+  }
+
+  return entradas;
+}
+
+/**
+ * Converte pares de produtos semelhantes para mapa indexado por produtoIdOrigem.
+ */
+export function mapearSimilaresDax(
+  linhasDax: readonly Record<string, unknown>[],
+  produtosPorId: ReadonlyMap<number, Produto>,
+  saldosPorProduto: ReadonlyMap<number, number>
+): Map<number, readonly ItemSimilarIntercambiavel[]> {
+  const mapaSimilares = new Map<number, ItemSimilarIntercambiavel[]>();
+
+  for (const linhaBruta of linhasDax) {
+    const linha = normalizarLinhaDax(linhaBruta);
+
+    const idOrigem = Number(linha.ProdutoOrigem ?? linha.ACODPRODUTO ?? 0);
+    const idSimilar = Number(linha.ProdutoSimilar ?? linha.ACODPRODUTO_SEMELHANTE ?? 0);
+
+    if (!idOrigem || !idSimilar || idOrigem === idSimilar) continue;
+
+    const produtoSimilar = produtosPorId.get(idSimilar);
+    if (!produtoSimilar) continue;
+
+    const saldoDisponivel = saldosPorProduto.get(idSimilar) ?? 0;
+
+    const itemSimilar: ItemSimilarIntercambiavel = {
+      produtoIdOrigem: idOrigem,
+      produtoIdSimilar: idSimilar,
+      codigoSkuSimilar: produtoSimilar.codigoSku,
+      descricaoSimilar: produtoSimilar.descricao,
+      marcaSimilar: produtoSimilar.marca,
+      saldoFisicoDisponivelRede: saldoDisponivel,
+    };
+
+    const existentes = mapaSimilares.get(idOrigem) ?? [];
+    existentes.push(itemSimilar);
+    mapaSimilares.set(idOrigem, existentes);
+  }
+
+  return mapaSimilares;
+}
