@@ -129,6 +129,9 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
         minimoNotasDistintas: 3,
         minimoMesesAtivos: 2,
       },
+      // "REDUZIR COMPRAS" da medida `Decisao Compra Mercadoria` corta a sugestão
+      // pela metade. "PAUSAR COMPRAS" zera. A régua é do cliente; o corte é ajustável.
+      fatorReducaoGovernanca: 0.5,
     },
     leadTimePadraoDias: 7,
     filialFocoPadraoId: 1,

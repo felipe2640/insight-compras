@@ -26,6 +26,35 @@ export function formatarListaNumericaDax(numeros: readonly number[]): string {
 }
 
 /**
+ * CADEIA DE FILTROS DE "VENDA VÁLIDA AO CONSUMIDOR" DA REDE CARREIRO.
+ *
+ * Extraída das medidas do próprio modelo do cliente (arquivo .pbix, 07/09/2026):
+ * `Quantidade Vendida Produto`, `Quantidade de Notas` e `Estoque Venda Media Dia 90D`
+ * aplicam exatamente estes filtros. Toda agregação nova que a plataforma escrever
+ * sobre NOTAS/NOTAS_ITEMS precisa repeti-los, senão conta o que o cliente já
+ * decidiu que não é venda:
+ *
+ * - TIPOS_NOTA[ATIPO] = "01"        -> documento de venda (02 = compra)
+ * - NOTAS[ASTATUS] = "E"            -> nota efetivada (exclui cancelada/pendente)
+ * - NOTAS_ITEMS[ASTATUS] = "E"      -> item efetivado
+ * - Cliente <> "FURO BATERIA"       -> troca/garantia de bateria não é venda
+ *
+ * ATENÇÃO: as medidas prontas do modelo já embutem esta cadeia. Um DISTINCTCOUNT
+ * ou SUM escrito direto sobre a tabela NÃO embute — foi assim que a primeira
+ * versão desta consulta acabou contando nota cancelada e furo de bateria.
+ */
+const FILTROS_VENDA_VALIDA = `
+        KEEPFILTERS('TIPOS_NOTA'[ATIPO] = "01"),
+        KEEPFILTERS('NOTAS'[ASTATUS] = "E"),
+        KEEPFILTERS('NOTAS_ITEMS'[ASTATUS] = "E"),
+        KEEPFILTERS(
+            FILTER(
+                VALUES('NOTAS'[Cliente Exibicao]),
+                UPPER(TRIM('NOTAS'[Cliente Exibicao])) <> "FURO BATERIA"
+            )
+        ),`;
+
+/**
  * 1. Snapshot de Frescor e Integridade dos Dados (freshness.dax)
  */
 export const CONSULTA_DAX_FRESCOR = `
@@ -175,7 +204,9 @@ FILTER(
         "EstoqueQtd", [Estoque Qtd Atual (Base)],
         "EstoqueMinimo", [Estoque Mínimo ERP],
         "ConsumoMedioDiario", [Estoque Venda Media Dia 90D],
-        "DiasSemVenda", [Estoque Dias sem Venda]
+        "DiasSemVenda", [Estoque Dias sem Venda],
+        "DecisaoCompra", [Decisao Compra Mercadoria],
+        "UsoLimiteCompra", [% Uso Limite Compra Mercadoria]
     ),
     [EstoqueQtd] <> 0 || [ConsumoMedioDiario] > 0
 )
@@ -196,6 +227,10 @@ FILTER(
  *
  * - diasRuptura90dias: não há histórico de saldo diário no modelo. Reconstruir a
  *   partir de MOVESTOQ é possível, mas é trabalho de modelagem, não de consulta.
+ *
+ * Confirmado varrendo as 353 medidas do .pbix do cliente (07/09/2026): nenhuma
+ * mede ruptura, dias zerados ou pedido de compra em aberto. Não é questão de
+ * escrever a consulta certa — a informação não existe no modelo semântico.
  */
 export const CAMPOS_INDISPONIVEIS_CARREIRO = {
   estoque: ["quantidadeJaPedida"],
@@ -260,19 +295,21 @@ SUMMARIZECOLUMNS(
         Periodo30d
     ),
     "NotasVenda90d", CALCULATE(
-        DISTINCTCOUNT('NOTAS_ITEMS'[NOTA_ID]),
+        [Quantidade de Notas],
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
         Periodo90d
     ),
     "Devolucoes90d", CALCULATE(
         SUM('NOTAS_ITEMS'[QTDE_DEV]),
+        ${FILTROS_VENDA_VALIDA}
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
         Periodo90d
     ),
     "NotasDevolucao90d", CALCULATE(
         DISTINCTCOUNT('NOTAS_ITEMS'[NOTA_ID]),
+        ${FILTROS_VENDA_VALIDA}
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
-        FILTER('NOTAS_ITEMS', 'NOTAS_ITEMS'[QTDE_DEV] > 0),
+        KEEPFILTERS('NOTAS_ITEMS'[QTDE_DEV] > 0),
         Periodo90d
     ),
     "MesesAtivos12m", CALCULATE(
@@ -291,6 +328,7 @@ SUMMARIZECOLUMNS(
     ),
     "MedianaLinhaVenda", CALCULATE(
         MEDIANX(FILTER('NOTAS_ITEMS', 'NOTAS_ITEMS'[NQTDE] > 0), 'NOTAS_ITEMS'[NQTDE]),
+        ${FILTROS_VENDA_VALIDA}
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
     ),
     "DiasObservados", 180

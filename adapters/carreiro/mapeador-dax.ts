@@ -11,6 +11,7 @@ import {
   Produto,
   EstoqueFilial,
   HistoricoVendasFilial,
+  SinalGovernancaCompra,
 } from "@core/dominio";
 import { inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
 import {
@@ -163,6 +164,24 @@ export function mapearProdutosDax(
 }
 
 /**
+ * Traduz o vocabulário da medida `Decisao Compra Mercadoria` do modelo da Carreiro
+ * para o sinal canônico da plataforma.
+ *
+ * A régua (margem alvo, uso do limite de compra, histórico de margem) é do cliente
+ * e vive no Power BI dele. Aqui só normalizamos o rótulo; o motor reage ao enum.
+ */
+export function normalizarDecisaoCompraCarreiro(valor: unknown): SinalGovernancaCompra | null {
+  const texto = String(valor ?? "").trim().toUpperCase();
+  if (!texto) return null;
+  if (texto.startsWith("PAUSAR")) return "PAUSAR";
+  if (texto.startsWith("REDUZIR")) return "REDUZIR";
+  if (texto.startsWith("MANTER")) return "MANTER";
+  // "ATENCAO - ..." são avisos, não bloqueios: seguem como MANTER.
+  if (texto.startsWith("ATENCAO")) return "MANTER";
+  return null;
+}
+
+/**
  * Converte linhas tabulares de produtos/estoque retornadas pelo DAX para Map de EstoqueFilial.
  * Chave do Map: `${produtoId}:${filialId}`
  */
@@ -202,11 +221,16 @@ export function mapearEstoquesDax(
       Number(linha.ConsumoMedioDiario ?? linha.ACONSUMO_MEDIO_DIARIO ?? 0)
     );
 
+    // [Estoque Dias sem Venda] do modelo do cliente termina em COALESCE(..., 365),
+    // e [Estoque Data Referencia Idade] usa TODAY()-365 como data de fallback.
+    // Ou seja: 365 é o sentinela de "não há data de referência", não uma medição.
+    // Tratar como null evita classificar item sem histórico como giro "Baixa".
     const diasSemVendaBruto = linha.DiasSemVenda;
-    const diasSemVenda =
+    const diasSemVendaNumero =
       diasSemVendaBruto === null || diasSemVendaBruto === undefined
         ? null
         : Math.max(0, Number(diasSemVendaBruto));
+    const diasSemVenda = diasSemVendaNumero === 365 ? null : diasSemVendaNumero;
 
     const ultVenda = linha.UltimaVenda ?? linha.DULTIMAVENDA ?? linha.dataUltimaVenda;
     const dataUltimaVenda = ultVenda ? String(ultVenda).trim() : null;
@@ -227,6 +251,11 @@ export function mapearEstoquesDax(
       quantidadeJaPedida: 0,
       consumoMedioDiarioErp,
       diasSemVenda: Number.isFinite(diasSemVenda as number) ? diasSemVenda : null,
+      sinalGovernancaCompra: normalizarDecisaoCompraCarreiro(linha.DecisaoCompra),
+      usoLimiteCompra:
+        linha.UsoLimiteCompra === null || linha.UsoLimiteCompra === undefined
+          ? null
+          : Number(linha.UsoLimiteCompra),
       dataUltimaVenda,
       dataUltimaCompra,
       camposIndisponiveis: ["quantidadeJaPedida"],

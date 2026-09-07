@@ -7,6 +7,7 @@ import {
   resolverLoteAutopecas,
   descreverAjusteLoteAutopecas,
 } from "@adapters/comum/lote-autopecas";
+import { normalizarDecisaoCompraCarreiro } from "@adapters/carreiro/mapeador-dax";
 
 describe("White-Label — parâmetros de motor por tenant", () => {
   describe("calibração homologada da Carreiro", () => {
@@ -119,5 +120,70 @@ describe("White-Label — parâmetros de motor por tenant", () => {
       expect(descreverAjusteLoteAutopecas(4)).toContain("jogo de 4");
       expect(descreverAjusteLoteAutopecas(1)).toBeNull();
     });
+  });
+});
+
+describe("Governança de compra do processo do cliente", () => {
+  it("PAUSAR zera a sugestão mesmo com demanda real", () => {
+    const base = {
+      consumoDiario: 1,
+      perfilGiro: "ALTO_GIRO" as const,
+      saldoFisico: 0,
+      quantidadeJaPedida: 0,
+      parametrosMotor: TENANT_CARREIRO.parametrosMotor.motor,
+    };
+    const semSinal = calcularNecessidadeItem(base);
+    const pausado = calcularNecessidadeItem({ ...base, sinalGovernanca: "PAUSAR" });
+
+    expect(semSinal.necessidadeLiquida).toBe(23);
+    expect(pausado.necessidadeAntesGovernanca).toBe(23);
+    expect(pausado.necessidadeLiquida).toBe(0);
+  });
+
+  it("REDUZIR corta pelo fator do tenant sem zerar", () => {
+    const r = calcularNecessidadeItem({
+      consumoDiario: 1,
+      perfilGiro: "ALTO_GIRO",
+      saldoFisico: 0,
+      quantidadeJaPedida: 0,
+      parametrosMotor: TENANT_CARREIRO.parametrosMotor.motor,
+      sinalGovernanca: "REDUZIR",
+    });
+    expect(r.necessidadeAntesGovernanca).toBe(23);
+    expect(r.necessidadeLiquida).toBe(11); // floor(23 * 0,5)
+  });
+
+  it("MANTER e ausência de sinal não alteram nada", () => {
+    const base = {
+      consumoDiario: 1,
+      perfilGiro: "ALTO_GIRO" as const,
+      saldoFisico: 0,
+      quantidadeJaPedida: 0,
+      parametrosMotor: TENANT_CARREIRO.parametrosMotor.motor,
+    };
+    expect(calcularNecessidadeItem({ ...base, sinalGovernanca: "MANTER" }).necessidadeLiquida).toBe(23);
+    expect(calcularNecessidadeItem({ ...base, sinalGovernanca: null }).necessidadeLiquida).toBe(23);
+  });
+
+  it("governança não cria compra onde não havia demanda", () => {
+    const r = calcularNecessidadeItem({
+      consumoDiario: 0,
+      perfilGiro: "SEM_HISTORICO_SUFICIENTE",
+      saldoFisico: 0,
+      quantidadeJaPedida: 0,
+      parametrosMotor: TENANT_CARREIRO.parametrosMotor.motor,
+      sinalGovernanca: "MANTER",
+    });
+    expect(r.necessidadeLiquida).toBe(0);
+  });
+
+  it("normaliza o vocabulário da Carreiro para o enum da plataforma", () => {
+    expect(normalizarDecisaoCompraCarreiro("PAUSAR COMPRAS")).toBe("PAUSAR");
+    expect(normalizarDecisaoCompraCarreiro("REDUZIR COMPRAS")).toBe("REDUZIR");
+    expect(normalizarDecisaoCompraCarreiro("MANTER COMPRAS")).toBe("MANTER");
+    // avisos não bloqueiam a compra
+    expect(normalizarDecisaoCompraCarreiro("ATENCAO - ESTOQUE ACIMA DO LIMITE")).toBe("MANTER");
+    expect(normalizarDecisaoCompraCarreiro(null)).toBeNull();
+    expect(normalizarDecisaoCompraCarreiro("")).toBeNull();
   });
 });

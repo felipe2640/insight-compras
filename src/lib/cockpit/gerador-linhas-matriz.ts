@@ -259,6 +259,8 @@ export function converterParaLinhasCockpit(
       loteMultiplo,
       parametrosMotor,
       leadTimeDias,
+      // Régua de governança do processo de compra do próprio cliente.
+      sinalGovernanca: estFoco?.sinalGovernancaCompra ?? null,
     });
 
     let necessidadeCompra = resultadoNecessidade.necessidadeLiquida;
@@ -300,10 +302,20 @@ export function converterParaLinhasCockpit(
     let motivoDecisao = "Estoque suficiente para cobrir o horizonte planejado";
     let quantidadeTransferenciaSugerida = 0;
 
+    const sinalGov = estFoco?.sinalGovernancaCompra ?? null;
+    const cortadoPorGovernanca =
+      resultadoNecessidade.necessidadeAntesGovernanca > resultadoNecessidade.necessidadeLiquida;
+
     if (isZumbi) {
       sugestaoFinalCompra = 0;
       statusSugestao = "TRAVADO_MARCA_ZUMBI";
       motivoDecisao = "TRAVA MARCA ZUMBI: Saldo em estoque sem vendas nos últimos 180 dias";
+    } else if (sinalGov === "PAUSAR" && resultadoNecessidade.necessidadeAntesGovernanca > 0) {
+      sugestaoFinalCompra = 0;
+      statusSugestao = "ESTOQUE_SUFICIENTE";
+      motivoDecisao =
+        `GOVERNANÇA DO CLIENTE: compra pausada para este item (demanda calculada era ` +
+        `${resultadoNecessidade.necessidadeAntesGovernanca} un). Origem: Decisão de Compra do Power BI.`;
     } else if (melhorOrigemTransferencia && melhorOrigemTransferencia.quantidade >= necessidadeCompra) {
       quantidadeTransferenciaSugerida = melhorOrigemTransferencia.quantidade;
       sugestaoFinalCompra = 0;

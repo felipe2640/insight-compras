@@ -23,6 +23,7 @@
  */
 
 import { PerfilRotatividade } from "../dominio/produto";
+import { SinalGovernancaCompra } from "../dominio/estoque";
 
 /**
  * Origem do piso mínimo da previsão.
@@ -61,6 +62,11 @@ export interface ParametrosMotorCompra {
   readonly origemPiso: OrigemPisoPrevisao;
   /** Critérios de elegibilidade histórica. */
   readonly elegibilidade: CriteriosElegibilidade;
+  /**
+   * Fator aplicado quando a governança do cliente pede REDUZIR (0..1).
+   * PAUSAR sempre zera; REDUZIR multiplica por este fator.
+   */
+  readonly fatorReducaoGovernanca: number;
 }
 
 /**
@@ -87,6 +93,7 @@ export const PARAMETROS_MOTOR_PADRAO: ParametrosMotorCompra = {
     minimoNotasDistintas: 3,
     minimoMesesAtivos: 2,
   },
+  fatorReducaoGovernanca: 0.5,
 };
 
 /**
@@ -128,6 +135,8 @@ export interface ParametrosCalculoNecessidade {
   readonly configuracaoPerfilCustomizada?: ParametrosConfiguracaoPerfil;
   /** Lead time do fornecedor em dias — diagnóstico (ponto de pedido), não entra na previsão. */
   readonly leadTimeDias?: number;
+  /** Sinal de governança do processo do cliente. null/omitido = sem restrição. */
+  readonly sinalGovernanca?: SinalGovernancaCompra | null;
 }
 
 export interface ResultadoCalculoNecessidade {
@@ -147,8 +156,12 @@ export interface ResultadoCalculoNecessidade {
   readonly estoqueDisponivel: number;
   /** Necessidade desconsiderando pedidos em aberto. */
   readonly necessidadeBruta: number;
-  /** Necessidade final, já descontados saldo e pedidos em aberto. */
+  /** Necessidade após demanda e estoque, ANTES da governança do cliente. */
+  readonly necessidadeAntesGovernanca: number;
+  /** Necessidade final, já descontados saldo, pedidos em aberto e governança. */
   readonly necessidadeLiquida: number;
+  /** Sinal de governança efetivamente aplicado. */
+  readonly sinalGovernancaAplicado: SinalGovernancaCompra | null;
   /** Diagnóstico: estoque de segurança sugerido (NÃO entra na necessidade). */
   readonly estoqueSegurancaDiagnostico: number;
   /** Diagnóstico: nível de estoque que dispara reposição (NÃO entra na necessidade). */
@@ -251,6 +264,27 @@ function resolverPiso(
 }
 
 /**
+ * Aplica o sinal de governança do processo de compra do cliente.
+ * PAUSAR zera; REDUZIR multiplica pelo fator do tenant (arredondando para baixo,
+ * mas sem zerar uma necessidade que era positiva).
+ */
+export function aplicarGovernancaCompra(
+  necessidade: number,
+  sinal: SinalGovernancaCompra | null | undefined,
+  fatorReducao: number
+): number {
+  if (necessidade <= 0) return 0;
+  if (sinal === "PAUSAR") return 0;
+  if (sinal === "REDUZIR") {
+    const fator = Number.isFinite(fatorReducao) && fatorReducao > 0 && fatorReducao < 1
+      ? fatorReducao
+      : 0.5;
+    return Math.max(1, Math.floor(necessidade * fator));
+  }
+  return necessidade;
+}
+
+/**
  * Calcula a necessidade completa de compra de um item em uma filial.
  *
  * Princípio inviolável: sem demanda comprovada (perfil sem histórico suficiente
@@ -270,6 +304,7 @@ export function calcularNecessidadeItem(
     parametrosMotor = PARAMETROS_MOTOR_PADRAO,
     configuracaoPerfilCustomizada,
     leadTimeDias = 0,
+    sinalGovernanca = null,
   } = parametros;
 
   const saldo = Math.max(0, saldoFisico);
@@ -289,7 +324,9 @@ export function calcularNecessidadeItem(
       previsaoCalibrada: 0,
       estoqueDisponivel,
       necessidadeBruta: 0,
+      necessidadeAntesGovernanca: 0,
       necessidadeLiquida: 0,
+      sinalGovernancaAplicado: sinalGovernanca,
       estoqueSegurancaDiagnostico: Math.max(0, estoqueMinimoCadastrado),
       pontoDePedidoDiagnostico: Math.max(0, estoqueMinimoCadastrado),
     };
@@ -317,7 +354,14 @@ export function calcularNecessidadeItem(
   const previsaoCalibrada = calibrarPrevisao(previsaoBruta, parametrosMotor.fatorCalibracao);
 
   const necessidadeBruta = Math.max(0, previsaoCalibrada - saldo);
-  const necessidadeLiquida = Math.max(0, previsaoCalibrada - estoqueDisponivel);
+  const necessidadeAntesGovernanca = Math.max(0, previsaoCalibrada - estoqueDisponivel);
+
+  // A régua de "posso comprar?" é do cliente; a reação a ela é da base.
+  const necessidadeLiquida = aplicarGovernancaCompra(
+    necessidadeAntesGovernanca,
+    sinalGovernanca,
+    parametrosMotor.fatorReducaoGovernanca
+  );
 
   const estoqueSegurancaDiagnostico = calcularEstoqueSeguranca(
     consumoDiario,
@@ -337,7 +381,9 @@ export function calcularNecessidadeItem(
     previsaoCalibrada,
     estoqueDisponivel,
     necessidadeBruta,
+    necessidadeAntesGovernanca,
     necessidadeLiquida,
+    sinalGovernancaAplicado: sinalGovernanca,
     estoqueSegurancaDiagnostico,
     pontoDePedidoDiagnostico: calcularPontoDePedido(
       consumoDiario,
