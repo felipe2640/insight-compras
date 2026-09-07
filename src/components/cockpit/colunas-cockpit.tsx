@@ -1,0 +1,776 @@
+"use client";
+
+import React from "react";
+import { ColumnDef } from "@tanstack/react-table";
+import { Sparkles, AlertTriangle } from "lucide-react";
+
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { DataGridColumnHeader } from "@/components/ui/data-grid";
+import { LinhaCockpitCompras } from "@/tipos/cockpit";
+import { cn } from "@/lib/utils";
+
+export interface OpcoesColunasCockpit {
+  nomeLojaFoco?: string;
+  nomeOutrasLojas?: string;
+  onAbrirSimilares?: (linha: LinhaCockpitCompras) => void;
+  onPedirCommit?: (skuId: string, valor: number) => void;
+  onTransferirCommit?: (skuId: string, valor: number) => void;
+}
+
+function formatarDataPtBr(dataStr: string | null | undefined): string {
+  if (!dataStr) return "—";
+  try {
+    const d = new Date(dataStr);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("pt-BR", { timeZone: "UTC" });
+  } catch {
+    return "—";
+  }
+}
+
+function formatarMoedaPtBr(valor: number): string {
+  return valor.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+
+function formatarNumero(valor: number, decimais = 0): string {
+  return valor.toLocaleString("pt-BR", {
+    minimumFractionDigits: decimais,
+    maximumFractionDigits: decimais,
+  });
+}
+
+export function criarColunasCockpit({
+  nomeLojaFoco = "Pedro II",
+  nomeOutrasLojas = "Rede",
+  onAbrirSimilares,
+  onPedirCommit,
+  onTransferirCommit,
+}: OpcoesColunasCockpit = {}): ColumnDef<LinhaCockpitCompras, unknown>[] {
+  const rotuloEstoqueFoco = `Est ${nomeLojaFoco}`;
+  const rotuloEstoqueOutra = `Disp ${nomeOutrasLojas}`;
+
+  return [
+    // 1. Selecionado (Checkbox)
+    {
+      id: "select",
+      enableHiding: false,
+      enableSorting: false,
+      size: 40,
+      header: ({ table }) => (
+        <div className="flex items-center justify-center">
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+            aria-label="Selecionar todas as linhas"
+          />
+        </div>
+      ),
+      cell: ({ row }) => (
+        <div className="flex items-center justify-center">
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label="Selecionar linha"
+          />
+        </div>
+      ),
+      meta: {
+        label: "Selecionad",
+        align: "center",
+        pinned: "left",
+      },
+    },
+
+    // 2. Código SKU
+    {
+      id: "codigo",
+      accessorFn: (row) => row.codigo,
+      size: 130,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="left" label="Código" />
+      ),
+      cell: ({ row }) => {
+        const item = row.original;
+        const totalSimilares = item.similares.length;
+        const temEntradaHoje = item.entradasHoje && item.entradasHoje.length > 0;
+
+        return (
+          <div className="flex items-center gap-1.5 font-mono text-xs font-semibold">
+            <span className="truncate">{item.codigo}</span>
+
+            {totalSimilares > 0 && (
+              <TooltipProvider>
+                <Tooltip delayDuration={0}>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => onAbrirSimilares?.(item)}
+                      className="inline-flex h-5 items-center gap-0.5 rounded bg-purple-100 px-1 text-[10px] font-bold text-purple-800 hover:bg-purple-200 border border-purple-300 dark:bg-purple-950 dark:text-purple-300 transition-colors"
+                      aria-label={`Ver ${totalSimilares} similares com estoque`}
+                    >
+                      <Sparkles className="h-2.5 w-2.5" />
+                      <span>{totalSimilares}</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{totalSimilares} peça(s) similar(es) com saldo na rede</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {temEntradaHoje && (
+              <TooltipProvider>
+                <Tooltip delayDuration={0}>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex text-amber-600 cursor-help" aria-label="Chegou hoje no estoque">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs text-xs">
+                    <p className="font-bold text-amber-500">NF-e de Entrada Hoje:</p>
+                    <ul className="mt-1 space-y-1">
+                      {item.entradasHoje.map((ent, i) => (
+                        <li key={i}>
+                          NF {ent.numeroNotaFiscal}: +{ent.quantidadeEntrada} un ({ent.fornecedorNome})
+                        </li>
+                      ))}
+                    </ul>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
+        );
+      },
+      meta: {
+        label: "Código",
+        align: "left",
+        pinned: "left",
+      },
+      enableSorting: true,
+    },
+
+    // 3. Descrição
+    {
+      id: "descricao",
+      accessorFn: (row) => row.descricao,
+      size: 240,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="left" label="Descrição" />
+      ),
+      cell: ({ row }) => (
+        <div className="truncate text-xs font-medium text-slate-900 dark:text-white" title={row.original.descricao}>
+          {row.original.descricao}
+        </div>
+      ),
+      meta: {
+        label: "Descrição",
+        align: "left",
+        pinned: "left",
+      },
+      enableSorting: true,
+    },
+
+    // 4. Aplicação
+    {
+      id: "aplicacao",
+      accessorFn: (row) => row.aplicacao,
+      size: 130,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="left" label="Aplicação" />
+      ),
+      cell: ({ row }) => {
+        const aplicacao = row.original.aplicacao || "—";
+        if (aplicacao.length <= 16) {
+          return <span className="truncate text-xs text-slate-500">{aplicacao}</span>;
+        }
+        return (
+          <TooltipProvider>
+            <Tooltip delayDuration={150}>
+              <TooltipTrigger asChild>
+                <span className="truncate text-xs text-slate-500 cursor-help underline decoration-dotted">
+                  {aplicacao}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-sm text-xs">
+                <p>{aplicacao}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      },
+      meta: {
+        label: "Aplicação",
+        align: "left",
+      },
+      enableSorting: true,
+    },
+
+    // 5. Ref. Fabricante
+    {
+      id: "refFabricante",
+      accessorFn: (row) => row.refFabricante,
+      size: 110,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="left" label="Ref. Fabric" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-slate-600 dark:text-slate-300">
+          {row.original.refFabricante || "—"}
+        </span>
+      ),
+      meta: { label: "Ref. Fabric", align: "left" },
+      enableSorting: true,
+    },
+
+    // 6. Marca
+    {
+      id: "marca",
+      accessorFn: (row) => row.marca,
+      size: 100,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="left" label="Marca" />
+      ),
+      cell: ({ row }) => (
+        <span className="truncate text-xs font-medium text-slate-800 dark:text-slate-200">
+          {row.original.marca || "—"}
+        </span>
+      ),
+      meta: { label: "Marca", align: "left" },
+      enableSorting: true,
+    },
+
+    // 7. Custo (R$)
+    {
+      id: "custo",
+      accessorFn: (row) => row.custo,
+      size: 90,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="right" label="Custo" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-slate-800 dark:text-slate-200">
+          {formatarMoedaPtBr(row.original.custo ?? row.original.precoCusto ?? 0)}
+        </span>
+      ),
+      meta: { label: "Custo", align: "right" },
+      enableSorting: true,
+    },
+
+    // 8. Dt Ult Venda
+    {
+      id: "dtUltVenda",
+      accessorFn: (row) => row.dtUltVenda ?? "",
+      size: 95,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Dt Ult Venda" />
+      ),
+      cell: ({ row }) => (
+        <span className="text-xs text-slate-600 dark:text-slate-400">
+          {formatarDataPtBr(row.original.dtUltVenda)}
+        </span>
+      ),
+      meta: { label: "Dt Ult Venda", align: "center" },
+      enableSorting: true,
+    },
+
+    // 9. Última compra
+    {
+      id: "dtUltimaCompra",
+      accessorFn: (row) => row.dtUltimaCompra ?? "",
+      size: 95,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Última compra" />
+      ),
+      cell: ({ row }) => (
+        <span className="text-xs text-slate-600 dark:text-slate-400">
+          {formatarDataPtBr(row.original.dtUltimaCompra)}
+        </span>
+      ),
+      meta: { label: "Última compra", align: "center" },
+      enableSorting: true,
+    },
+
+    // 10. Curva ABC sistema
+    {
+      id: "curvaAbcSistema",
+      accessorFn: (row) => row.curvaAbcSistema,
+      size: 90,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Curva ABC" />
+      ),
+      cell: ({ row }) => {
+        const curva = row.original.curvaAbcSistema;
+        const color =
+          curva === "A"
+            ? "bg-amber-100 text-amber-900 border-amber-300 font-bold"
+            : curva === "B"
+            ? "bg-blue-100 text-blue-900 border-blue-300 font-semibold"
+            : "bg-slate-100 text-slate-700 border-slate-300";
+        return (
+          <div className="flex justify-center">
+            <span className={cn("rounded px-2 py-0.2 font-mono text-[10px] border", color)}>
+              {curva}
+            </span>
+          </div>
+        );
+      },
+      meta: { label: "Curva ABC", align: "center" },
+      enableSorting: true,
+    },
+
+    // 11. Produtos Vend 90d
+    {
+      id: "produtosVend90d",
+      accessorFn: (row) => row.produtosVend90d,
+      size: 105,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Produtos Vend 90d" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+          {formatarNumero(row.original.produtosVend90d ?? 0, 0)}
+        </span>
+      ),
+      meta: { label: "Produtos Vend 90d", align: "center" },
+      enableSorting: true,
+    },
+
+    // 12. Notas Líq. 90d
+    {
+      id: "notasLiquidas90d",
+      accessorFn: (row) => row.notasLiquidas90d,
+      size: 95,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Notas Líq. 90d" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs font-semibold text-blue-700 dark:text-blue-400">
+          {formatarNumero(row.original.notasLiquidas90d, 0)}
+        </span>
+      ),
+      meta: { label: "Notas Líq. 90d", align: "center" },
+      enableSorting: true,
+    },
+
+    // 13. Consumo Diário
+    {
+      id: "consumoDiario",
+      accessorFn: (row) => row.consumoDiario,
+      size: 95,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Consumo Diário" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-slate-800 dark:text-slate-200">
+          {(row.original.consumoDiario ?? 0).toFixed(4)}
+        </span>
+      ),
+      meta: { label: "Consumo Diário", align: "center" },
+      enableSorting: true,
+    },
+
+    // 14. Consumo Mensal
+    {
+      id: "consumoMensal",
+      accessorFn: (row) => row.consumoMensal,
+      size: 100,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Consumo Mensal" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-slate-800 dark:text-slate-200">
+          {(row.original.consumoMensal ?? 0).toFixed(2)}
+        </span>
+      ),
+      meta: { label: "Consumo Mensal", align: "center" },
+      enableSorting: true,
+    },
+
+    // 15. Venda a cada
+    {
+      id: "vendaACadaDias",
+      accessorFn: (row) => row.vendaACadaDias ?? 9999,
+      size: 95,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Venda a cada" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs text-slate-600 dark:text-slate-400">
+          {row.original.vendaACadaDias == null
+            ? "Sem saída"
+            : `${row.original.vendaACadaDias.toFixed(1)} d`}
+        </span>
+      ),
+      meta: { label: "Venda a cada", align: "center" },
+      enableSorting: true,
+    },
+
+    // 16. Consumo Últ. 30 Dias (qtd)
+    {
+      id: "consumoUltimos30DiasQtd",
+      accessorFn: (row) => row.consumoUltimos30DiasQtd,
+      size: 120,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Consumo Últ. 30d" />
+      ),
+      cell: ({ row }) => (
+        <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+          {formatarNumero(row.original.consumoUltimos30DiasQtd ?? 0, 0)}
+        </span>
+      ),
+      meta: { label: "Consumo Últ. 30 Dias (qtd)", align: "center" },
+      enableSorting: true,
+    },
+
+    // 17. Giro últ. venda
+    {
+      id: "giroUltimaVenda",
+      accessorFn: (row) => row.giroUltimaVenda,
+      size: 90,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Giro últ. venda" />
+      ),
+      cell: ({ row }) => {
+        const giro = row.original.giroUltimaVenda;
+        const color =
+          giro === "Alta"
+            ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+            : giro === "Média"
+            ? "text-blue-700 bg-blue-50 border-blue-200"
+            : "text-slate-500 bg-slate-50 border-slate-200";
+        return (
+          <div className="flex justify-center">
+            <span className={cn("rounded px-1.5 py-0.2 text-[10px] font-semibold border", color)}>
+              {giro}
+            </span>
+          </div>
+        );
+      },
+      meta: { label: "Giro últ. venda", align: "center" },
+      enableSorting: true,
+    },
+
+    // 18. Frequência
+    {
+      id: "frequencia",
+      accessorFn: (row) => row.frequencia,
+      size: 85,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Frequência" />
+      ),
+      cell: ({ row }) => {
+        const freq = row.original.frequencia;
+        const color =
+          freq === "Alta"
+            ? "text-emerald-700 font-bold"
+            : freq === "Média"
+            ? "text-blue-700 font-semibold"
+            : "text-slate-500";
+        return (
+          <div className="flex justify-center">
+            <span className={cn("text-xs", color)}>{freq}</span>
+          </div>
+        );
+      },
+      meta: { label: "Frequência", align: "center" },
+      enableSorting: true,
+    },
+
+    // 19. Consumo
+    {
+      id: "classificacaoConsumo",
+      accessorFn: (row) => row.classificacaoConsumo,
+      size: 80,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Consumo" />
+      ),
+      cell: ({ row }) => (
+        <div className="flex justify-center">
+          <span className="text-xs text-slate-700 dark:text-slate-300">
+            {row.original.classificacaoConsumo}
+          </span>
+        </div>
+      ),
+      meta: { label: "Consumo", align: "center" },
+      enableSorting: true,
+    },
+
+    // 20. Ruptura
+    {
+      id: "ruptura",
+      accessorFn: (row) => row.ruptura,
+      size: 85,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Ruptura" />
+      ),
+      cell: ({ row }) => {
+        const rup = row.original.ruptura;
+        const color =
+          rup === "Boa"
+            ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+            : rup === "Atenção"
+            ? "text-amber-700 bg-amber-50 border-amber-200 font-semibold"
+            : "text-rose-700 bg-rose-50 border-rose-200 font-bold";
+        return (
+          <div className="flex justify-center">
+            <span className={cn("rounded px-1.5 py-0.2 text-[10px] border", color)}>
+              {rup}
+            </span>
+          </div>
+        );
+      },
+      meta: { label: "Ruptura", align: "center" },
+      enableSorting: true,
+    },
+
+    // 21. Período ideal
+    {
+      id: "periodoIdeal",
+      accessorFn: (row) => row.periodoIdeal,
+      size: 85,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Período ideal" />
+      ),
+      cell: ({ row }) => (
+        <div className="flex justify-center">
+          <span className="text-xs text-slate-600 dark:text-slate-400">
+            {row.original.periodoIdeal}
+          </span>
+        </div>
+      ),
+      meta: { label: "Período ideal", align: "center" },
+      enableSorting: true,
+    },
+
+    // 22. Hist vendas 90d
+    {
+      id: "histVendas90d",
+      accessorFn: (row) => row.histVendas90d,
+      size: 90,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Hist vendas 90d" />
+      ),
+      cell: ({ row }) => (
+        <div className="flex justify-center">
+          <span className="font-mono text-xs text-slate-600 dark:text-slate-400">
+            {row.original.histVendas90d}
+          </span>
+        </div>
+      ),
+      meta: { label: "Hist vendas 90d", align: "center" },
+      enableSorting: true,
+    },
+
+    // 23. Hist prod vend 90d
+    {
+      id: "histProdVend90d",
+      accessorFn: (row) => row.histProdVend90d,
+      size: 95,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Hist prod vend" />
+      ),
+      cell: ({ row }) => (
+        <div className="flex justify-center">
+          <span className="font-mono text-xs text-slate-600 dark:text-slate-400">
+            {row.original.histProdVend90d}
+          </span>
+        </div>
+      ),
+      meta: { label: "Hist prod vend 90d", align: "center" },
+      enableSorting: true,
+    },
+
+    // 24. Dias sem venda
+    {
+      id: "diasSemVenda",
+      accessorFn: (row) => row.diasSemVenda ?? 9999,
+      size: 85,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Dias s/ venda" />
+      ),
+      cell: ({ row }) => (
+        <div className="flex justify-center">
+          <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
+            {row.original.diasSemVenda == null ? "—" : `${row.original.diasSemVenda}d`}
+          </span>
+        </div>
+      ),
+      meta: { label: "Dias sem venda", align: "center" },
+      enableSorting: true,
+    },
+
+    // 25. Est [Loja Foco] (ex: Est Pedro II / Est APT)
+    {
+      id: "estoqueLojaFoco",
+      accessorFn: (row) => row.estoqueLojaFoco,
+      size: 95,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label={rotuloEstoqueFoco} />
+      ),
+      cell: ({ row }) => (
+        <div className="flex justify-center">
+          <span className="font-mono text-xs font-bold text-slate-900 dark:text-white">
+            {formatarNumero(row.original.estoqueLojaFoco)}
+          </span>
+        </div>
+      ),
+      meta: { label: rotuloEstoqueFoco, align: "center" },
+      enableSorting: true,
+    },
+
+    // 26. Disp [Rede / Outra] (ex: Disp APP / Disp Rede)
+    {
+      id: "estoqueRede",
+      accessorFn: (row) => row.estoqueRede,
+      size: 95,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label={rotuloEstoqueOutra} />
+      ),
+      cell: ({ row }) => (
+        <div className="flex justify-center">
+          <span className="font-mono text-xs text-slate-600 dark:text-slate-400">
+            {formatarNumero(row.original.estoqueRede ?? 0)}
+          </span>
+        </div>
+      ),
+      meta: { label: rotuloEstoqueOutra, align: "center" },
+      enableSorting: true,
+    },
+
+    // 27. Mov nova
+    {
+      id: "statusMovimentacao",
+      accessorFn: (row) => row.statusMovimentacao,
+      size: 110,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Mov nova" />
+      ),
+      cell: ({ row }) => {
+        const item = row.original;
+        const mov = item.statusMovimentacao;
+        const color =
+          mov === "Comprar"
+            ? "bg-emerald-100 text-emerald-800 border-emerald-300 font-bold"
+            : mov === "Transferir"
+            ? "bg-indigo-100 text-indigo-800 border-indigo-300 font-bold"
+            : mov === "Marca Zumbi"
+            ? "bg-slate-800 text-rose-200 border-slate-700 font-bold"
+            : "bg-slate-100 text-slate-700 border-slate-200";
+
+        return (
+          <div className="flex flex-col items-center gap-0.5">
+            <span className={cn("rounded px-2 py-0.2 text-[10px] border uppercase tracking-wider", color)}>
+              {mov}
+            </span>
+            <span className="text-[10px] font-mono text-slate-500">
+              P {item.sugestaoCompra} / T {item.sugestaoTransferencia}
+            </span>
+          </div>
+        );
+      },
+      meta: { label: "Mov nova", align: "center" },
+      enableSorting: true,
+    },
+
+    // 28. Pedido (Editável com Múltiplo)
+    {
+      id: "pedido",
+      accessorFn: (row) => row.sugestaoCompra,
+      size: 95,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Pedido" />
+      ),
+      cell: ({ row }) => {
+        const item = row.original;
+        const exigeMultiplo = item.exigeMultiploEmbalagem;
+
+        return (
+          <div className="flex justify-center">
+            <div className="relative inline-flex items-center justify-center">
+              <input
+                type="number"
+                min="0"
+                defaultValue={item.pedidoCustom ?? item.sugestaoCompra}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value, 10);
+                  if (!isNaN(val) && val >= 0) {
+                    onPedirCommit?.(item.codigoSku, val);
+                  }
+                }}
+                className={cn(
+                  "h-7 w-16 rounded border text-center font-mono text-xs font-semibold outline-none transition-colors focus:ring-1 focus:ring-blue-500",
+                  exigeMultiplo
+                    ? "bg-[#FFFFCC] border-amber-300 text-amber-950 font-bold"
+                    : "bg-white border-slate-300 text-slate-900 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                )}
+                aria-label={`Quantidade de pedido para SKU ${item.codigoSku}`}
+              />
+              {exigeMultiplo && (
+                <span
+                  className="absolute -top-1.5 -right-2 flex h-3.5 items-center justify-center rounded-full bg-amber-200 px-1 text-[8px] font-bold text-amber-900 border border-amber-300 shadow-sm"
+                  title={`Múltiplo de embalagem: ${item.loteMultiplo} un`}
+                >
+                  {item.loteMultiplo}x
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      },
+      meta: { label: "Pedido", align: "center", pinned: "right" },
+      enableSorting: true,
+    },
+
+    // 29. Transferência (Editável)
+    {
+      id: "transferencia",
+      accessorFn: (row) => row.sugestaoTransferencia,
+      size: 95,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Transferência" />
+      ),
+      cell: ({ row }) => {
+        const item = row.original;
+        const podeTransferir = (item.sugestaoTransferencia ?? 0) > 0;
+
+        return (
+          <div className="flex justify-center">
+            <input
+              type="number"
+              min="0"
+              disabled={!podeTransferir}
+              defaultValue={item.transferenciaCustom ?? item.sugestaoTransferencia}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val) && val >= 0) {
+                  onTransferirCommit?.(item.codigoSku, val);
+                }
+              }}
+              className={cn(
+                "h-7 w-16 rounded border text-center font-mono text-xs font-semibold outline-none transition-colors",
+                podeTransferir
+                  ? "bg-indigo-50 border-indigo-300 text-indigo-900 focus:ring-1 focus:ring-indigo-500"
+                  : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
+              )}
+              aria-label={`Quantidade de transferência para SKU ${item.codigoSku}`}
+            />
+          </div>
+        );
+      },
+      meta: { label: "Transferência", align: "center", pinned: "right" },
+      enableSorting: true,
+    },
+  ];
+}

@@ -286,6 +286,18 @@ export function useFiltrosCockpit({
     });
   }, []);
 
+  const definirMarcasDeselecionadas = useCallback((novas: Set<string>) => {
+    startTransition(() => {
+      setMarcasDeselecionadas(novas);
+    });
+  }, []);
+
+  const definirCurvasDeselecionadas = useCallback((novas: Set<CurvaABC>) => {
+    startTransition(() => {
+      setCurvasDeselecionadas(novas);
+    });
+  }, []);
+
   const alterarStatus = useCallback((novoStatus: StatusFilterOption) => {
     startTransition(() => {
       setStatusFiltro(novoStatus);
@@ -318,6 +330,8 @@ export function useFiltrosCockpit({
     toggleMarca,
     toggleSecao,
     toggleCurva,
+    definirMarcasDeselecionadas,
+    definirCurvasDeselecionadas,
     alterarStatus,
     limparFiltros,
   };

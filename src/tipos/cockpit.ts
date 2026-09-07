@@ -116,9 +116,41 @@ export interface LinhaCockpitMatriz {
   readonly similares: readonly ItemSimilarIntercambiavel[];
   readonly entradasHoje: readonly EntradaNFeDoDia[];
 
+  // 29 Colunas da Grade Operacional Fiel
+  readonly selecionado?: boolean;
+  readonly codigo?: string;
+  readonly aplicacao?: string;
+  readonly refFabricante?: string;
+  readonly custo?: number;
+  readonly dtUltVenda?: string | null;
+  readonly dtUltimaCompra?: string | null;
+  readonly curvaAbcSistema?: string;
+  readonly produtosVend90d?: number;
+  readonly consumoDiario?: number;
+  readonly consumoMensal?: number;
+  readonly vendaACadaDias?: number | null;
+  readonly consumoUltimos30DiasQtd?: number;
+  readonly consumoUltimos30DiasDetalhes?: readonly ExtratoMovimentacaoFrequencia[];
+  readonly giroUltimaVenda?: string;
+  readonly frequencia?: string;
+  readonly classificacaoConsumo?: string;
+  readonly ruptura?: string;
+  readonly periodoIdeal?: string;
+  readonly histVendas90d?: number;
+  readonly histProdVend90d?: number;
+  readonly diasSemVenda?: number | null;
+  readonly estoqueRede?: number;
+  readonly statusMovimentacao?: string;
+  readonly sugestaoCompra?: number;
+  readonly sugestaoTransferencia?: number;
+  readonly temSimilarComEstoque?: boolean;
+  readonly exigeMultiploEmbalagem?: boolean;
+
   // Índice de busca pré-computado em memória para busca < 250ms
   _searchIndex?: string;
 }
+
+export type LinhaCockpitCompras = LinhaCockpitMatriz;
 
 // ============================================================================
 // 3. PROPS DOS 5 TOOLTIPS ANALÍTICOS RICOS

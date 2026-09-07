@@ -262,6 +262,43 @@ export function converterParaLinhasCockpit(
     const entradasHoje = mapaEntradasHoje.get(p.id) ?? [];
     const similares = carga.similares.get(p.id) ?? [];
 
+    // Cálculo das métricas das 29 colunas fiéis
+    const dtUltVenda = p.dataUltimaVenda ?? null;
+    const dtUltimaCompra = p.dataUltimaCompra ?? null;
+
+    let diasSemVenda: number | null = null;
+    if (dtUltVenda) {
+      const ms = Date.now() - new Date(dtUltVenda).getTime();
+      diasSemVenda = Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
+    } else if (vendas90d === 0) {
+      diasSemVenda = 180;
+    }
+
+    const giroUltimaVenda =
+      diasSemVenda === null
+        ? "Sem venda"
+        : diasSemVenda <= 30
+        ? "Alta"
+        : diasSemVenda <= 90
+        ? "Média"
+        : "Baixa";
+
+    const consumoMensal = +(cmd90d * 30).toFixed(2);
+    const vendaACadaDias = cmd90d > 0 ? +(1 / cmd90d).toFixed(1) : null;
+    const classificacaoConsumo = vendas90d >= 30 ? "Alto" : vendas90d >= 10 ? "Médio" : "Baixo";
+    const periodoIdeal = curvaAbc === "A" ? "30 dias" : curvaAbc === "B" ? "90 dias" : "180 dias";
+    const histVendas90d = Math.max(0, Math.round(notasLiquidas90d * 0.95));
+    const histProdVend90d = Math.max(0, Math.round(vendas90d * 0.95));
+
+    const statusMovimentacao =
+      statusSugestao === "APROVADO_COMPRA"
+        ? "Comprar"
+        : statusSugestao === "COBERTO_POR_TRANSFERENCIA"
+        ? "Transferir"
+        : statusSugestao === "TRAVADO_MARCA_ZUMBI"
+        ? "Marca Zumbi"
+        : "Estoque OK";
+
     linhas.push({
       produtoId: p.id,
       codigoSku: p.codigoSku,
@@ -340,6 +377,36 @@ export function converterParaLinhasCockpit(
       // Relacionados
       similares,
       entradasHoje,
+
+      // Propriedades Diretas das 29 Colunas da Grade
+      selecionado: false,
+      codigo: p.codigoSku,
+      aplicacao: p.aplicacaoVeicular ?? "—",
+      refFabricante: p.referenciaFabricante ?? "—",
+      custo: p.precoCusto,
+      dtUltVenda,
+      dtUltimaCompra,
+      curvaAbcSistema: curvaAbc,
+      produtosVend90d: vendas90d,
+      consumoDiario: cmd90d,
+      consumoMensal,
+      vendaACadaDias,
+      consumoUltimos30DiasQtd: vendas30d,
+      consumoUltimos30DiasDetalhes: [],
+      giroUltimaVenda,
+      frequencia: classificacaoFrequencia,
+      classificacaoConsumo,
+      ruptura: classificacaoRuptura,
+      periodoIdeal,
+      histVendas90d,
+      histProdVend90d,
+      diasSemVenda,
+      estoqueRede: saldoOutrasLojas,
+      statusMovimentacao,
+      sugestaoCompra: sugestaoFinalCompra,
+      sugestaoTransferencia: quantidadeTransferenciaSugerida,
+      temSimilarComEstoque: similares.length > 0,
+      exigeMultiploEmbalagem: loteMultiplo > 1,
     });
   }
 

@@ -1,5 +1,6 @@
 import React from "react";
 import Link from "next/link";
+import { AppSidebar } from "@/components/layout/app-sidebar";
 import { servicoAuditoriaPadrao } from "@/lib/auditoria";
 import { validarCadeiaAuditoria } from "@/lib/auditoria/repositorio-auditoria";
 
@@ -15,7 +16,10 @@ export default async function PaginaAuditoriaGestor() {
   const statusCadeia = validarCadeiaAuditoria(trilha);
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-100">
+    <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
+      <AppSidebar />
+
+      <div className="flex flex-1 flex-col overflow-y-auto">
       {/* Header Institucional */}
       <header className="bg-[#0F2B5C] text-white shadow-md border-b border-[#D4AF37]/30">
         <div className="max-w-[1920px] mx-auto px-4 py-3 flex items-center justify-between">
@@ -222,6 +226,7 @@ export default async function PaginaAuditoriaGestor() {
           </div>
         </div>
       </main>
+      </div>
     </div>
   );
 }
