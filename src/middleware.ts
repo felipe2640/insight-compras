@@ -6,6 +6,7 @@
 
 import { processarRequisicaoTenant } from "./lib/middleware-tenant";
 import { CABECALHOS_SEGURANCA_HTTP } from "./lib/seguranca/headers";
+import { NextResponse } from "next/server";
 
 // Tipagem flexível para runtime Edge / Next.js
 export interface NextRequestLike {
@@ -49,7 +50,21 @@ export function middleware(request: NextRequestLike) {
     requestHeaders.set(chave, valor);
   }
 
-  return {
+  const response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+
+  response.cookies.set({
+    name: "x-tenant-id",
+    value: resultado.tenantId,
+    path: "/",
+    sameSite: "lax",
+  });
+
+  // Anexa propriedades para interoperabilidade estrita com testes unitários
+  Object.assign(response, {
     request: {
       headers: requestHeaders,
     },
@@ -59,7 +74,9 @@ export function middleware(request: NextRequestLike) {
       path: "/",
       sameSite: "lax" as const,
     },
-  };
+  });
+
+  return response;
 }
 
 export const config = {

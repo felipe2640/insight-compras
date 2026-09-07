@@ -60,8 +60,14 @@ export async function GET(request: NextRequest) {
       filialId,
     });
 
+    const provedorQuery = searchParams.get("provedor")?.toUpperCase();
+    const tipoProvedor =
+      provedorQuery === "CARREIRO" || provedorQuery === "MOCK"
+        ? provedorQuery
+        : undefined;
+
     // 4. Carregamento Resiliente via Adaptador de Inventário
-    const adaptador = obterAdaptadorInventario();
+    const adaptador = obterAdaptadorInventario({ tipo: tipoProvedor });
     const carga = await adaptador.carregarInventarioCompleto(filtroValidado);
 
     // 5. Transformação Canônica em Linhas da Matriz de Decisão
