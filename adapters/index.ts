@@ -12,6 +12,7 @@ import {
 import { ClienteDaxPowerBI } from "./carreiro/cliente-dax";
 import { AdaptadorInventarioMock } from "./mock/adaptador-mock";
 import { OpcoesGeradorSintetico } from "./mock/gerador-sintetico";
+import { localizarDiretorioSnapshot } from "./carreiro/carregador-snapshot-local";
 
 export * from "./AdaptadorInventario";
 export * from "./carreiro/adaptador-carreiro";
@@ -19,6 +20,7 @@ export * from "./carreiro/cliente-dax";
 export * from "./carreiro/consultas-homologadas";
 export * from "./carreiro/mapeador-dax";
 export * from "./carreiro/cache-resiliente";
+export * from "./carreiro/carregador-snapshot-local";
 export * from "./mock/adaptador-mock";
 export * from "./mock/gerador-sintetico";
 
@@ -40,9 +42,9 @@ let instanciaCarreiroSingleton: AdaptadorInventarioCarreiro | null = null;
  * Fábrica canônica para obtenção do adaptador de inventário adequado ao ambiente.
  *
  * Modo AUTO (padrão):
- * - Se as credenciais do Power BI Fabric estiverem presentes no ambiente, retorna o Adaptador Carreiro.
- * - Caso contrário (desenvolvimento local, testes de carga, ambiente sem Azure Entra ID),
- *   faz fallback gracioso para o Adaptador Mock sintético com 25.000+ SKUs.
+ * - Se as credenciais do Power BI Fabric estiverem ativas, retorna o Adaptador Carreiro (DAX).
+ * - Se um diretório de snapshot for explicitamente informado, retorna o Adaptador Carreiro (Snapshot).
+ * - Caso contrário, faz fallback gracioso para o Adaptador Mock sintético de alta velocidade.
  */
 export function obterAdaptadorInventario(
   opcoes: OpcoesFabricaAdaptador = {}
@@ -63,9 +65,9 @@ export function obterAdaptadorInventario(
     return instanciaCarreiroSingleton;
   }
 
-  // Modo AUTO: Detecção dinâmica de credenciais
+  // Modo AUTO: Detecção dinâmica de credenciais ativas do Power BI Fabric
   const clienteDax = new ClienteDaxPowerBI(opcoes.carreiro?.configuracaoDax);
-  if (clienteDax.possuiConfiguracaoAtiva()) {
+  if (clienteDax.possuiConfiguracaoAtiva() || opcoes.carreiro?.diretorioSnapshot) {
     if (!instanciaCarreiroSingleton || opcoes.carreiro) {
       instanciaCarreiroSingleton = new AdaptadorInventarioCarreiro({
         ...opcoes.carreiro,

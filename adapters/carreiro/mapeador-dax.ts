@@ -71,6 +71,22 @@ export function mapearFilialCarreiro(valor: unknown): { filialId: number; nomeFi
 }
 
 /**
+ * Extrai o ID numérico do produto de forma resiliente, suportando chaves compostas
+ * do Power BI como "000001|a5172ddc-0dd0-4f8e-bb0d-5018183d4457", inteiros puros ou strings.
+ */
+export function extrairIdProduto(valor: unknown): number {
+  if (typeof valor === "number") {
+    return isNaN(valor) ? 0 : Math.floor(valor);
+  }
+  const str = String(valor ?? "").trim();
+  if (!str) return 0;
+
+  const parte = str.includes("|") ? str.split("|")[0].trim() : str;
+  const parsed = parseInt(parte, 10);
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+/**
  * Converte linhas tabulares de produtos retornadas pelo DAX para a entidade Produto.
  * Deduplica produtos que aparecem com registros em múltiplas lojas.
  */
@@ -82,10 +98,13 @@ export function mapearProdutosDax(
   for (const linhaBruta of linhasDax) {
     const linha = normalizarLinhaDax(linhaBruta);
 
-    const id = Number(linha.Produto ?? linha.ACODPRODUTO ?? linha.id ?? 0);
+    const id = extrairIdProduto(linha.Produto ?? linha.ACODPRODUTO ?? linha.id ?? 0);
     if (!id || id <= 0 || produtosPorId.has(id)) {
       continue;
     }
+
+    const rawSku = String(linha.ACODPRODUTO ?? linha.codigoSku ?? linha.Produto ?? id).trim();
+    const codigoSku = rawSku.includes("|") ? rawSku.split("|")[0].trim() : rawSku;
 
     const descricao = String(linha.Descricao ?? linha.ADESCRICAO ?? linha.descricao ?? "").trim();
     const marca = String(linha.Marca ?? linha.AMARCA ?? linha.marca ?? "GENERICA").trim();
@@ -121,7 +140,7 @@ export function mapearProdutosDax(
 
     const produto: Produto = {
       id,
-      codigoSku: String(linha.Produto ?? linha.ACODPRODUTO ?? id).trim(),
+      codigoSku,
       descricao,
       marca,
       fabricante,
@@ -155,7 +174,7 @@ export function mapearEstoquesDax(
   for (const linhaBruta of linhasDax) {
     const linha = normalizarLinhaDax(linhaBruta);
 
-    const produtoId = Number(linha.Produto ?? linha.ACODPRODUTO ?? linha.id ?? 0);
+    const produtoId = extrairIdProduto(linha.Produto ?? linha.ACODPRODUTO ?? linha.id ?? 0);
     if (!produtoId || produtoId <= 0) continue;
 
     const { filialId, nomeFilial } = mapearFilialCarreiro(
@@ -214,7 +233,7 @@ export function mapearHistoricoVendasDax(
   for (const linhaBruta of linhasDax) {
     const linha = normalizarLinhaDax(linhaBruta);
 
-    const produtoId = Number(linha.Produto ?? linha.ACODPRODUTO ?? linha.id ?? 0);
+    const produtoId = extrairIdProduto(linha.Produto ?? linha.ACODPRODUTO ?? linha.id ?? 0);
     if (!produtoId || produtoId <= 0) continue;
 
     const { filialId } = mapearFilialCarreiro(
@@ -283,7 +302,7 @@ export function mapearEntradasNFeDax(
   for (const linhaBruta of linhasDax) {
     const linha = normalizarLinhaDax(linhaBruta);
 
-    const produtoId = Number(linha.Produto ?? linha.ACODPRODUTO ?? 0);
+    const produtoId = extrairIdProduto(linha.Produto ?? linha.ACODPRODUTO ?? 0);
     if (!produtoId || produtoId <= 0) continue;
 
     const { filialId } = mapearFilialCarreiro(
@@ -323,8 +342,8 @@ export function mapearSimilaresDax(
   for (const linhaBruta of linhasDax) {
     const linha = normalizarLinhaDax(linhaBruta);
 
-    const idOrigem = Number(linha.ProdutoOrigem ?? linha.ACODPRODUTO ?? 0);
-    const idSimilar = Number(linha.ProdutoSimilar ?? linha.ACODPRODUTO_SEMELHANTE ?? 0);
+    const idOrigem = extrairIdProduto(linha.ProdutoOrigem ?? linha.ACODPRODUTO ?? 0);
+    const idSimilar = extrairIdProduto(linha.ProdutoSimilar ?? linha.ACODPRODUTO_SEMELHANTE ?? 0);
 
     if (!idOrigem || !idSimilar || idOrigem === idSimilar) continue;
 

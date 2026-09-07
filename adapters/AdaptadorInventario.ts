@@ -69,7 +69,7 @@ export type ItemSimiliarIntercambiavel = ItemSimilarIntercambiavel;
  * Metadados operacionais de diagnóstico e observabilidade do adaptador.
  */
 export interface MetadadosStatusAdapter {
-  readonly provedor: "POWERBI_FABRIC_DAX" | "MOCK_SINTETICO";
+  readonly provedor: "POWERBI_FABRIC_DAX" | "MOCK_SINTETICO" | "CARREIRO_SNAPSHOT_LOCAL";
   readonly timestampCarga: string;
   readonly emModoDegradado: boolean;
   readonly totalSkusCarregados: number;

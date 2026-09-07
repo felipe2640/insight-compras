@@ -10,6 +10,7 @@ import {
   normalizarLinhaDax,
 } from "@adapters/carreiro/cliente-dax";
 import {
+  extrairIdProduto,
   mapearFilialCarreiro,
   mapearProdutosDax,
   mapearEstoquesDax,
@@ -216,6 +217,40 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
     });
   });
 
+  describe("extrairIdProduto e Chaves Compostas do Power BI", () => {
+    it("deve extrair o ID numérico correto de chaves compostas com GUID ou códigos com zeros à esquerda", () => {
+      expect(extrairIdProduto("000001|a5172ddc-0dd0-4f8e-bb0d-5018183d4457")).toBe(1);
+      expect(extrairIdProduto("000123|e2adc241-50f7-4dcd-9527-423080cd8c5c")).toBe(123);
+      expect(extrairIdProduto("4560")).toBe(4560);
+      expect(extrairIdProduto(789)).toBe(789);
+      expect(extrairIdProduto(null)).toBe(0);
+      expect(extrairIdProduto(undefined)).toBe(0);
+      expect(extrairIdProduto("")).toBe(0);
+    });
+
+    it("deve mapear corretamente linhas DAX brutas com chaves compostas de Produto e Empresa", () => {
+      const linhasCompostas = [
+        {
+          Produto: "000001|a5172ddc-0dd0-4f8e-bb0d-5018183d4457",
+          Empresa: "1|a5172ddc-0dd0-4f8e-bb0d-5018183d4457",
+          Descricao: "RETENTOR POLIA OPALA",
+          EstoqueQtd: "5.0",
+          PrecoCompraERP: "45.0",
+        },
+      ];
+
+      const produtos = mapearProdutosDax(linhasCompostas);
+      expect(produtos).toHaveLength(1);
+      expect(produtos[0].id).toBe(1);
+      expect(produtos[0].codigoSku).toBe("000001");
+      expect(produtos[0].descricao).toBe("RETENTOR POLIA OPALA");
+
+      const estoques = mapearEstoquesDax(linhasCompostas);
+      expect(estoques.get("1:3")).toBeDefined();
+      expect(estoques.get("1:3")?.saldoFisico).toBe(5);
+    });
+  });
+
   describe("formatarListaNumericaDax", () => {
     it("deve formatar cláusula DAX IN com segurança estrita contra injeção", () => {
       expect(formatarListaNumericaDax([101, 102, 103])).toBe("{ 101, 102, 103 }");
@@ -225,3 +260,4 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
     });
   });
 });
+
