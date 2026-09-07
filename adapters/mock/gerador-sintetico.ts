@@ -18,7 +18,7 @@ import {
   EstoqueFilial,
   HistoricoVendasFilial,
 } from "@core/dominio";
-import { inferirLotePadraoPorCategoria } from "@core/travas";
+import { inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
 import {
   EntradaNFeDoDia,
   ItemSimilarIntercambiavel,
@@ -307,6 +307,7 @@ export function gerarDatasetSinteticoCarreiro(
       saldoFisico: saldo1,
       estoqueMinimoSeguranca: min1,
       quantidadeJaPedida: 0,
+      diasSemVenda: null,
       consumoMedioDiarioErp: vendas90d1 > 0 ? Number((vendas90d1 / 90).toFixed(3)) : 0,
       dataUltimaVenda: vendas90d1 > 0 ? "2026-09-01" : null,
       dataUltimaCompra: "2026-08-15",
@@ -321,6 +322,8 @@ export function gerarDatasetSinteticoCarreiro(
       devolucoes90dias: 0,
       notasFiscaisVenda90dias: notas90d1,
       notasFiscaisDevolucao90dias: 0,
+      mesesAtivos12meses: 12,
+      medianaLinhaVenda: 1,
       diasRuptura90dias: diasRuptura1,
       diasObservados: 180,
       dataPrimeiraVendaRegistrada: "2024-01-10",
@@ -335,6 +338,7 @@ export function gerarDatasetSinteticoCarreiro(
       saldoFisico: saldo2,
       estoqueMinimoSeguranca: min2,
       quantidadeJaPedida: 0,
+      diasSemVenda: null,
       consumoMedioDiarioErp: vendas90d2 > 0 ? Number((vendas90d2 / 90).toFixed(3)) : 0,
       dataUltimaVenda: vendas90d2 > 0 ? "2026-08-28" : null,
       dataUltimaCompra: "2026-08-10",
@@ -349,6 +353,8 @@ export function gerarDatasetSinteticoCarreiro(
       devolucoes90dias: 0,
       notasFiscaisVenda90dias: notas90d2,
       notasFiscaisDevolucao90dias: 0,
+      mesesAtivos12meses: 12,
+      medianaLinhaVenda: 1,
       diasRuptura90dias: diasRuptura2,
       diasObservados: 180,
       dataPrimeiraVendaRegistrada: "2024-01-15",

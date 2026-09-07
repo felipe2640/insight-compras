@@ -1,7 +1,8 @@
+import { inferirLotePadraoPorCategoria } from "@adapters/comum/lote-autopecas";
 import { describe, it, expect } from "vitest";
 import {
   arredondarParaMultiplo,
-  inferirLotePadraoPorCategoria,
+  detectarLotePorHistograma,
   ajustarQuantidadePorLote,
 } from "@core/travas/lote-multiplo";
 
@@ -80,7 +81,7 @@ describe("Ajustador de Lotes e Múltiplos Físicos de Fábrica", () => {
       });
 
       expect(resultado.quantidadeAjustada).toBe(4);
-      expect(resultado.motivoAjuste).toContain("par (múltiplo de 2 un)");
+      expect(resultado.motivoAjuste).toContain("múltiplo de embalagem fechada (2 un)");
     });
 
     it("deve retornar quantidade 0 sem alterações quando desejado for 0", () => {
@@ -91,6 +92,36 @@ describe("Ajustador de Lotes e Múltiplos Físicos de Fábrica", () => {
 
       expect(resultado.quantidadeAjustada).toBe(0);
       expect(resultado.motivoAjuste).toBeNull();
+    });
+  });
+
+  describe("detectarLotePorHistograma", () => {
+    it("detecta o lote quando a dominância é atingida (>= 70% das linhas)", () => {
+      // 7 linhas múltiplas de 4 em 8 = 87,5% >= 70%
+      expect(detectarLotePorHistograma([4, 4, 4, 4, 4, 4, 4, 1])).toBe(4);
+    });
+
+    it("devolve 1 sem linhas suficientes (mínimo 8)", () => {
+      expect(detectarLotePorHistograma([4, 4, 4])).toBe(1);
+      expect(detectarLotePorHistograma([])).toBe(1);
+    });
+
+    it("devolve 1 quando nenhum candidato domina", () => {
+      expect(detectarLotePorHistograma([1, 3, 5, 7, 9, 11, 13, 17])).toBe(1);
+    });
+
+    it("prefere o maior lote entre os candidatos aceitos", () => {
+      // todos múltiplos de 12 também são de 6, 4, 3 e 2 — vence 12
+      expect(detectarLotePorHistograma([12, 12, 24, 12, 36, 12, 24, 12])).toBe(12);
+    });
+
+    it("ignora quantidades zeradas ou negativas", () => {
+      expect(detectarLotePorHistograma([2, 2, 2, 2, 2, 2, 2, 2, 0, -5])).toBe(2);
+    });
+
+    it("é agnóstico de segmento — decide só pelo número", () => {
+      // nenhuma descrição envolvida: só o histograma
+      expect(detectarLotePorHistograma([2, 4, 6, 8, 10, 12, 14, 16])).toBe(2);
     });
   });
 });

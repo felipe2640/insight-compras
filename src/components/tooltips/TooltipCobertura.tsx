@@ -4,8 +4,8 @@ import React, { useState, useRef, useId, useCallback } from "react";
 import { PropsTooltipCobertura, TendenciaCobertura } from "@/tipos/cockpit";
 import { cn } from "@/lib/utils";
 
-function formatarCobertura(dias: number, cmd: number): string {
-  if (cmd <= 0 || !Number.isFinite(dias)) {
+function formatarCobertura(dias: number | null, cmd: number): string {
+  if (dias === null || cmd <= 0 || !Number.isFinite(dias)) {
     return "Sem consumo";
   }
   if (dias >= 999) {

@@ -9,7 +9,6 @@ import {
   EntradaNFeDoDia,
   ItemSimilarIntercambiavel,
 } from "@adapters/AdaptadorInventario";
-import { NOMES_FILIAIS_CARREIRO } from "@adapters/carreiro/mapeador-dax";
 import {
   LinhaCockpitMatriz,
   SeveridadeRuptura,
@@ -17,18 +16,65 @@ import {
   TendenciaCobertura,
 } from "@/tipos/cockpit";
 import {
-  inferirLotePadraoPorCategoria,
   ajustarQuantidadePorLote,
   aplicarTravaMarcaZumbi,
 } from "@core/travas";
-import { calcularNecessidadeItem } from "@core/calculo/necessidade";
+import {
+  calcularNecessidadeItem,
+  PARAMETROS_MOTOR_PADRAO,
+  ParametrosMotorCompra,
+} from "@core/calculo/necessidade";
 import { calcularConsumoDiario, classificarPerfilGiro } from "@core/calculo/demanda-diaria";
 import { calcularCurvaAbc } from "@core/calculo/curva-abc";
-import { StatusSugestao, CurvaABC } from "@core/dominio";
+import { StatusSugestao, CurvaABC, campoHistoricoDisponivel, campoEstoqueDisponivel } from "@core/dominio";
 
 export interface OpcoesGeracaoMatriz {
   readonly filialFocoId?: number;
   readonly leadTimePadraoDias?: number;
+  /**
+   * Parâmetros calibrados do tenant. A LÓGICA é a mesma para todo cliente;
+   * só estes VALORES mudam. Sem isso, cai no baseline não calibrado.
+   */
+  readonly parametrosMotor?: ParametrosMotorCompra;
+  /**
+   * Nomes das filiais do tenant. Injetado pelo chamador para que esta camada
+   * não dependa de nenhum adapter de cliente específico.
+   */
+  readonly nomesFiliais?: Readonly<Record<number, string>>;
+}
+
+/**
+ * Classificação de consumo por quantidade vendida na janela de 90 dias.
+ * Faixas homologadas no sistema legado (`classifyConsumptionByQuantity`):
+ * < 30 => Baixa; >= 100 => Alta; caso contrário Média.
+ */
+function classificarConsumoPorQuantidade(qtdVendida90d: number): ClassificacaoFrequencia {
+  if (!Number.isFinite(qtdVendida90d) || qtdVendida90d < 30) return "Baixa";
+  if (qtdVendida90d >= 100) return "Alta";
+  return "Média";
+}
+
+/**
+ * Período ideal de análise, derivado da CLASSIFICAÇÃO DE FREQUÊNCIA
+ * (não da curva ABC). Rótulos homologados em `getIdealAnalysisPeriod`.
+ */
+function obterPeriodoIdealAnalise(classificacao: ClassificacaoFrequencia): string {
+  if (classificacao === "Alta") return "30 dias";
+  if (classificacao === "Média") return "60 a 90 dias";
+  return "120 a 180 dias";
+}
+
+/**
+ * Giro por dias sem venda. Sem data de última venda a resposta é
+ * "Sem histórico" — nunca um número inventado.
+ */
+function classificarGiroPorDiasSemVenda(
+  diasSemVenda: number | null
+): "Alta" | "Média" | "Baixa" | "Sem histórico" {
+  if (diasSemVenda === null) return "Sem histórico";
+  if (diasSemVenda <= 30) return "Alta";
+  if (diasSemVenda <= 90) return "Média";
+  return "Baixa";
 }
 
 /**
@@ -41,7 +87,9 @@ export function converterParaLinhasCockpit(
 ): LinhaCockpitMatriz[] {
   const filialFocoId = opcoes.filialFocoId ?? 1;
   const leadTimeDias = opcoes.leadTimePadraoDias ?? 7;
-  const nomeFilialFoco = NOMES_FILIAIS_CARREIRO[filialFocoId] ?? `Loja ${filialFocoId}`;
+  const parametrosMotor = opcoes.parametrosMotor ?? PARAMETROS_MOTOR_PADRAO;
+  const nomesFiliais = opcoes.nomesFiliais ?? {};
+  const nomeFilialFoco = nomesFiliais[filialFocoId] ?? `Loja ${filialFocoId}`;
 
   // 1. Agrupamento de estoques por produto para transferências entre filiais
   const estoquesPorProduto = new Map<number, Array<{ filialId: number; saldo: number; minStock: number }>>();
@@ -85,7 +133,12 @@ export function converterParaLinhasCockpit(
 
     const saldoFoco = estFoco?.saldoFisico ?? 0;
     const minStockFoco = estFoco?.estoqueMinimoSeguranca ?? 0;
-    const pedidosFoco = estFoco?.quantidadeJaPedida ?? 0;
+
+    // Pedidos em aberto: distinguir "medido e igual a zero" de "não medido".
+    // Quando a fonte não expõe, o cockpit mostra "—" e o motor não desconta nada
+    // (comportamento conservador: pode sobrecomprar, mas nunca deixa de repor).
+    const pedidosMedidos = campoEstoqueDisponivel(estFoco, "quantidadeJaPedida");
+    const pedidosFoco = pedidosMedidos ? estFoco?.quantidadeJaPedida ?? 0 : null;
 
     // Saldo em outras lojas da rede
     let saldoOutrasLojas = 0;
@@ -100,26 +153,36 @@ export function converterParaLinhasCockpit(
     const vendas30d = histFoco?.vendasLiquidas30dias ?? 0;
     const vendas90d = histFoco?.vendasLiquidas90dias ?? 0;
     const vendas180d = histFoco?.vendasLiquidas180dias ?? 0;
-    const diasObservados = histFoco?.diasObservados ?? 90;
+    const diasObservados = histFoco?.diasObservados ?? 180;
     const notasVenda90d = histFoco?.notasFiscaisVenda90dias ?? 0;
     const notasDevolucao90d = histFoco?.notasFiscaisDevolucao90dias ?? 0;
+    const mesesAtivos = histFoco?.mesesAtivos12meses ?? 0;
+    const medianaLinha = histFoco?.medianaLinhaVenda ?? 0;
 
+    // Taxa diária com denominador FIXO de 180 dias (igual ao backtest).
     const cmdDiario = calcularConsumoDiario({
-      vendasLiquidas180d: vendas180d,
-      notasFiscais90d: notasVenda90d,
-      diasObservados,
+      vendasLiquidasJanela: vendas180d,
+      diasJanela: 180,
     });
 
+    // Cada janela usa o SEU próprio denominador. Antes a coluna "90d" recebia a
+    // taxa de 180 dias, o que fazia rótulo e conteúdo discordarem.
     const cmd30d = vendas30d > 0 ? +(vendas30d / 30).toFixed(4) : 0;
-    const cmd90d = cmdDiario > 0 ? cmdDiario : (vendas90d > 0 ? +(vendas90d / 90).toFixed(4) : 0);
+    const cmd90d = vendas90d > 0 ? +(vendas90d / 90).toFixed(4) : 0;
     const cmd180d = vendas180d > 0 ? +(vendas180d / 180).toFixed(4) : 0;
 
-    const cob30d = cmd30d > 0 ? Math.round(saldoFoco / cmd30d) : saldoFoco > 0 ? 999 : 0;
-    const cob90d = cmd90d > 0 ? Math.round(saldoFoco / cmd90d) : saldoFoco > 0 ? 999 : 0;
-    const cob180d = cmd180d > 0 ? Math.round(saldoFoco / cmd180d) : saldoFoco > 0 ? 999 : 0;
+    // Cobertura em dias. Sem consumo não existe cobertura calculável: null, não 999.
+    const cob30d = cmd30d > 0 ? Math.round(saldoFoco / cmd30d) : null;
+    const cob90d = cmd90d > 0 ? Math.round(saldoFoco / cmd90d) : null;
+    const cob180d = cmd180d > 0 ? Math.round(saldoFoco / cmd180d) : null;
 
-    // Perfil de Giro & Curva ABC
-    const perfilGiro = classificarPerfilGiro(cmd90d, notasVenda90d, diasObservados);
+    // Perfil de giro pela taxa de 180d + recorrência (notas distintas E meses ativos).
+    const perfilGiro = classificarPerfilGiro(
+      cmdDiario,
+      notasVenda90d,
+      mesesAtivos,
+      parametrosMotor.elegibilidade
+    );
     const curvaAbc: CurvaABC = mapaCurvaAbc.get(p.id)?.curva ?? "C";
 
     // Trava de Marca Zumbi (saldo > 0 e zero vendas em 180d)
@@ -141,10 +204,18 @@ export function converterParaLinhasCockpit(
       tendenciaCobertura = "QUEDA";
     }
 
-    // Diagnóstico de Ruptura
-    const diasAnalisados = diasObservados;
-    const diasZerados = histFoco?.diasRuptura90dias ?? (saldoFoco <= 0 && vendas90d > 0 ? 15 : 0);
-    const rupturaPercentual = diasAnalisados > 0 ? +((diasZerados / diasAnalisados) * 100).toFixed(1) : null;
+    // Diagnóstico de Ruptura.
+    // Só é calculado se a fonte REALMENTE mediu os dias de saldo zerado.
+    // Não medido => null e "Sem histórico". Preencher com 0 aqui faria todo SKU
+    // aparecer com 0% de ruptura e classificação "Boa", que é uma afirmação falsa.
+    const rupturaMedida = campoHistoricoDisponivel(histFoco, "diasRuptura90dias");
+    const diasAnalisados = rupturaMedida ? diasObservados : null;
+    const diasZerados = rupturaMedida ? histFoco?.diasRuptura90dias ?? 0 : null;
+
+    const rupturaPercentual =
+      rupturaMedida && diasAnalisados && diasAnalisados > 0 && diasZerados !== null
+        ? +((diasZerados / diasAnalisados) * 100).toFixed(1)
+        : null;
 
     let classificacaoRuptura: SeveridadeRuptura = "Sem histórico";
     if (rupturaPercentual !== null) {
@@ -157,9 +228,10 @@ export function converterParaLinhasCockpit(
       }
     }
 
-    const vendaPerdidaEstimada = diasZerados > 0 && cmd90d > 0
-      ? +(diasZerados * cmd90d * p.precoVenda).toFixed(2)
-      : 0;
+    const vendaPerdidaEstimada =
+      diasZerados !== null && diasZerados > 0 && cmd90d > 0
+        ? +(diasZerados * cmd90d * p.precoVenda).toFixed(2)
+        : 0;
 
     // Frequência por Notas em 90 dias
     const notasLiquidas90d = Math.max(0, notasVenda90d - notasDevolucao90d);
@@ -172,17 +244,20 @@ export function converterParaLinhasCockpit(
       classificacaoFrequencia = "Média";
     }
 
-    // Lotes e Múltiplos Industriais
-    const loteMultiplo = p.loteMultiplo > 1 ? p.loteMultiplo : inferirLotePadraoPorCategoria(p.descricao);
+    // Lote/múltiplo: o adapter já resolveu a precedência (ERP > histograma > vocabulário).
+    const loteMultiplo = p.loteMultiplo > 1 ? p.loteMultiplo : 1;
     const embalagemMinima = 1;
 
-    // Cálculo Numérico de Necessidade Bruta / Líquida
+    // Cálculo da necessidade com os parâmetros CALIBRADOS do tenant.
     const resultadoNecessidade = calcularNecessidadeItem({
-      consumoDiario: cmd90d,
+      consumoDiario: cmdDiario,
       perfilGiro,
       saldoFisico: saldoFoco,
       estoqueMinimoCadastrado: minStockFoco,
-      quantidadeJaPedida: pedidosFoco,
+      medianaLinhaVenda: medianaLinha,
+      quantidadeJaPedida: pedidosFoco ?? 0,
+      loteMultiplo,
+      parametrosMotor,
       leadTimeDias,
     });
 
@@ -208,7 +283,7 @@ export function converterParaLinhasCockpit(
             const qtdTransferir = Math.min(necessidadeCompra, sobra);
             melhorOrigemTransferencia = {
               filialId: est.filialId,
-              nomeFilial: NOMES_FILIAIS_CARREIRO[est.filialId] ?? `Loja ${est.filialId}`,
+              nomeFilial: nomesFiliais[est.filialId] ?? `Loja ${est.filialId}`,
               saldoOrigem: est.saldo,
               minStockOrigem: est.minStock,
               sobraReal: sobra,
@@ -266,29 +341,27 @@ export function converterParaLinhasCockpit(
     const dtUltVenda = p.dataUltimaVenda ?? null;
     const dtUltimaCompra = p.dataUltimaCompra ?? null;
 
-    let diasSemVenda: number | null = null;
-    if (dtUltVenda) {
+    // Dias sem venda: preferir o valor medido pelo ERP; senão derivar da data.
+    // Sem nenhuma das duas fontes o valor é null — nunca 180 chutado.
+    let diasSemVenda: number | null = estFoco?.diasSemVenda ?? null;
+    if (diasSemVenda === null && dtUltVenda) {
       const ms = Date.now() - new Date(dtUltVenda).getTime();
-      diasSemVenda = Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
-    } else if (vendas90d === 0) {
-      diasSemVenda = 180;
+      const calculado = Math.floor(ms / (1000 * 60 * 60 * 24));
+      diasSemVenda = Number.isFinite(calculado) ? Math.max(0, calculado) : null;
     }
 
-    const giroUltimaVenda =
-      diasSemVenda === null
-        ? "Sem venda"
-        : diasSemVenda <= 30
-        ? "Alta"
-        : diasSemVenda <= 90
-        ? "Média"
-        : "Baixa";
+    const giroUltimaVenda = classificarGiroPorDiasSemVenda(diasSemVenda);
 
-    const consumoMensal = +(cmd90d * 30).toFixed(2);
-    const vendaACadaDias = cmd90d > 0 ? +(1 / cmd90d).toFixed(1) : null;
-    const classificacaoConsumo = vendas90d >= 30 ? "Alto" : vendas90d >= 10 ? "Médio" : "Baixo";
-    const periodoIdeal = curvaAbc === "A" ? "30 dias" : curvaAbc === "B" ? "90 dias" : "180 dias";
-    const histVendas90d = Math.max(0, Math.round(notasLiquidas90d * 0.95));
-    const histProdVend90d = Math.max(0, Math.round(vendas90d * 0.95));
+    const consumoMensal = +(cmdDiario * 30).toFixed(2);
+    const vendaACadaDias = cmdDiario > 0 ? +(1 / cmdDiario).toFixed(1) : null;
+    const classificacaoConsumo = classificarConsumoPorQuantidade(vendas90d);
+    const periodoIdeal = obterPeriodoIdealAnalise(classificacaoFrequencia);
+
+    // Estas duas colunas exigem a janela de 90 dias ANTERIOR à última venda do item,
+    // que o modelo semântico não expõe. Antes eram preenchidas com `valor * 0,95`,
+    // um número inventado. Sem a consulta, o cockpit mostra "—".
+    const histVendas90d: number | null = null;
+    const histProdVend90d: number | null = null;
 
     const statusMovimentacao =
       statusSugestao === "APROVADO_COMPRA"
@@ -388,7 +461,7 @@ export function converterParaLinhasCockpit(
       dtUltimaCompra,
       curvaAbcSistema: curvaAbc,
       produtosVend90d: vendas90d,
-      consumoDiario: cmd90d,
+      consumoDiario: cmdDiario,
       consumoMensal,
       vendaACadaDias,
       consumoUltimos30DiasQtd: vendas30d,

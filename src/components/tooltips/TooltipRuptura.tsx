@@ -47,7 +47,7 @@ export function TooltipRuptura({
   const taxaCalculada =
     percentualRuptura !== null && percentualRuptura !== undefined
       ? percentualRuptura
-      : diasAnalisados > 0
+      : diasAnalisados !== null && diasZerados !== null && diasAnalisados > 0
         ? (diasZerados / diasAnalisados) * 100
         : null;
 
@@ -55,7 +55,7 @@ export function TooltipRuptura({
   const perdaFinanceira =
     vendaPerdidaEstimadaReais > 0
       ? vendaPerdidaEstimadaReais
-      : consumoDiarioReferencia && precoVenda && diasZerados > 0
+      : consumoDiarioReferencia && precoVenda && diasZerados !== null && diasZerados > 0
         ? consumoDiarioReferencia * diasZerados * precoVenda
         : 0;
 
@@ -117,7 +117,7 @@ export function TooltipRuptura({
             <div className="flex justify-between">
               <span className="text-slate-500 dark:text-slate-400">Dias com Estoque Zero:</span>
               <span className="font-mono font-medium text-slate-900 dark:text-slate-200">
-                {diasZerados} de {diasAnalisados} dias
+                {diasZerados === null || diasAnalisados === null ? "não medido" : `${diasZerados} de ${diasAnalisados} dias`}
               </span>
             </div>
 

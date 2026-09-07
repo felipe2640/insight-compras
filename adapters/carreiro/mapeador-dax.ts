@@ -12,7 +12,7 @@ import {
   EstoqueFilial,
   HistoricoVendasFilial,
 } from "@core/dominio";
-import { inferirLotePadraoPorCategoria } from "@core/travas";
+import { inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
 import {
   EntradaNFeDoDia,
   ItemSimilarIntercambiavel,
@@ -167,7 +167,8 @@ export function mapearProdutosDax(
  * Chave do Map: `${produtoId}:${filialId}`
  */
 export function mapearEstoquesDax(
-  linhasDax: readonly Record<string, unknown>[]
+  linhasDax: readonly Record<string, unknown>[],
+  contexto?: { filialId?: number; nomeFilial?: string }
 ): Map<string, EstoqueFilial> {
   const mapaEstoques = new Map<string, EstoqueFilial>();
 
@@ -177,25 +178,35 @@ export function mapearEstoquesDax(
     const produtoId = extrairIdProduto(linha.Produto ?? linha.ACODPRODUTO ?? linha.id ?? 0);
     if (!produtoId || produtoId <= 0) continue;
 
-    const { filialId, nomeFilial } = mapearFilialCarreiro(
-      linha.Empresa ?? linha.ACODEMPRESA ?? linha.filialId ?? 1
-    );
+    // A consulta de posição é paginada POR LOJA e não repete a coluna da filial em
+    // cada linha, então o contexto da página é a fonte primária da filial.
+    const filial =
+      contexto?.filialId !== undefined
+        ? {
+            filialId: contexto.filialId,
+            nomeFilial: contexto.nomeFilial ?? NOMES_FILIAIS_CARREIRO[contexto.filialId],
+          }
+        : mapearFilialCarreiro(
+            linha.Empresa ?? linha.ACODEMP ?? linha.ACODEMPRESA ?? linha.ANOMEFANTASIA ?? linha.filialId ?? 1
+          );
 
-    const chave = `${produtoId}:${filialId}`;
+    const chave = `${produtoId}:${filial.filialId}`;
 
     const saldoFisico = Number(linha.EstoqueQtd ?? linha.NESTOQATUAL ?? linha.AESTOQUE_ATUAL ?? 0);
     const estoqueMinimoSeguranca = Math.max(
       0,
       Number(linha.EstoqueMinimo ?? linha.AESTOQUE_MINIMO ?? 0)
     );
-    const quantidadeJaPedida = Math.max(
-      0,
-      Number(linha.QuantidadePedida ?? linha.AQUANTIDADE_PEDIDA ?? 0)
-    );
     const consumoMedioDiarioErp = Math.max(
       0,
       Number(linha.ConsumoMedioDiario ?? linha.ACONSUMO_MEDIO_DIARIO ?? 0)
     );
+
+    const diasSemVendaBruto = linha.DiasSemVenda;
+    const diasSemVenda =
+      diasSemVendaBruto === null || diasSemVendaBruto === undefined
+        ? null
+        : Math.max(0, Number(diasSemVendaBruto));
 
     const ultVenda = linha.UltimaVenda ?? linha.DULTIMAVENDA ?? linha.dataUltimaVenda;
     const dataUltimaVenda = ultVenda ? String(ultVenda).trim() : null;
@@ -204,15 +215,21 @@ export function mapearEstoquesDax(
     const dataUltimaCompra = ultCompra ? String(ultCompra).trim() : null;
 
     const estoque: EstoqueFilial = {
-      filialId,
-      nomeFilial,
+      filialId: filial.filialId,
+      nomeFilial: filial.nomeFilial,
       produtoId,
       saldoFisico,
       estoqueMinimoSeguranca,
-      quantidadeJaPedida,
+      // O modelo semântico da Carreiro não expõe pedido de compra em aberto de forma
+      // confiável (ITEMSPEDIDO veio com merge quebrado). Zero aqui NÃO significa
+      // "não há pedidos", significa "não medido" — por isso o campo é declarado
+      // indisponível abaixo e o cockpit mostra "—" em vez de 0.
+      quantidadeJaPedida: 0,
       consumoMedioDiarioErp,
+      diasSemVenda: Number.isFinite(diasSemVenda as number) ? diasSemVenda : null,
       dataUltimaVenda,
       dataUltimaCompra,
+      camposIndisponiveis: ["quantidadeJaPedida"],
     };
 
     mapaEstoques.set(chave, estoque);
@@ -242,20 +259,22 @@ export function mapearHistoricoVendasDax(
 
     const chave = `${produtoId}:${filialId}`;
 
-    const vendasLiquidas30dias = Math.max(
-      0,
-      Number(linha.VendasQtd30d ?? linha.QtdVenda30d ?? 0)
-    );
-    const vendasLiquidas90dias = Math.max(
-      vendasLiquidas30dias,
-      Number(linha.VendasQtd90d ?? linha.QtdVenda90d ?? 0)
-    );
-    const vendasLiquidas180dias = Math.max(
-      vendasLiquidas90dias,
-      Number(linha.VendasQtd180d ?? linha.QtdVenda180d ?? 0)
-    );
-
+    // Devoluções vêm da linha da nota (QTDE_DEV) e são subtraídas para obter a
+    // saída LÍQUIDA, que é o insumo do motor. Antes as vendas brutas eram usadas
+    // direto e a "devolução" na verdade trazia quantidade COMPRADA.
     const devolucoes90dias = Math.max(0, Number(linha.Devolucoes90d ?? 0));
+
+    const brutas30 = Math.max(0, Number(linha.VendasQtd30d ?? linha.QtdVenda30d ?? 0));
+    const brutas90 = Math.max(0, Number(linha.VendasQtd90d ?? linha.QtdVenda90d ?? 0));
+    const brutas180 = Math.max(0, Number(linha.VendasQtd180d ?? linha.QtdVenda180d ?? 0));
+
+    const vendasLiquidas90dias = Math.max(0, brutas90 - devolucoes90dias);
+    // A janela de 30 dias não pode exceder a de 90 já líquida.
+    const vendasLiquidas30dias = Math.min(brutas30, vendasLiquidas90dias);
+    // A devolução medida é a de 90 dias; para 180 subtraímos o mesmo montante como
+    // aproximação conservadora (nunca inflar a demanda).
+    const vendasLiquidas180dias = Math.max(vendasLiquidas90dias, brutas180 - devolucoes90dias);
+
     const notasFiscaisVenda90dias = Math.max(
       0,
       Number(linha.NotasVenda90d ?? linha.QuantidadeNotas90d ?? 0)
@@ -264,7 +283,8 @@ export function mapearHistoricoVendasDax(
       0,
       Number(linha.NotasDevolucao90d ?? 0)
     );
-    const diasRuptura90dias = Math.max(0, Number(linha.DiasRuptura90d ?? 0));
+    const mesesAtivos12meses = Math.max(0, Number(linha.MesesAtivos12m ?? 0));
+    const medianaLinhaVenda = Math.max(0, Number(linha.MedianaLinhaVenda ?? 0));
     const diasObservados = Math.max(1, Number(linha.DiasObservados ?? 180));
 
     const primVenda = linha.DataPrimeiraVenda ?? linha.dataPrimeiraVendaRegistrada;
@@ -279,9 +299,14 @@ export function mapearHistoricoVendasDax(
       devolucoes90dias,
       notasFiscaisVenda90dias,
       notasFiscaisDevolucao90dias,
-      diasRuptura90dias,
+      mesesAtivos12meses,
+      medianaLinhaVenda,
+      // O modelo não tem histórico de saldo diário: ruptura NÃO é medida.
+      // Zero aqui significaria "nunca faltou", que é uma afirmação falsa.
+      diasRuptura90dias: 0,
       diasObservados,
       dataPrimeiraVendaRegistrada,
+      camposIndisponiveis: ["diasRuptura90dias"],
     };
 
     mapaHistoricos.set(chave, historico);

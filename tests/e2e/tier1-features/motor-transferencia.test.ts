@@ -17,18 +17,16 @@ describe("Tier 1 — Feature 2: Motor de Demanda Numérico & Transferência Segu
   // T1.2.1: Orientação estrita a dados reais
   it("T1.2.1 — deve retornar consumo zero e sugestão zero para qualquer item sem vendas comprovadas", () => {
     const consumoZeroVendas = calcularConsumoDiario({
-      vendasLiquidas180d: 0,
-      notasFiscais90d: 0,
-      diasObservados: 90,
+      vendasLiquidasJanela: 0,
+      diasJanela: 180,
     });
 
     expect(consumoZeroVendas).toBe(0);
     expect(calcularProjecaoMensal(consumoZeroVendas)).toBe(0);
 
     const consumoDiasInvalidos = calcularConsumoDiario({
-      vendasLiquidas180d: 50,
-      notasFiscais90d: 5,
-      diasObservados: 0,
+      vendasLiquidasJanela: 50,
+      diasJanela: 0,
     });
     expect(consumoDiasInvalidos).toBe(0);
   });

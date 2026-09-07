@@ -1,105 +1,202 @@
 import { describe, it, expect } from "vitest";
 import {
   calcularNecessidadeItem,
+  calcularPrevisaoDemanda,
+  calibrarPrevisao,
+  arredondarParaLote,
   calcularEstoqueSeguranca,
   calcularPontoDePedido,
+  PARAMETROS_MOTOR_PADRAO,
   CONFIGURACAO_PADRAO_PERFIS,
+  ParametrosMotorCompra,
 } from "@core/calculo/necessidade";
 
-describe("Motor de Cálculo: Necessidade de Compras e Ponto de Pedido", () => {
-  describe("calcularEstoqueSeguranca", () => {
-    it("deve calcular o estoque de segurança considerando lead time e margem", () => {
-      // 2 un/dia, lead time 5 dias, margem 0.25 => ceil(2 * 5 * 1.25) = ceil(12.5) = 13 un
-      const es = calcularEstoqueSeguranca(2, 5, 0.25, 0);
-      expect(es).toBe(13);
-    });
+/** Parâmetros homologados da Rede Carreiro (fator 0,90 vencedor do backtest). */
+const MOTOR_CARREIRO: ParametrosMotorCompra = {
+  ...PARAMETROS_MOTOR_PADRAO,
+  fatorCalibracao: 0.9,
+  origemPiso: "MEDIANA_LINHA",
+};
 
-    it("deve prevalecer o estoque mínimo cadastrado no ERP se for superior ao calculado", () => {
-      // Calculado seria 13, mas ERP tem mínimo cadastrado de 20
-      const es = calcularEstoqueSeguranca(2, 5, 0.25, 20);
-      expect(es).toBe(20);
-    });
-
-    it("deve retornar o estoque mínimo cadastrado se o consumo diário for zero", () => {
-      const es = calcularEstoqueSeguranca(0, 10, 0.25, 8);
-      expect(es).toBe(8);
+describe("Motor de Necessidade de Compra", () => {
+  describe("arredondarParaLote", () => {
+    it("arredonda para cima até o múltiplo do lote", () => {
+      expect(arredondarParaLote(5, 4)).toBe(8);
+      expect(arredondarParaLote(8, 4)).toBe(8);
+      expect(arredondarParaLote(2.1, 1)).toBe(3);
+      expect(arredondarParaLote(0, 4)).toBe(0);
     });
   });
 
-  describe("calcularPontoDePedido", () => {
-    it("deve somar consumo durante o lead time ao estoque de segurança", () => {
-      // Consumo 1 un/dia, lead time 7 dias, ES = 10 => ceil(1 * 7) + 10 = 17 un
-      const pp = calcularPontoDePedido(1, 7, 10);
-      expect(pp).toBe(17);
+  describe("calibrarPrevisao", () => {
+    it("aplica o fator e arredonda para cima", () => {
+      expect(calibrarPrevisao(10, 0.9)).toBe(9);
+      expect(calibrarPrevisao(10, 0.85)).toBe(9);
+    });
+
+    it("nunca zera uma previsão positiva", () => {
+      expect(calibrarPrevisao(1, 0.6)).toBe(1);
+      expect(calibrarPrevisao(1, 0.05)).toBe(1);
+    });
+
+    it("mantém zero em zero", () => {
+      expect(calibrarPrevisao(0, 0.9)).toBe(0);
+    });
+
+    it("fator inválido não altera a previsão", () => {
+      expect(calibrarPrevisao(10, 0)).toBe(10);
+      expect(calibrarPrevisao(10, Number.NaN)).toBe(10);
+    });
+  });
+
+  describe("calcularPrevisaoDemanda", () => {
+    it("aplica o piso com max, NUNCA somando à demanda", () => {
+      // demanda = ceil(0,1 * 20 * 1,25) = 3 ; piso (mediana) = 4 => resultado 4, não 7.
+      const r = calcularPrevisaoDemanda(0.1, 20, 0.25, 1, 4);
+      expect(r.demandaHorizonte).toBe(3);
+      expect(r.pisoAplicado).toBe(4);
+      expect(r.previsaoBruta).toBe(4);
+    });
+
+    it("reproduz o current_engine_forecast do estudo (lote 4, mediana 4)", () => {
+      const r = calcularPrevisaoDemanda(0.1, 20, 0.25, 4, 4);
+      expect(r.previsaoBruta).toBe(4);
+    });
+
+    it("a demanda vence quando é maior que o piso", () => {
+      const r = calcularPrevisaoDemanda(1, 20, 0.25, 1, 2);
+      expect(r.demandaHorizonte).toBe(25);
+      expect(r.previsaoBruta).toBe(25);
+    });
+
+    it("sem consumo não há demanda", () => {
+      expect(calcularPrevisaoDemanda(0, 20, 0.25, 1, 5).previsaoBruta).toBe(0);
     });
   });
 
   describe("calcularNecessidadeItem", () => {
-    it("deve retornar necessidade líquida ZERO se o item for SEM_HISTORICO_SUFICIENTE", () => {
-      const resultado = calcularNecessidadeItem({
-        consumoDiario: 1.5,
+    it("sem histórico suficiente a necessidade é estritamente 0", () => {
+      const r = calcularNecessidadeItem({
+        consumoDiario: 5,
         perfilGiro: "SEM_HISTORICO_SUFICIENTE",
         saldoFisico: 0,
-        estoqueMinimoCadastrado: 5,
         quantidadeJaPedida: 0,
-        leadTimeDias: 7,
+        parametrosMotor: MOTOR_CARREIRO,
       });
-
-      expect(resultado.necessidadeLiquida).toBe(0);
-      expect(resultado.necessidadeBruta).toBe(0);
-      expect(resultado.demandaHorizonte).toBe(0);
+      expect(r.necessidadeLiquida).toBe(0);
+      expect(r.previsaoCalibrada).toBe(0);
     });
 
-    it("deve retornar necessidade líquida ZERO se o consumo diário for 0", () => {
-      const resultado = calcularNecessidadeItem({
+    it("consumo zero produz necessidade 0 mesmo com estoque zerado", () => {
+      const r = calcularNecessidadeItem({
         consumoDiario: 0,
         perfilGiro: "ALTO_GIRO",
-        saldoFisico: 2,
-        estoqueMinimoCadastrado: 5,
+        saldoFisico: 0,
         quantidadeJaPedida: 0,
+        parametrosMotor: MOTOR_CARREIRO,
+      });
+      expect(r.necessidadeLiquida).toBe(0);
+    });
+
+    it("calcula a cadeia demanda -> piso -> calibração -> desconto de estoque", () => {
+      // cmd 1/dia, ALTO_GIRO: horizonte 20, margem 0,25
+      // demanda = ceil(1 * 20 * 1,25) = 25 ; piso mediana 2 => bruta 25
+      // calibrada = ceil(25 * 0,9) = 23 ; saldo 10 + pedidos 4 = 14 => líquida 9
+      const r = calcularNecessidadeItem({
+        consumoDiario: 1,
+        perfilGiro: "ALTO_GIRO",
+        saldoFisico: 10,
+        quantidadeJaPedida: 4,
+        medianaLinhaVenda: 2,
+        parametrosMotor: MOTOR_CARREIRO,
+      });
+      expect(r.demandaHorizonte).toBe(25);
+      expect(r.previsaoBruta).toBe(25);
+      expect(r.previsaoCalibrada).toBe(23);
+      expect(r.estoqueDisponivel).toBe(14);
+      expect(r.necessidadeLiquida).toBe(9);
+      expect(r.necessidadeBruta).toBe(13); // sem descontar pedidos em aberto
+    });
+
+    it("o estoque de segurança NÃO entra na meta (é só diagnóstico)", () => {
+      const r = calcularNecessidadeItem({
+        consumoDiario: 1,
+        perfilGiro: "ALTO_GIRO",
+        saldoFisico: 0,
+        quantidadeJaPedida: 0,
+        estoqueMinimoCadastrado: 50,
         leadTimeDias: 7,
+        parametrosMotor: MOTOR_CARREIRO,
       });
-
-      expect(resultado.necessidadeLiquida).toBe(0);
-      expect(resultado.necessidadeBruta).toBe(0);
+      // Com origemPiso = MEDIANA_LINHA, o mínimo do ERP não infla a meta.
+      expect(r.previsaoCalibrada).toBe(23);
+      expect(r.necessidadeLiquida).toBe(23);
+      // mas continua disponível como referência para o comprador
+      expect(r.estoqueSegurancaDiagnostico).toBeGreaterThan(0);
+      expect(r.pontoDePedidoDiagnostico).toBeGreaterThan(0);
     });
 
-    it("deve calcular a necessidade líquida correta para ALTO_GIRO deduzindo saldo físico e pedidos em aberto", () => {
-      // ALTO_GIRO padrão: horizonte 20 dias, margem 0.25
-      // Consumo: 1 un/dia, lead time: 5 dias, estoqueMin: 0
-      // ES = ceil(1 * 5 * 1.25) = 7
-      // DemandaHorizonte = ceil(1 * 20 * 1.25) = 25
-      // MetaEstoque = 25 + 7 = 32 un
-      // SaldoFisico = 4, JaPedido = 10 => EstoqueDisponivel = 14
-      // NecessidadeLiquida = 32 - 14 = 18 un
-      const resultado = calcularNecessidadeItem({
-        consumoDiario: 1,
+    it("origemPiso ESTOQUE_MINIMO_ERP usa o mínimo como piso, não como parcela", () => {
+      const r = calcularNecessidadeItem({
+        consumoDiario: 0.1,
         perfilGiro: "ALTO_GIRO",
-        saldoFisico: 4,
-        estoqueMinimoCadastrado: 0,
-        quantidadeJaPedida: 10,
-        leadTimeDias: 5,
-      });
-
-      expect(resultado.horizonteDias).toBe(CONFIGURACAO_PADRAO_PERFIS.ALTO_GIRO.horizonteDias);
-      expect(resultado.estoqueSeguranca).toBe(7);
-      expect(resultado.demandaHorizonte).toBe(25);
-      expect(resultado.metaEstoque).toBe(32);
-      expect(resultado.estoqueDisponivel).toBe(14);
-      expect(resultado.necessidadeLiquida).toBe(18);
-    });
-
-    it("deve retornar necessidade líquida ZERO se o estoque disponível já superar a meta", () => {
-      const resultado = calcularNecessidadeItem({
-        consumoDiario: 1,
-        perfilGiro: "ALTO_GIRO",
-        saldoFisico: 40, // Saldo 40 > meta 32
-        estoqueMinimoCadastrado: 0,
+        saldoFisico: 0,
         quantidadeJaPedida: 0,
-        leadTimeDias: 5,
+        estoqueMinimoCadastrado: 10,
+        parametrosMotor: { ...MOTOR_CARREIRO, origemPiso: "ESTOQUE_MINIMO_ERP" },
       });
+      // demanda = 3, piso = 10 => bruta 10, calibrada ceil(9) = 9
+      expect(r.demandaHorizonte).toBe(3);
+      expect(r.pisoAplicado).toBe(10);
+      expect(r.previsaoBruta).toBe(10);
+      expect(r.previsaoCalibrada).toBe(9);
+    });
 
-      expect(resultado.necessidadeLiquida).toBe(0);
+    it("o fator de calibração do tenant muda o resultado", () => {
+      const base = {
+        consumoDiario: 1,
+        perfilGiro: "ALTO_GIRO" as const,
+        saldoFisico: 0,
+        quantidadeJaPedida: 0,
+      };
+      const semCalibracao = calcularNecessidadeItem({
+        ...base,
+        parametrosMotor: { ...PARAMETROS_MOTOR_PADRAO, fatorCalibracao: 1 },
+      });
+      const comCarreiro = calcularNecessidadeItem({ ...base, parametrosMotor: MOTOR_CARREIRO });
+      expect(semCalibracao.necessidadeLiquida).toBe(25);
+      expect(comCarreiro.necessidadeLiquida).toBe(23);
+    });
+
+    it("respeita o lote de fábrica no arredondamento", () => {
+      const r = calcularNecessidadeItem({
+        consumoDiario: 0.1,
+        perfilGiro: "ALTO_GIRO",
+        saldoFisico: 0,
+        quantidadeJaPedida: 0,
+        loteMultiplo: 4,
+        medianaLinhaVenda: 4,
+        parametrosMotor: MOTOR_CARREIRO,
+      });
+      expect(r.previsaoBruta).toBe(4);
+    });
+
+    it("mantém os horizontes e margens do estudo", () => {
+      expect(CONFIGURACAO_PADRAO_PERFIS.ALTO_GIRO).toEqual({ horizonteDias: 20, margemSeguranca: 0.25 });
+      expect(CONFIGURACAO_PADRAO_PERFIS.MEDIO_GIRO).toEqual({ horizonteDias: 15, margemSeguranca: 0.45 });
+      expect(CONFIGURACAO_PADRAO_PERFIS.BAIXO_GIRO_INTERMITENTE).toEqual({ horizonteDias: 7, margemSeguranca: 0.8 });
+    });
+  });
+
+  describe("diagnósticos (fora da meta de compra)", () => {
+    it("estoque de segurança respeita o mínimo do ERP como piso", () => {
+      expect(calcularEstoqueSeguranca(2, 5, 0.25, 0)).toBe(13);
+      expect(calcularEstoqueSeguranca(2, 5, 0.25, 20)).toBe(20);
+      expect(calcularEstoqueSeguranca(0, 10, 0.25, 8)).toBe(8);
+    });
+
+    it("ponto de pedido soma consumo do lead time ao estoque de segurança", () => {
+      expect(calcularPontoDePedido(1, 7, 10)).toBe(17);
     });
   });
 });

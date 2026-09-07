@@ -9,6 +9,7 @@
  * 3. Estresse de useSessionDraft (QuotaExceededError, payloads corrompidos, TTL 1h, concorrência rápida)
  */
 
+import { inferirLotePadraoPorCategoria } from "@adapters/comum/lote-autopecas";
 import React from "react";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, renderHook, act } from "@testing-library/react";
@@ -18,7 +19,6 @@ import * as LoteMultiplo from "@core/travas/lote-multiplo";
 import {
   arredondarParaMultiplo,
   ajustarQuantidadePorLote,
-  inferirLotePadraoPorCategoria,
 } from "@core/travas/lote-multiplo";
 import { RascunhoSessaoPayload, ItemDeltaRascunho } from "@/tipos/cockpit";
 
