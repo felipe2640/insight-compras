@@ -20,7 +20,12 @@ export interface NextRequestLike {
   };
 }
 
-export function middleware(request: NextRequestLike) {
+export type MiddlewareResponse = NextResponse & {
+  request: { headers: Headers };
+  cookiesToSet: { name: string; value: string; path: string; sameSite: "lax" };
+};
+
+export function middleware(request: NextRequestLike): MiddlewareResponse {
   const host =
     request.headers.get("x-forwarded-host") ||
     request.headers.get("host") ||
@@ -76,7 +81,7 @@ export function middleware(request: NextRequestLike) {
     },
   });
 
-  return response;
+  return response as unknown as MiddlewareResponse;
 }
 
 export const config = {

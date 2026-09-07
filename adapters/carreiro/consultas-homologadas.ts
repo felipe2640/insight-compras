@@ -85,11 +85,11 @@ export function gerarConsultaDaxProdutosEstoque(filtro?: FiltroCargaInventario):
 
   if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
     const listaDax = formatarListaNumericaDax(filtro.fornecedoresPermitidos);
-    clausulaFiltro += ` && 'PRODUTOS'[ACODFORNECEDOR] IN ${listaDax}`;
+    clausulaFiltro += ` && 'PRODUTOS'[ICODFORN] IN ${listaDax}`;
   }
 
   if (filtro?.secaoId !== undefined && Number.isInteger(filtro.secaoId)) {
-    clausulaFiltro += ` && 'PRODUTOS'[ASECAO] = ${filtro.secaoId}`;
+    clausulaFiltro += ` && 'PRODUTOS'[ACLASSE] = ${filtro.secaoId}`;
   }
 
   if (filtro?.apenasComEstoqueOuVenda) {
@@ -105,16 +105,20 @@ SELECTCOLUMNS(
     ),
     "Empresa", 'PRODUTOS'[ACODEMPRESA],
     "Produto", 'PRODUTOS'[ACODPRODUTO],
+    "CodigoBase", 'PRODUTOS'[ACODPRODUTO_BASE],
     "Descricao", 'PRODUTOS'[ADESCRICAO],
-    "Marca", 'PRODUTOS'[AMARCA],
-    "Fabricante", 'PRODUTOS'[AFABRICANTE],
-    "RefFabricante", 'PRODUTOS'[AREFFABRICA],
-    "Secao", 'PRODUTOS'[ASECAO],
-    "Fornecedor", 'PRODUTOS'[ACODFORNECEDOR],
+    "Marca", 'PRODUTOS'[MARCA],
+    "RefFabricante", 'PRODUTOS'[AREFERENCIA],
+    "Aplicacao", 'PRODUTOS'[APLICACAO],
+    "Secao", 'PRODUTOS'[ACLASSE],
+    "Fornecedor", 'PRODUTOS'[ICODFORN],
+    "NomeFornecedor", 'PRODUTOS'[Nome Fornecedor],
     "EstoqueQtd", 'PRODUTOS'[NESTOQATUAL],
+    "EstoqueMinimo", 'PRODUTOS'[NESTOQUEMIN],
     "PrecoCompraERP", 'PRODUTOS'[NPRECOCOMPRA],
+    "PrecoVenda", 'PRODUTOS'[NPRECOVENDA],
     "UltimaVenda", 'PRODUTOS'[DULTIMAVENDA],
-    "UltimaCompra", 'PRODUTOS'[ADATA_ULTIMA_COMPRA]
+    "UltimaCompra", 'PRODUTOS'[DULTIMACOMPRA]
 )
 ORDER BY [Empresa], [Produto]
   `.trim();
@@ -127,7 +131,7 @@ export function gerarConsultaDaxHistoricoVendas(filtro?: FiltroCargaInventario):
   let filtroFornecedores = "";
   if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
     const listaDax = formatarListaNumericaDax(filtro.fornecedoresPermitidos);
-    filtroFornecedores = `KEEPFILTERS('PRODUTOS'[ACODFORNECEDOR] IN ${listaDax}),`;
+    filtroFornecedores = `KEEPFILTERS('PRODUTOS'[ICODFORN] IN ${listaDax}),`;
   }
 
   return `
@@ -153,7 +157,7 @@ SUMMARIZECOLUMNS(
         DATESINPERIOD('dCalendario'[Data], DataLimite, -30, DAY)
     ),
     "NotasVenda90d", CALCULATE(
-        DISTINCTCOUNT('NOTAS'[ANUMERONOTA]),
+        DISTINCTCOUNT('NOTAS'[DOCUMENTO]),
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
         DATESINPERIOD('dCalendario'[Data], DataLimite, -90, DAY)
     ),
