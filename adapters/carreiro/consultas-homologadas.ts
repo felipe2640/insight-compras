@@ -259,12 +259,35 @@ FILTER(
  *   aberto com confiança. IMPACTO: o motor não desconta o que já vem a caminho.
  *   Resolver com o time de BI do cliente antes de liberar a emissão de pedidos.
  *
- * - diasRuptura90dias: não há histórico de saldo diário no modelo. Reconstruir a
- *   partir de MOVESTOQ é possível, mas é trabalho de modelagem, não de consulta.
+ * - diasRuptura90dias: não há histórico de saldo diário no modelo.
  *
  * Confirmado varrendo as 353 medidas do .pbix do cliente (07/09/2026): nenhuma
  * mede ruptura, dias zerados ou pedido de compra em aberto. Não é questão de
  * escrever a consulta certa — a informação não existe no modelo semântico.
+ *
+ * TENTATIVA DE RECONSTRUÇÃO VIA MOVESTOQ — DESCARTADA (08/09/2026).
+ * A ideia era derivar o saldo diário do razão de movimentos. Não é viável com
+ * os dados atuais, e as evidências ficam registradas para não se repetir a
+ * investigação:
+ *
+ * 1. 'MOVESTOQ'[ESTOQUEATUAL] existe e seria o caminho direto (saldo resultante
+ *    gravado em cada movimento), mas está ZERADO em 100% das linhas: nos 379.882
+ *    movimentos dos últimos 90 dias, mínimo 0 e máximo 0.
+ *
+ * 2. Sobraria reconstruir por 'MOVESTOQ'[NQTDEMOV] (S negativo, E positivo), mas
+ *    84% do razão (320.198 de 379.882 linhas) é do tipo "I" com quantidade
+ *    praticamente nula — somam 577 unidades no total. O razão é dominado por
+ *    lançamentos que não movimentam saldo.
+ *
+ * 3. Há outlier de ±1.020.420 unidades em um único movimento no período.
+ *
+ * 4. MOVESTOQ não tem relacionamento utilizável com as medidas de estoque, então
+ *    não foi possível nem validar a reconstrução contra o saldo atual por produto.
+ *
+ * Reconstruir ruptura sobre esse razão produziria um número preciso na aparência
+ * e errado na prática — o mesmo defeito que a constante 0 tinha. Enquanto o time
+ * de BI do cliente não popular ESTOQUEATUAL (ou expor um snapshot diário de
+ * saldo), a coluna continua honestamente vazia no cockpit.
  */
 export const CAMPOS_INDISPONIVEIS_CARREIRO = {
   estoque: ["quantidadeJaPedida"],
