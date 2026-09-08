@@ -49,6 +49,15 @@ export interface EstoqueFilial {
    */
   readonly usoLimiteCompra: number | null;
 
+  /**
+   * Margem realizada do item na janela recente (0..1). null = não apurada
+   * (tipicamente falta custo lançado). Define o tamanho do corte no REDUZIR.
+   */
+  readonly margemRealizada: number | null;
+
+  /** Margem alvo do cliente para o item (0..1). null = usa a padrão do tenant. */
+  readonly margemAlvo: number | null;
+
   readonly dataUltimaVenda: string | null;
   readonly dataUltimaCompra: string | null;
 

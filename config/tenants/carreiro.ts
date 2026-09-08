@@ -129,9 +129,25 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
         minimoNotasDistintas: 3,
         minimoMesesAtivos: 2,
       },
-      // "REDUZIR COMPRAS" da medida `Decisao Compra Mercadoria` corta a sugestão
-      // pela metade. "PAUSAR COMPRAS" zera. A régua é do cliente; o corte é ajustável.
-      fatorReducaoGovernanca: 0.5,
+      /**
+       * "REDUZIR COMPRAS" da medida `Decisao Compra Mercadoria` não diz quanto
+       * reduzir. O corte é proporcional ao quanto a margem realizada do item nos
+       * últimos 12 meses fechados está abaixo da margem alvo do cliente.
+       *
+       * margemAlvoPadrao 0,30 = `Margem Alvo Parametrizada %` do modelo do cliente
+       * (COALESCE([Valor Margem], 0.30)) quando não há seleção no slicer.
+       *
+       * pisoFator 0,25: mesmo um item vendendo no prejuízo mantém 1/4 da reposição
+       * quando há demanda comprovada. Zerar é papel exclusivo do PAUSAR.
+       *
+       * fatorSemMargem 0,50: cerca de metade dos itens não tem margem apurada
+       * (falta custo lançado). Nesses, o corte é declarado, não calculado.
+       */
+      reducaoGovernanca: {
+        margemAlvoPadrao: 0.3,
+        pisoFator: 0.25,
+        fatorSemMargem: 0.5,
+      },
     },
     leadTimePadraoDias: 7,
     filialFocoPadraoId: 1,

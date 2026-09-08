@@ -175,6 +175,11 @@ ORDER BY [Empresa], [Produto]
  * - EstoqueMinimo      -> era 0 em 100% dos itens (7.304 tinham valor real no modelo)
  * - ConsumoMedioDiario -> insumo primário da fórmula homologada
  * - DiasSemVenda       -> classificação de giro
+ * - MargemRealizada    -> tamanho do corte quando a governança pede REDUZIR
+ *
+ * A margem é calculada com janela EXPLÍCITA de 12 meses fechados. A medida pronta
+ * `Margem Produto Historica 12M %` usa EOMONTH(MAX(dCalendario[Data]), -1) e volta
+ * nula sem contexto de data — verificado ao vivo: 0 de 5.664 linhas preenchidas.
  */
 export function gerarConsultaDaxPosicaoEstoque(
   nomeFilial: string,
@@ -206,7 +211,13 @@ FILTER(
         "ConsumoMedioDiario", [Estoque Venda Media Dia 90D],
         "DiasSemVenda", [Estoque Dias sem Venda],
         "DecisaoCompra", [Decisao Compra Mercadoria],
-        "UsoLimiteCompra", [% Uso Limite Compra Mercadoria]
+        "UsoLimiteCompra", [% Uso Limite Compra Mercadoria],
+        "MargemRealizada", CALCULATE(
+            [% Margem Produto],
+            REMOVEFILTERS('dCalendario'),
+            DATESINPERIOD('dCalendario'[Data], EOMONTH(TODAY(), -1), -12, MONTH)
+        ),
+        "MargemAlvo", [Margem Alvo Parametrizada %]
     ),
     [EstoqueQtd] <> 0 || [ConsumoMedioDiario] > 0
 )

@@ -170,6 +170,12 @@ export function mapearProdutosDax(
  * A régua (margem alvo, uso do limite de compra, histórico de margem) é do cliente
  * e vive no Power BI dele. Aqui só normalizamos o rótulo; o motor reage ao enum.
  */
+function numeroOuNulo(valor: unknown): number | null {
+  if (valor === null || valor === undefined || valor === "") return null;
+  const n = Number(valor);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function normalizarDecisaoCompraCarreiro(valor: unknown): SinalGovernancaCompra | null {
   const texto = String(valor ?? "").trim().toUpperCase();
   if (!texto) return null;
@@ -256,6 +262,8 @@ export function mapearEstoquesDax(
         linha.UsoLimiteCompra === null || linha.UsoLimiteCompra === undefined
           ? null
           : Number(linha.UsoLimiteCompra),
+      margemRealizada: numeroOuNulo(linha.MargemRealizada),
+      margemAlvo: numeroOuNulo(linha.MargemAlvo),
       dataUltimaVenda,
       dataUltimaCompra,
       camposIndisponiveis: ["quantidadeJaPedida"],

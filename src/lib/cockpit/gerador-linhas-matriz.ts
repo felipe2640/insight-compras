@@ -260,7 +260,10 @@ export function converterParaLinhasCockpit(
       parametrosMotor,
       leadTimeDias,
       // Régua de governança do processo de compra do próprio cliente.
+      // O corte do REDUZIR sai da saúde de margem do item.
       sinalGovernanca: estFoco?.sinalGovernancaCompra ?? null,
+      margemRealizada: estFoco?.margemRealizada ?? null,
+      margemAlvo: estFoco?.margemAlvo ?? null,
     });
 
     let necessidadeCompra = resultadoNecessidade.necessidadeLiquida;

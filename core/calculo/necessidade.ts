@@ -63,10 +63,26 @@ export interface ParametrosMotorCompra {
   /** Critérios de elegibilidade histórica. */
   readonly elegibilidade: CriteriosElegibilidade;
   /**
-   * Fator aplicado quando a governança do cliente pede REDUZIR (0..1).
-   * PAUSAR sempre zera; REDUZIR multiplica por este fator.
+   * Como reagir a um sinal REDUZIR da governança do cliente.
+   *
+   * O corte NÃO é um número fixo: é proporcional ao quanto a margem realizada
+   * do item nos últimos meses está abaixo da margem alvo. Item que quase alcança
+   * a meta sofre corte pequeno; item que vende no prejuízo sofre o corte máximo.
+   * PAUSAR continua sendo o único caso que zera.
    */
-  readonly fatorReducaoGovernanca: number;
+  readonly reducaoGovernanca: ReducaoPorMargem;
+}
+
+/**
+ * Parâmetros da redução proporcional à saúde de margem.
+ */
+export interface ReducaoPorMargem {
+  /** Margem alvo do cliente quando a fonte não informa por item (0..1). */
+  readonly margemAlvoPadrao: number;
+  /** Piso do fator: nunca corta além disso. Zerar é papel do PAUSAR. */
+  readonly pisoFator: number;
+  /** Fator aplicado quando não há margem medida para o item. */
+  readonly fatorSemMargem: number;
 }
 
 /**
@@ -93,7 +109,11 @@ export const PARAMETROS_MOTOR_PADRAO: ParametrosMotorCompra = {
     minimoNotasDistintas: 3,
     minimoMesesAtivos: 2,
   },
-  fatorReducaoGovernanca: 0.5,
+  reducaoGovernanca: {
+    margemAlvoPadrao: 0.3,
+    pisoFator: 0.25,
+    fatorSemMargem: 0.5,
+  },
 };
 
 /**
@@ -137,6 +157,10 @@ export interface ParametrosCalculoNecessidade {
   readonly leadTimeDias?: number;
   /** Sinal de governança do processo do cliente. null/omitido = sem restrição. */
   readonly sinalGovernanca?: SinalGovernancaCompra | null;
+  /** Margem realizada do item na janela recente (0..1). null = não medida. */
+  readonly margemRealizada?: number | null;
+  /** Margem alvo do item. Se ausente, usa a padrão do tenant. */
+  readonly margemAlvo?: number | null;
 }
 
 export interface ResultadoCalculoNecessidade {
@@ -162,6 +186,8 @@ export interface ResultadoCalculoNecessidade {
   readonly necessidadeLiquida: number;
   /** Sinal de governança efetivamente aplicado. */
   readonly sinalGovernancaAplicado: SinalGovernancaCompra | null;
+  /** Fator de redução efetivamente aplicado pela governança (1 = sem corte). */
+  readonly fatorReducaoAplicado: number;
   /** Diagnóstico: estoque de segurança sugerido (NÃO entra na necessidade). */
   readonly estoqueSegurancaDiagnostico: number;
   /** Diagnóstico: nível de estoque que dispara reposição (NÃO entra na necessidade). */
@@ -264,9 +290,60 @@ function resolverPiso(
 }
 
 /**
+ * Calcula o fator de redução a partir da saúde de margem do item.
+ *
+ * A ideia: o corte é proporcional ao tamanho do buraco entre a margem que o item
+ * realmente entregou nos últimos meses e a margem alvo do cliente.
+ *
+ *   deficit    = max(0, margemAlvo - margemRealizada)
+ *   proporcao  = deficit / margemAlvo        (0 = na meta, 1 = margem zero)
+ *   fator      = limita(1 - proporcao, piso, 1)
+ *
+ * Exemplos com alvo de 30%:
+ *   margem 30% ou mais -> fator 1,00 (compra integral)
+ *   margem 27%         -> fator 0,90
+ *   margem 15,6%       -> fator 0,52
+ *   margem negativa    -> fator no piso
+ *
+ * Sem margem medida, devolve `fatorSemMargem` — um corte declarado, e não um
+ * palpite disfarçado de cálculo.
+ */
+export function calcularFatorReducaoPorMargem(
+  margemRealizada: number | null | undefined,
+  margemAlvo: number | null | undefined,
+  parametros: ReducaoPorMargem
+): number {
+  const piso = Math.min(1, Math.max(0, parametros.pisoFator));
+
+  const alvo =
+    margemAlvo !== null && margemAlvo !== undefined && Number.isFinite(margemAlvo) && margemAlvo > 0
+      ? margemAlvo
+      : parametros.margemAlvoPadrao;
+
+  if (!Number.isFinite(alvo) || alvo <= 0) {
+    return Math.min(1, Math.max(piso, parametros.fatorSemMargem));
+  }
+
+  if (
+    margemRealizada === null ||
+    margemRealizada === undefined ||
+    !Number.isFinite(margemRealizada)
+  ) {
+    return Math.min(1, Math.max(piso, parametros.fatorSemMargem));
+  }
+
+  // Margem acima de 100% é ruído de item com custo não lançado; trata como saudável.
+  const realizada = Math.min(1, margemRealizada);
+  const deficit = Math.max(0, alvo - realizada);
+  const proporcao = deficit / alvo;
+
+  return Math.min(1, Math.max(piso, 1 - proporcao));
+}
+
+/**
  * Aplica o sinal de governança do processo de compra do cliente.
- * PAUSAR zera; REDUZIR multiplica pelo fator do tenant (arredondando para baixo,
- * mas sem zerar uma necessidade que era positiva).
+ * PAUSAR zera. REDUZIR corta proporcionalmente à saúde de margem do item,
+ * sem nunca zerar uma necessidade que era positiva.
  */
 export function aplicarGovernancaCompra(
   necessidade: number,
@@ -276,9 +353,8 @@ export function aplicarGovernancaCompra(
   if (necessidade <= 0) return 0;
   if (sinal === "PAUSAR") return 0;
   if (sinal === "REDUZIR") {
-    const fator = Number.isFinite(fatorReducao) && fatorReducao > 0 && fatorReducao < 1
-      ? fatorReducao
-      : 0.5;
+    const fator =
+      Number.isFinite(fatorReducao) && fatorReducao > 0 && fatorReducao < 1 ? fatorReducao : 1;
     return Math.max(1, Math.floor(necessidade * fator));
   }
   return necessidade;
@@ -305,6 +381,8 @@ export function calcularNecessidadeItem(
     configuracaoPerfilCustomizada,
     leadTimeDias = 0,
     sinalGovernanca = null,
+    margemRealizada = null,
+    margemAlvo = null,
   } = parametros;
 
   const saldo = Math.max(0, saldoFisico);
@@ -327,6 +405,7 @@ export function calcularNecessidadeItem(
       necessidadeAntesGovernanca: 0,
       necessidadeLiquida: 0,
       sinalGovernancaAplicado: sinalGovernanca,
+      fatorReducaoAplicado: 1,
       estoqueSegurancaDiagnostico: Math.max(0, estoqueMinimoCadastrado),
       pontoDePedidoDiagnostico: Math.max(0, estoqueMinimoCadastrado),
     };
@@ -357,10 +436,20 @@ export function calcularNecessidadeItem(
   const necessidadeAntesGovernanca = Math.max(0, previsaoCalibrada - estoqueDisponivel);
 
   // A régua de "posso comprar?" é do cliente; a reação a ela é da base.
+  // O tamanho do corte vem da saúde de margem do próprio item.
+  const fatorReducaoAplicado =
+    sinalGovernanca === "REDUZIR"
+      ? calcularFatorReducaoPorMargem(
+          margemRealizada,
+          margemAlvo,
+          parametrosMotor.reducaoGovernanca
+        )
+      : 1;
+
   const necessidadeLiquida = aplicarGovernancaCompra(
     necessidadeAntesGovernanca,
     sinalGovernanca,
-    parametrosMotor.fatorReducaoGovernanca
+    fatorReducaoAplicado
   );
 
   const estoqueSegurancaDiagnostico = calcularEstoqueSeguranca(
@@ -384,6 +473,7 @@ export function calcularNecessidadeItem(
     necessidadeAntesGovernanca,
     necessidadeLiquida,
     sinalGovernancaAplicado: sinalGovernanca,
+    fatorReducaoAplicado,
     estoqueSegurancaDiagnostico,
     pontoDePedidoDiagnostico: calcularPontoDePedido(
       consumoDiario,

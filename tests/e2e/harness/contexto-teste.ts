@@ -163,6 +163,8 @@ export function criarEstoqueTeste(parciais?: Partial<EstoqueFilial>): EstoqueFil
     diasSemVenda: null,
     sinalGovernancaCompra: null,
     usoLimiteCompra: null,
+    margemRealizada: null,
+    margemAlvo: null,
     consumoMedioDiarioErp: parciais?.consumoMedioDiarioErp ?? 0.5,
     dataUltimaVenda: parciais?.dataUltimaVenda ?? "2026-09-01",
     dataUltimaCompra: parciais?.dataUltimaCompra ?? "2026-08-15",

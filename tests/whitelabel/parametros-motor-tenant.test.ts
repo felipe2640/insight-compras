@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { TENANT_CARREIRO } from "@config/tenants/carreiro";
 import { montarOpcoesMatriz, montarNomesFiliais } from "@/lib/cockpit/opcoes-tenant";
-import { calcularNecessidadeItem, PARAMETROS_MOTOR_PADRAO } from "@core/calculo/necessidade";
+import {
+  calcularNecessidadeItem,
+  calcularFatorReducaoPorMargem,
+  PARAMETROS_MOTOR_PADRAO,
+} from "@core/calculo/necessidade";
 import {
   inferirLotePadraoPorCategoria,
   resolverLoteAutopecas,
@@ -140,7 +144,41 @@ describe("Governança de compra do processo do cliente", () => {
     expect(pausado.necessidadeLiquida).toBe(0);
   });
 
-  it("REDUZIR corta pelo fator do tenant sem zerar", () => {
+  it("REDUZIR corta proporcionalmente ao buraco de margem", () => {
+    const base = {
+      consumoDiario: 1,
+      perfilGiro: "ALTO_GIRO" as const,
+      saldoFisico: 0,
+      quantidadeJaPedida: 0,
+      parametrosMotor: TENANT_CARREIRO.parametrosMotor.motor,
+      sinalGovernanca: "REDUZIR" as const,
+      margemAlvo: 0.3,
+    };
+
+    // Margem na meta: nada a cortar.
+    expect(calcularNecessidadeItem({ ...base, margemRealizada: 0.3 }).necessidadeLiquida).toBe(23);
+
+    // Margem 27% -> fator 0,90 -> floor(23 * 0,9) = 20
+    const quase = calcularNecessidadeItem({ ...base, margemRealizada: 0.27 });
+    expect(quase.fatorReducaoAplicado).toBeCloseTo(0.9, 5);
+    expect(quase.necessidadeLiquida).toBe(20);
+
+    // Margem 15% -> fator 0,50 -> floor(23 * 0,5) = 11
+    const ruim = calcularNecessidadeItem({ ...base, margemRealizada: 0.15 });
+    expect(ruim.fatorReducaoAplicado).toBeCloseTo(0.5, 5);
+    expect(ruim.necessidadeLiquida).toBe(11);
+
+    // Prejuízo -> piso 0,25 -> floor(23 * 0,25) = 5
+    const prejuizo = calcularNecessidadeItem({ ...base, margemRealizada: -0.34 });
+    expect(prejuizo.fatorReducaoAplicado).toBe(0.25);
+    expect(prejuizo.necessidadeLiquida).toBe(5);
+
+    // Quanto pior a margem, menor a compra — monotonicidade.
+    expect(quase.necessidadeLiquida).toBeGreaterThan(ruim.necessidadeLiquida);
+    expect(ruim.necessidadeLiquida).toBeGreaterThan(prejuizo.necessidadeLiquida);
+  });
+
+  it("sem margem apurada usa o fator declarado do tenant", () => {
     const r = calcularNecessidadeItem({
       consumoDiario: 1,
       perfilGiro: "ALTO_GIRO",
@@ -148,9 +186,36 @@ describe("Governança de compra do processo do cliente", () => {
       quantidadeJaPedida: 0,
       parametrosMotor: TENANT_CARREIRO.parametrosMotor.motor,
       sinalGovernanca: "REDUZIR",
+      margemRealizada: null,
     });
-    expect(r.necessidadeAntesGovernanca).toBe(23);
-    expect(r.necessidadeLiquida).toBe(11); // floor(23 * 0,5)
+    expect(r.fatorReducaoAplicado).toBe(0.5);
+    expect(r.necessidadeLiquida).toBe(11);
+  });
+
+  it("REDUZIR nunca zera uma necessidade positiva", () => {
+    const r = calcularNecessidadeItem({
+      consumoDiario: 0.05,
+      perfilGiro: "BAIXO_GIRO_INTERMITENTE",
+      saldoFisico: 0,
+      quantidadeJaPedida: 0,
+      medianaLinhaVenda: 1,
+      parametrosMotor: TENANT_CARREIRO.parametrosMotor.motor,
+      sinalGovernanca: "REDUZIR",
+      margemRealizada: -1,
+    });
+    expect(r.necessidadeAntesGovernanca).toBeGreaterThan(0);
+    expect(r.necessidadeLiquida).toBeGreaterThanOrEqual(1);
+  });
+
+  it("o fator isolado é monotônico e respeitado nos limites", () => {
+    const p = TENANT_CARREIRO.parametrosMotor.motor.reducaoGovernanca;
+    expect(calcularFatorReducaoPorMargem(0.5, 0.3, p)).toBe(1);
+    expect(calcularFatorReducaoPorMargem(0.3, 0.3, p)).toBe(1);
+    expect(calcularFatorReducaoPorMargem(0.24, 0.3, p)).toBeCloseTo(0.8, 5);
+    expect(calcularFatorReducaoPorMargem(0, 0.3, p)).toBe(p.pisoFator);
+    expect(calcularFatorReducaoPorMargem(-5, 0.3, p)).toBe(p.pisoFator);
+    // margem acima de 100% é ruído de custo não lançado, não item saudável demais
+    expect(calcularFatorReducaoPorMargem(5, 0.3, p)).toBe(1);
   });
 
   it("MANTER e ausência de sinal não alteram nada", () => {

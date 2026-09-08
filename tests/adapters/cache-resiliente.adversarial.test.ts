@@ -78,6 +78,8 @@ function gerarSnapshotL2Mock(tag: string = "padrao"): RespostaCargaInventario {
           diasSemVenda: null,
           sinalGovernancaCompra: null,
           usoLimiteCompra: null,
+          margemRealizada: null,
+          margemAlvo: null,
           consumoMedioDiarioErp: 0.5,
           dataUltimaVenda: "2026-09-01",
           dataUltimaCompra: "2026-08-15",
