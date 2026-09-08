@@ -216,6 +216,14 @@ describe("Governança de compra do processo do cliente", () => {
     expect(calcularFatorReducaoPorMargem(-5, 0.3, p)).toBe(p.pisoFator);
     // margem acima de 100% é ruído de custo não lançado, não item saudável demais
     expect(calcularFatorReducaoPorMargem(5, 0.3, p)).toBe(1);
+
+    // O alvo é do ITEM: o mesmo desempenho julga diferente conforme a precificação.
+    expect(calcularFatorReducaoPorMargem(0.20, 0.40, p)).toBeCloseTo(0.5, 5);
+    expect(calcularFatorReducaoPorMargem(0.20, 0.25, p)).toBeCloseTo(0.8, 5);
+    expect(calcularFatorReducaoPorMargem(0.20, 0.20, p)).toBe(1);
+
+    // Sem alvo do item e sem política de rede, não se inventa meta.
+    expect(calcularFatorReducaoPorMargem(0.20, null, p)).toBe(p.fatorSemMargem);
   });
 
   it("MANTER e ausência de sinal não alteram nada", () => {

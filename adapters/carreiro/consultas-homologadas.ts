@@ -175,11 +175,25 @@ ORDER BY [Empresa], [Produto]
  * - EstoqueMinimo      -> era 0 em 100% dos itens (7.304 tinham valor real no modelo)
  * - ConsumoMedioDiario -> insumo primário da fórmula homologada
  * - DiasSemVenda       -> classificação de giro
- * - MargemRealizada    -> tamanho do corte quando a governança pede REDUZIR
+ * - MargemRealizada    -> margem que o item ENTREGOU nos 12 meses fechados
+ * - MargemAlvo         -> margem que o item foi PRECIFICADO para entregar
  *
- * A margem é calculada com janela EXPLÍCITA de 12 meses fechados. A medida pronta
- * `Margem Produto Historica 12M %` usa EOMONTH(MAX(dCalendario[Data]), -1) e volta
- * nula sem contexto de data — verificado ao vivo: 0 de 5.664 linhas preenchidas.
+ * As duas margens são calculadas POR ITEM, nunca supostas:
+ *
+ * - Realizada: (Valor Vendido - CMV) / Valor Vendido na janela. Escrita a partir
+ *   dos componentes e não via [% Margem Produto] porque a medida devolve 100%
+ *   quando o custo não resolve — 9% dos itens, que apareceriam como margem
+ *   perfeita em vez de "não apurada".
+ *
+ * - Alvo: (preço de venda - custo) / preço de venda, do cadastro do item. É a
+ *   margem que o cliente PRETENDE naquele item. Uma meta única para a rede não
+ *   serve: medido ao vivo em Pedro II, a margem pretendida vai de 35,3% (p10) a
+ *   53,9% (p90), com mediana 42,1%. Contra um alvo fixo de 30% quase todo item
+ *   pareceria saudável, e o corte do REDUZIR nunca dispararia.
+ *
+ * A janela é EXPLÍCITA (12 meses fechados via EOMONTH(TODAY(),-1)): a medida
+ * pronta `Margem Produto Historica 12M %` depende de EOMONTH(MAX(dCalendario)) e
+ * volta nula sem contexto de data — 0 de 5.664 linhas preenchidas ao vivo.
  */
 export function gerarConsultaDaxPosicaoEstoque(
   nomeFilial: string,
@@ -212,12 +226,21 @@ FILTER(
         "DiasSemVenda", [Estoque Dias sem Venda],
         "DecisaoCompra", [Decisao Compra Mercadoria],
         "UsoLimiteCompra", [% Uso Limite Compra Mercadoria],
-        "MargemRealizada", CALCULATE(
-            [% Margem Produto],
-            REMOVEFILTERS('dCalendario'),
-            DATESINPERIOD('dCalendario'[Data], EOMONTH(TODAY(), -1), -12, MONTH)
-        ),
-        "MargemAlvo", [Margem Alvo Parametrizada %]
+        "MargemRealizada", 
+            VAR JanelaMargem = DATESINPERIOD('dCalendario'[Data], EOMONTH(TODAY(), -1), -12, MONTH)
+            VAR VendidoJanela = CALCULATE([Valor Vendido Produto], REMOVEFILTERS('dCalendario'), JanelaMargem)
+            VAR CustoJanela = CALCULATE([CMV], REMOVEFILTERS('dCalendario'), JanelaMargem)
+            RETURN IF(VendidoJanela > 0 && CustoJanela > 0, DIVIDE(VendidoJanela - CustoJanela, VendidoJanela)),
+        "MargemAlvo",
+            VAR PrecoVendaItem = MAX('PRODUTOS'[NPRECOVENDA])
+            VAR CustoItem = COALESCE(
+                [Estoque Ultimo Custo Unitario Compra (Nota)],
+                MAX('PRODUTOS'[NPRECOCOMPRA])
+            )
+            RETURN IF(
+                PrecoVendaItem > 0 && CustoItem > 0 && CustoItem < PrecoVendaItem,
+                DIVIDE(PrecoVendaItem - CustoItem, PrecoVendaItem)
+            )
     ),
     [EstoqueQtd] <> 0 || [ConsumoMedioDiario] > 0
 )

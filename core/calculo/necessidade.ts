@@ -77,11 +77,19 @@ export interface ParametrosMotorCompra {
  * Parâmetros da redução proporcional à saúde de margem.
  */
 export interface ReducaoPorMargem {
-  /** Margem alvo do cliente quando a fonte não informa por item (0..1). */
-  readonly margemAlvoPadrao: number;
+  /**
+   * Meta de margem para a rede inteira, usada SOMENTE se o tenant quiser uma
+   * política única. `null` (recomendado) significa: sem alvo por item, não há
+   * como julgar — cai em `fatorSemMargem` em vez de inventar uma meta.
+   *
+   * Uma meta única costuma ser inútil: itens são precificados com margens
+   * diferentes, e comparar todos contra o mesmo número classifica quase tudo
+   * como saudável (ou quase tudo como problema).
+   */
+  readonly margemAlvoRede: number | null;
   /** Piso do fator: nunca corta além disso. Zerar é papel do PAUSAR. */
   readonly pisoFator: number;
-  /** Fator aplicado quando não há margem medida para o item. */
+  /** Fator aplicado quando a margem do item não pôde ser apurada. */
   readonly fatorSemMargem: number;
 }
 
@@ -110,7 +118,7 @@ export const PARAMETROS_MOTOR_PADRAO: ParametrosMotorCompra = {
     minimoMesesAtivos: 2,
   },
   reducaoGovernanca: {
-    margemAlvoPadrao: 0.3,
+    margemAlvoRede: null,
     pisoFator: 0.25,
     fatorSemMargem: 0.5,
   },
@@ -292,20 +300,24 @@ function resolverPiso(
 /**
  * Calcula o fator de redução a partir da saúde de margem do item.
  *
- * A ideia: o corte é proporcional ao tamanho do buraco entre a margem que o item
- * realmente entregou nos últimos meses e a margem alvo do cliente.
+ * O corte é proporcional ao buraco entre a margem que o item ENTREGOU e a margem
+ * que ele foi PRECIFICADO para entregar. Ambas por item — margem não se supõe,
+ * porque itens são precificados com margens muito diferentes entre si.
  *
  *   deficit    = max(0, margemAlvo - margemRealizada)
  *   proporcao  = deficit / margemAlvo        (0 = na meta, 1 = margem zero)
  *   fator      = limita(1 - proporcao, piso, 1)
  *
- * Exemplos com alvo de 30%:
- *   margem 30% ou mais -> fator 1,00 (compra integral)
- *   margem 27%         -> fator 0,90
- *   margem 15,6%       -> fator 0,52
- *   margem negativa    -> fator no piso
+ * Exemplo com um item precificado a 40%:
+ *   entregou 40% ou mais -> fator 1,00 (compra integral)
+ *   entregou 36%         -> fator 0,90
+ *   entregou 20%         -> fator 0,50
+ *   entregou 0% ou menos -> fator no piso
  *
- * Sem margem medida, devolve `fatorSemMargem` — um corte declarado, e não um
+ * O mesmo item entregando 20% seria considerado saudável contra uma meta de rede
+ * de 30% — por isso o alvo é do item, não da rede.
+ *
+ * Sem margem apurada, devolve `fatorSemMargem`: um corte declarado, e não um
  * palpite disfarçado de cálculo.
  */
 export function calcularFatorReducaoPorMargem(
@@ -315,13 +327,17 @@ export function calcularFatorReducaoPorMargem(
 ): number {
   const piso = Math.min(1, Math.max(0, parametros.pisoFator));
 
+  const semDados = Math.min(1, Math.max(piso, parametros.fatorSemMargem));
+
+  // Alvo do PRÓPRIO item primeiro. Sem ele, só há alvo se o tenant declarou uma
+  // política de rede; caso contrário não há base para julgar e o corte é declarado.
   const alvo =
     margemAlvo !== null && margemAlvo !== undefined && Number.isFinite(margemAlvo) && margemAlvo > 0
       ? margemAlvo
-      : parametros.margemAlvoPadrao;
+      : parametros.margemAlvoRede;
 
-  if (!Number.isFinite(alvo) || alvo <= 0) {
-    return Math.min(1, Math.max(piso, parametros.fatorSemMargem));
+  if (alvo === null || alvo === undefined || !Number.isFinite(alvo) || alvo <= 0) {
+    return semDados;
   }
 
   if (
@@ -329,7 +345,7 @@ export function calcularFatorReducaoPorMargem(
     margemRealizada === undefined ||
     !Number.isFinite(margemRealizada)
   ) {
-    return Math.min(1, Math.max(piso, parametros.fatorSemMargem));
+    return semDados;
   }
 
   // Margem acima de 100% é ruído de item com custo não lançado; trata como saudável.

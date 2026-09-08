@@ -131,20 +131,22 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
       },
       /**
        * "REDUZIR COMPRAS" da medida `Decisao Compra Mercadoria` não diz quanto
-       * reduzir. O corte é proporcional ao quanto a margem realizada do item nos
-       * últimos 12 meses fechados está abaixo da margem alvo do cliente.
+       * reduzir. O corte é proporcional ao quanto a margem que o item ENTREGOU
+       * nos 12 meses fechados ficou abaixo da margem com que ele foi PRECIFICADO.
        *
-       * margemAlvoPadrao 0,30 = `Margem Alvo Parametrizada %` do modelo do cliente
-       * (COALESCE([Valor Margem], 0.30)) quando não há seleção no slicer.
+       * margemAlvoRede = null: a Carreiro NÃO usa meta única. Medido ao vivo em
+       * Pedro II, a margem pretendida por item vai de 35,3% (p10) a 53,9% (p90),
+       * mediana 42,1% — contra uma meta fixa de 30% quase todo item pareceria
+       * saudável e o corte jamais dispararia. O alvo vem do cadastro de cada item.
        *
        * pisoFator 0,25: mesmo um item vendendo no prejuízo mantém 1/4 da reposição
        * quando há demanda comprovada. Zerar é papel exclusivo do PAUSAR.
        *
-       * fatorSemMargem 0,50: cerca de metade dos itens não tem margem apurada
-       * (falta custo lançado). Nesses, o corte é declarado, não calculado.
+       * fatorSemMargem 0,50: aplica-se aos ~3% de itens com demanda cujo custo não
+       * está lançado. Nesses o corte é declarado, não calculado.
        */
       reducaoGovernanca: {
-        margemAlvoPadrao: 0.3,
+        margemAlvoRede: null,
         pisoFator: 0.25,
         fatorSemMargem: 0.5,
       },
