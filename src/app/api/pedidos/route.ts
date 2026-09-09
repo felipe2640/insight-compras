@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { servicoAuditoriaPadrao } from "@/lib/auditoria";
-import { UsuarioAutenticado } from "@/lib/rbac/tipos";
+import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
 
 export const dynamic = "force-dynamic";
@@ -14,18 +14,8 @@ export async function POST(request: NextRequest) {
   try {
     const corpo = await request.json();
 
-    const roleHeader = (request.headers.get("x-user-role") ?? "COMPRADOR").toUpperCase();
-    const userId = request.headers.get("x-user-id") ?? "comprador-01";
-    const userNome = request.headers.get("x-user-nome") ?? "Comprador Responsável";
-
-    const usuario: UsuarioAutenticado = {
-      id: userId,
-      nome: userNome,
-      email: `${userId}@carreiro.com.br`,
-      role: roleHeader === "GESTOR" ? "GESTOR" : "COMPRADOR",
-      allowedSupplierIds: null,
-      tenantId: "carreiro",
-    };
+    const usuario = await obterUsuarioDaRequisicao(request);
+    if (!usuario) return respostaNaoAutenticado();
 
     const registro = await servicoAuditoriaPadrao.registrarDecisao({
       usuario,

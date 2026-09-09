@@ -26,7 +26,7 @@ import { LinhaCockpitMatriz, ItemDeltaRascunho, LinhaCockpitCompras } from "@/ti
 import { useFiltrosCockpit } from "@/hooks/useFiltrosCockpit";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
 import { NOMES_FILIAIS_CARREIRO } from "@adapters/carreiro/mapeador-dax";
-import { AppSidebar } from "@/components/layout/app-sidebar";
+import { AppSidebar, UsuarioSidebar } from "@/components/layout/app-sidebar";
 import { DataTableSection } from "@/components/cockpit/data-table-section";
 import { criarColunasCockpit } from "@/components/cockpit/colunas-cockpit";
 import { QuickFilterChip } from "@/components/cockpit/quick-filter-chip";
@@ -49,6 +49,8 @@ export interface CockpitPrincipalProps {
   itensIniciais: readonly LinhaCockpitMatriz[];
   fornecedoresPermitidosInicial?: readonly number[] | null;
   filialFocoIdInicial?: number;
+  /** Sessão resolvida no servidor: evita o rodapé "vazio" enquanto a página de 19 mil itens hidrata. */
+  usuarioSessao?: UsuarioSidebar | null;
 }
 
 const CARTEIRAS_DEMO = [
@@ -71,6 +73,7 @@ export function CockpitPrincipal({
   itensIniciais,
   fornecedoresPermitidosInicial = null,
   filialFocoIdInicial = 1,
+  usuarioSessao = null,
 }: CockpitPrincipalProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -352,7 +355,7 @@ export function CockpitPrincipal({
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
       {/* 1. Menu Lateral Retrátil com Navegação e Configurações */}
-      <AppSidebar />
+      <AppSidebar usuario={usuarioSessao} />
 
       <DialogExportacao
         aberto={dialogExportacaoAberto}

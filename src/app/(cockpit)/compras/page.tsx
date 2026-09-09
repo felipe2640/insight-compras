@@ -3,10 +3,13 @@ import { obterAdaptadorInventario } from "@adapters/index";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
 import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { CockpitPrincipal } from "@/components/cockpit/CockpitPrincipal";
+import { obterUsuarioAtual, rotuloPapel } from "@/lib/autenticacao/servidor";
 
-export const revalidate = 60; // Cache de 1 minuto com revalidação estrita
+// A página lê a sessão (cookies), portanto é dinâmica por requisição; o cache de dados fica no adapter.
+export const dynamic = "force-dynamic";
 
 async function CarregarDadosCockpit() {
+  const usuario = await obterUsuarioAtual();
   const adaptador = obterAdaptadorInventario();
   const carga = await adaptador.carregarInventarioCompleto({
     fornecedoresPermitidos: null,
@@ -18,7 +21,13 @@ async function CarregarDadosCockpit() {
   // Parâmetros calibrados do tenant (Carreiro: fator 0,90 do backtest).
   const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(1));
 
-  return <CockpitPrincipal itensIniciais={linhas} filialFocoIdInicial={1} />;
+  return (
+    <CockpitPrincipal
+      itensIniciais={linhas}
+      filialFocoIdInicial={1}
+      usuarioSessao={usuario ? { nome: usuario.nome, papelRotulo: rotuloPapel(usuario.role) } : null}
+    />
+  );
 }
 
 function EsqueletoCarregamento() {

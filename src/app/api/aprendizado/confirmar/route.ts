@@ -6,9 +6,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { confirmarEntrada, janelaFechou, JANELA_CONFIRMACAO } from "@core/aprendizado";
-import { obterUsuarioDaRequisicao, podeGerirAprendizado } from "@/lib/seguranca/usuario-requisicao";
+import { obterUsuarioDaRequisicao, podeGerirAprendizado, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { listarItensParaConfirmar, gravarConfirmacoes } from "@/lib/aprendizado/repositorio";
-import { supabaseConfigurado } from "@/lib/aprendizado/supabase";
+import { aprendizadoConfigurado } from "@/lib/aprendizado/repositorio";
 import { ClienteDaxPowerBI } from "@adapters/carreiro/cliente-dax";
 import { buscarEntradasCarreiro } from "@adapters/carreiro/entradas-confirmacao";
 
@@ -16,11 +16,12 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
-  const usuario = obterUsuarioDaRequisicao(request);
+  const usuario = await obterUsuarioDaRequisicao(request);
+  if (!usuario) return respostaNaoAutenticado();
   if (!podeGerirAprendizado(usuario)) {
     return NextResponse.json({ erro: "sem permissão" }, { status: 403 });
   }
-  if (!supabaseConfigurado()) {
+  if (!aprendizadoConfigurado()) {
     return NextResponse.json({ erro: "supabase_nao_configurado" }, { status: 503 });
   }
 

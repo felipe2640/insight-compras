@@ -134,7 +134,7 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
       expect(resultado.headersDownstream["x-tenant-cor-fundo"]).toBe("#F8FAFC");
     });
 
-    it("middleware deve enriquecer a requisição e configurar cookie x-tenant-id e cabeçalhos de segurança", () => {
+    it("middleware deve enriquecer a requisição e configurar cookie x-tenant-id e cabeçalhos de segurança", async () => {
       const mockRequest: NextRequestLike = {
         headers: new Headers({
           host: "carreiro.insightd.com.br",
@@ -148,7 +148,7 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
         },
       };
 
-      const response = middleware(mockRequest);
+      const response = await middleware(mockRequest);
 
       expect(response.request.headers.get("x-tenant-id")).toBe("carreiro");
       expect(response.request.headers.get("x-tenant-cor-primaria")).toBe("#0F2B5C");

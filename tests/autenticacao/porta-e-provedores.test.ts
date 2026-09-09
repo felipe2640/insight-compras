@@ -1,0 +1,213 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import {
+  montarUsuarioAutenticado,
+  normalizarFornecedores,
+  normalizarPapel,
+  ErroCredenciaisInvalidas,
+} from "@/lib/autenticacao/porta";
+import {
+  codificarCookieSessao,
+  decodificarCookieSessao,
+  sessaoExpirada,
+  opcoesCookieSessao,
+} from "@/lib/autenticacao/sessao";
+import { ProvedorAutenticacaoDemo } from "@/lib/autenticacao/provedores/demo";
+import { ProvedorAutenticacaoSupabase } from "@/lib/autenticacao/provedores/supabase";
+import { idProvedorConfigurado, obterProvedorAutenticacao, limparInstanciasProvedores } from "@/lib/autenticacao/fabrica";
+import { ErroAcessoNegado } from "@/lib/rbac/tipos";
+
+describe("porta: normalização do perfil (igual para qualquer provedor)", () => {
+  it("papel aceita maiúsculas/minúsculas e rejeita o resto", () => {
+    expect(normalizarPapel("gestor")).toBe("GESTOR");
+    expect(normalizarPapel(" Admin ")).toBe("ADMIN");
+    expect(normalizarPapel("root")).toBeNull();
+    expect(normalizarPapel(3)).toBeNull();
+  });
+
+  it("fornecedores aceita array, strings e '1,2' — vazio é irrestrito", () => {
+    expect(normalizarFornecedores([3, 3, "4", "x"])).toEqual([3, 4]);
+    expect(normalizarFornecedores("10, 20")).toEqual([10, 20]);
+    expect(normalizarFornecedores(null)).toBeNull();
+    expect(normalizarFornecedores([])).toBeNull();
+  });
+
+  it("usuário de outro tenant ou sem papel não entra", () => {
+    const base = { id: "u1", email: "a@b.c", nome: "Ana", papel: "GESTOR", tenantId: "carreiro", fornecedores: null };
+    expect(montarUsuarioAutenticado(base, "carreiro")?.role).toBe("GESTOR");
+    expect(montarUsuarioAutenticado(base, "outro")).toBeNull();
+    expect(montarUsuarioAutenticado({ ...base, papel: null }, "carreiro")).toBeNull();
+  });
+
+  it("comprador sem carteira falha fechado (lista vazia), gestor é irrestrito (null)", () => {
+    const comprador = montarUsuarioAutenticado(
+      { id: "u", email: "c@x", nome: "", papel: "COMPRADOR", tenantId: "t", fornecedores: null }, "t");
+    expect(comprador?.allowedSupplierIds).toEqual([]);
+    expect(comprador?.nome).toBe("c@x");
+    const gestor = montarUsuarioAutenticado(
+      { id: "u", email: "g@x", nome: "G", papel: "GESTOR", tenantId: "t", fornecedores: null }, "t");
+    expect(gestor?.allowedSupplierIds).toBeNull();
+  });
+});
+
+describe("cookie de sessão", () => {
+  it("codifica e decodifica sem perder nada", () => {
+    const s = { provedor: "supabase" as const, token: "abc.def", tokenRenovacao: "r1", expiraEm: 1_700_000_000_000 };
+    expect(decodificarCookieSessao(codificarCookieSessao(s))).toEqual(s);
+  });
+
+  it("rejeita lixo, provedor desconhecido e ausência", () => {
+    expect(decodificarCookieSessao("nao-e-base64-json")).toBeNull();
+    expect(decodificarCookieSessao(undefined)).toBeNull();
+    expect(decodificarCookieSessao(btoa(JSON.stringify({ p: "firebase", t: "x", e: 1 })))).toBeNull();
+  });
+
+  it("expiração respeita a margem", () => {
+    const agora = 1_000_000;
+    const s = { provedor: "demo" as const, token: "t", tokenRenovacao: null, expiraEm: agora + 30_000 };
+    expect(sessaoExpirada(s, agora, 60_000)).toBe(true);
+    expect(sessaoExpirada(s, agora, 0)).toBe(false);
+  });
+
+  it("cookie é httpOnly, lax, e só secure em produção", () => {
+    const s = { provedor: "demo" as const, token: "t", tokenRenovacao: null, expiraEm: Date.now() + 3600_000 };
+    const dev = opcoesCookieSessao(s, false);
+    expect(dev.httpOnly).toBe(true);
+    expect(dev.sameSite).toBe("lax");
+    expect(dev.secure).toBe(false);
+    expect(opcoesCookieSessao(s, true).secure).toBe(true);
+    expect(dev.maxAge).toBeGreaterThan(3500);
+  });
+});
+
+describe("provedor demo", () => {
+  const provedor = new ProvedorAutenticacaoDemo({ senha: "segredo", segredo: "chave-teste" });
+
+  it("entra com usuário conhecido e senha certa; token valida de volta", async () => {
+    const sessao = await provedor.entrar({ email: "gestor@demo", senha: "segredo", tenantId: "carreiro" });
+    expect(sessao.usuario.role).toBe("GESTOR");
+    const validado = await provedor.validar(sessao.token, "carreiro");
+    expect(validado?.id).toBe("demo-gestor");
+  });
+
+  it("senha errada ou usuário desconhecido = credenciais inválidas", async () => {
+    await expect(provedor.entrar({ email: "gestor@demo", senha: "x", tenantId: "carreiro" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
+    await expect(provedor.entrar({ email: "ninguem@demo", senha: "segredo", tenantId: "carreiro" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
+  });
+
+  it("token adulterado, assinado com outro segredo ou de outro tenant não valida", async () => {
+    const sessao = await provedor.entrar({ email: "comprador@demo", senha: "segredo", tenantId: "carreiro" });
+    const [carga, assinatura] = sessao.token.split(".");
+    expect(await provedor.validar(`${carga}x.${assinatura}`, "carreiro")).toBeNull();
+    const outro = new ProvedorAutenticacaoDemo({ senha: "segredo", segredo: "outra-chave" });
+    expect(await outro.validar(sessao.token, "carreiro")).toBeNull();
+    expect(await provedor.validar(sessao.token, "outro-tenant")).toBeNull();
+  });
+
+  it("token expirado não valida", async () => {
+    let relogio = 1_000_000;
+    const p = new ProvedorAutenticacaoDemo({ senha: "s", segredo: "k", agora: () => relogio });
+    const sessao = await p.entrar({ email: "gestor@demo", senha: "s", tenantId: "t" });
+    relogio += 13 * 3600 * 1000;
+    expect(await p.validar(sessao.token, "t")).toBeNull();
+  });
+});
+
+describe("provedor supabase (GoTrue via fetch simulado)", () => {
+  const cfg = { url: "https://proj.supabase.co", chavePublica: "pub", chaveServico: "srv" };
+  const usuarioGoTrue = {
+    id: "uuid-1",
+    email: "gestor@empresa.com.br",
+    app_metadata: { nome: "Gestora", papel: "GESTOR", tenant_id: "carreiro", fornecedores: null },
+  };
+
+  function fetchSimulado(respostas: Record<string, { status: number; corpo: unknown }>) {
+    const chamadas: Array<{ url: string; init: RequestInit }> = [];
+    const fn = vi.fn(async (url: string, init: RequestInit) => {
+      chamadas.push({ url, init });
+      const chave = Object.keys(respostas).find((k) => url.includes(k));
+      const r = chave ? respostas[chave] : { status: 404, corpo: {} };
+      return new Response(JSON.stringify(r.corpo), { status: r.status, headers: { "Content-Type": "application/json" } });
+    });
+    return { fn: fn as unknown as typeof fetch, chamadas };
+  }
+
+  it("login por senha usa a chave PÚBLICA e mapeia app_metadata", async () => {
+    const { fn, chamadas } = fetchSimulado({
+      "token?grant_type=password": { status: 200, corpo: { access_token: "at", refresh_token: "rt", expires_in: 3600, user: usuarioGoTrue } },
+    });
+    const p = new ProvedorAutenticacaoSupabase(cfg, fn);
+    const s = await p.entrar({ email: "gestor@empresa.com.br", senha: "x", tenantId: "carreiro" });
+    expect(s.usuario).toMatchObject({ id: "uuid-1", nome: "Gestora", role: "GESTOR", tenantId: "carreiro" });
+    expect(s.tokenRenovacao).toBe("rt");
+    const h = chamadas[0].init.headers as Record<string, string>;
+    expect(h.apikey).toBe("pub");
+    expect(h.Authorization).not.toContain("srv");
+  });
+
+  it("400 do GoTrue vira credenciais inválidas (sem vazar detalhe)", async () => {
+    const { fn } = fetchSimulado({ "token?grant_type=password": { status: 400, corpo: { error_description: "Invalid login" } } });
+    await expect(new ProvedorAutenticacaoSupabase(cfg, fn).entrar({ email: "a@b.c", senha: "x", tenantId: "carreiro" }))
+      .rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
+  });
+
+  it("conta de outro tenant: revoga e nega (403)", async () => {
+    const { fn, chamadas } = fetchSimulado({
+      "token?grant_type=password": { status: 200, corpo: { access_token: "at", user: { ...usuarioGoTrue, app_metadata: { ...usuarioGoTrue.app_metadata, tenant_id: "outra" } } } },
+      logout: { status: 204, corpo: {} },
+    });
+    await expect(new ProvedorAutenticacaoSupabase(cfg, fn).entrar({ email: "a@b.c", senha: "x", tenantId: "carreiro" }))
+      .rejects.toBeInstanceOf(ErroAcessoNegado);
+    expect(chamadas.some((c) => c.url.endsWith("/auth/v1/logout"))).toBe(true);
+  });
+
+  it("validar: 401 = null; falha de rede = null (falha fechada)", async () => {
+    const { fn } = fetchSimulado({ "/user": { status: 401, corpo: {} } });
+    expect(await new ProvedorAutenticacaoSupabase(cfg, fn).validar("token-invalido", "carreiro")).toBeNull();
+    const quebrado = vi.fn(async () => { throw new Error("rede"); }) as unknown as typeof fetch;
+    expect(await new ProvedorAutenticacaoSupabase(cfg, quebrado).validar("t", "carreiro")).toBeNull();
+  });
+
+  it("administração usa a chave PRIVILEGIADA e grava o perfil em app_metadata", async () => {
+    const { fn, chamadas } = fetchSimulado({
+      "admin/users": { status: 200, corpo: { ...usuarioGoTrue, created_at: "2026-09-09T00:00:00Z" } },
+    });
+    const p = new ProvedorAutenticacaoSupabase(cfg, fn);
+    const criado = await p.criarUsuario({ email: "gestor@empresa.com.br", senha: "s", nome: "Gestora", papel: "GESTOR", tenantId: "carreiro", fornecedores: null });
+    expect(criado.papel).toBe("GESTOR");
+    const h = chamadas[0].init.headers as Record<string, string>;
+    expect(h.Authorization).toBe("Bearer srv");
+    const corpo = JSON.parse(String(chamadas[0].init.body));
+    expect(corpo.app_metadata).toMatchObject({ papel: "GESTOR", tenant_id: "carreiro" });
+    expect(corpo.email_confirm).toBe(true);
+  });
+
+  it("sem chave privilegiada, administrar falha claramente", async () => {
+    const p = new ProvedorAutenticacaoSupabase({ url: cfg.url, chavePublica: "pub" }, fetchSimulado({}).fn);
+    await expect(p.listarUsuarios("carreiro")).rejects.toThrow(/SERVICE_ROLE/);
+  });
+});
+
+describe("fábrica", () => {
+  const envOriginal = { ...process.env };
+  beforeEach(() => {
+    process.env = { ...envOriginal };
+    delete process.env.AUTH_PROVIDER;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_ANON_KEY;
+    limparInstanciasProvedores();
+  });
+
+  it("sem env: demo; com chaves supabase: supabase; AUTH_PROVIDER manda", () => {
+    expect(idProvedorConfigurado()).toBe("demo");
+    process.env.SUPABASE_URL = "https://x.supabase.co";
+    process.env.SUPABASE_ANON_KEY = "pub";
+    expect(idProvedorConfigurado()).toBe("supabase");
+    process.env.AUTH_PROVIDER = "demo";
+    expect(idProvedorConfigurado()).toBe("demo");
+    expect(obterProvedorAutenticacao().id).toBe("demo");
+  });
+
+  it("pedir supabase sem chaves falha com mensagem clara", () => {
+    expect(() => obterProvedorAutenticacao("supabase")).toThrow(/SUPABASE_URL/);
+  });
+});

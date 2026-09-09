@@ -513,7 +513,7 @@ describe("Desafio Adversarial Gate M4 — Criptografia de Auditoria & Edge Middl
         expect(resultado.headersDownstream["x-tenant-id"]).toBe("carreiro");
       });
 
-      it("Edge Middleware deve enriquecer requisições com headers downstream e cabeçalhos de segurança mesmo sob ataque", () => {
+      it("Edge Middleware deve enriquecer requisições com headers downstream e cabeçalhos de segurança mesmo sob ataque", async () => {
         const mockRequestHostil: NextRequestLike = {
           headers: new Headers({
             host: "ataque-injecao.com.br:9999",
@@ -528,7 +528,7 @@ describe("Desafio Adversarial Gate M4 — Criptografia de Auditoria & Edge Middl
           },
         };
 
-        const response = middleware(mockRequestHostil);
+        const response = await middleware(mockRequestHostil);
 
         // Não deve quebrar o fluxo
         expect(response).toBeDefined();

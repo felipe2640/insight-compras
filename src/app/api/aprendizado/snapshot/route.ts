@@ -6,9 +6,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { obterUsuarioDaRequisicao } from "@/lib/seguranca/usuario-requisicao";
+import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { gravarSnapshot } from "@/lib/aprendizado/repositorio";
-import { supabaseConfigurado } from "@/lib/aprendizado/supabase";
+import { aprendizadoConfigurado } from "@/lib/aprendizado/repositorio";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -44,7 +44,8 @@ const esquemaCorpo = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const usuario = obterUsuarioDaRequisicao(request);
+  const usuario = await obterUsuarioDaRequisicao(request);
+  if (!usuario) return respostaNaoAutenticado();
 
   let corpo: z.infer<typeof esquemaCorpo>;
   try {
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!supabaseConfigurado()) {
+  if (!aprendizadoConfigurado()) {
     // Não configurado: não falhar a exportação — só sinalizar.
     return NextResponse.json({ gravado: false, motivo: "supabase_nao_configurado" });
   }

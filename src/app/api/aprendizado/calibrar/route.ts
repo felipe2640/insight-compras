@@ -7,21 +7,21 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import type { UsuarioAutenticado } from "@/lib/rbac/tipos";
 import { calcularPropostaCalibracao, aplicarProposta } from "@core/aprendizado";
-import { obterUsuarioDaRequisicao, podeGerirAprendizado } from "@/lib/seguranca/usuario-requisicao";
+import { obterUsuarioDaRequisicao, podeGerirAprendizado, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 import {
   listarLinhasCalibracao,
   publicarParametros,
   carregarParametrosPublicados,
 } from "@/lib/aprendizado/repositorio";
-import { supabaseConfigurado } from "@/lib/aprendizado/supabase";
+import { aprendizadoConfigurado } from "@/lib/aprendizado/repositorio";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-async function montarProposta(request: NextRequest) {
-  const usuario = obterUsuarioDaRequisicao(request);
+async function montarProposta(request: NextRequest, usuario: UsuarioAutenticado) {
   const tenant = obterTenantAtivo();
   const { searchParams } = new URL(request.url);
   const dias = Math.min(365, Math.max(7, parseInt(searchParams.get("dias") ?? "60", 10) || 60));
@@ -38,10 +38,12 @@ async function montarProposta(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!supabaseConfigurado()) {
+  if (!aprendizadoConfigurado()) {
     return NextResponse.json({ configurado: false });
   }
-  const r = await montarProposta(request);
+  const usuario = await obterUsuarioDaRequisicao(request);
+  if (!usuario) return respostaNaoAutenticado();
+  const r = await montarProposta(request, usuario);
   return NextResponse.json({
     configurado: true,
     simulacao: true,
@@ -55,10 +57,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!supabaseConfigurado()) {
+  if (!aprendizadoConfigurado()) {
     return NextResponse.json({ erro: "supabase_nao_configurado" }, { status: 503 });
   }
-  const r = await montarProposta(request);
+  const usuario = await obterUsuarioDaRequisicao(request);
+  if (!usuario) return respostaNaoAutenticado();
+  const r = await montarProposta(request, usuario);
   if (!podeGerirAprendizado(r.usuario)) {
     return NextResponse.json({ erro: "sem permissão" }, { status: 403 });
   }

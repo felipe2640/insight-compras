@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   ShoppingCart,
   PackageCheck,
@@ -85,8 +85,38 @@ const GRUPO_CONFIGURACOES: ItemNavegacao[] = [
   },
 ];
 
-export function AppSidebar({ className }: { className?: string }) {
+export interface UsuarioSidebar {
+  readonly nome: string;
+  readonly papelRotulo: string;
+}
+
+export function AppSidebar({ className, usuario }: { className?: string; usuario?: UsuarioSidebar | null }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [sessao, setSessao] = useState<UsuarioSidebar | null>(usuario ?? null);
+
+  useEffect(() => {
+    if (usuario) return; // veio do servidor: sem ida ao /api/auth/sessao
+    let ativo = true;
+    fetch("/api/auth/sessao")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((corpo: { usuario?: { nome: string; papelRotulo: string } } | null) => {
+        if (ativo && corpo?.usuario) setSessao({ nome: corpo.usuario.nome, papelRotulo: corpo.usuario.papelRotulo });
+      })
+      .catch(() => undefined);
+    return () => {
+      ativo = false;
+    };
+  }, [usuario]);
+
+  const sair = async () => {
+    try {
+      await fetch("/api/auth/sair", { method: "POST" });
+    } finally {
+      router.push("/login");
+      router.refresh();
+    }
+  };
   const [colapsado, setColapsado] = useState(false);
 
   return (
@@ -212,29 +242,31 @@ export function AppSidebar({ className }: { className?: string }) {
           <div className="flex items-center justify-between gap-2">
             <div className="flex flex-col truncate">
               <span className="truncate text-xs font-bold text-slate-800 dark:text-slate-200">
-                Felipe Barbosa
+                {sessao?.nome ?? "—"}
               </span>
               <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                Gestor Geral da Rede
+                {sessao?.papelRotulo ?? "sessão não carregada"}
               </span>
             </div>
-            <Link
-              href="/login"
+            <button
+              type="button"
+              onClick={sair}
               className="rounded p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 transition-colors"
-              title="Sair / Alternar Conta"
+              title="Sair"
             >
               <LogOut className="h-4 w-4" />
-            </Link>
+            </button>
           </div>
         ) : (
           <div className="flex justify-center">
-            <Link
-              href="/login"
+            <button
+              type="button"
+              onClick={sair}
               className="rounded p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700"
               title="Sair"
             >
               <LogOut className="h-4 w-4" />
-            </Link>
+            </button>
           </div>
         )}
       </div>

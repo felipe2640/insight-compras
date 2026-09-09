@@ -5,20 +5,21 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { classificarDivergencia } from "@core/aprendizado";
-import { obterUsuarioDaRequisicao } from "@/lib/seguranca/usuario-requisicao";
+import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { listarComparativo } from "@/lib/aprendizado/repositorio";
-import { supabaseConfigurado } from "@/lib/aprendizado/supabase";
+import { aprendizadoConfigurado } from "@/lib/aprendizado/repositorio";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const usuario = obterUsuarioDaRequisicao(request);
+  const usuario = await obterUsuarioDaRequisicao(request);
+  if (!usuario) return respostaNaoAutenticado();
   const { searchParams } = new URL(request.url);
   const dias = Math.min(365, Math.max(1, parseInt(searchParams.get("dias") ?? "30", 10) || 30));
   const filialParam = searchParams.get("filialId");
   const filialId = filialParam ? parseInt(filialParam, 10) || undefined : undefined;
 
-  if (!supabaseConfigurado()) {
+  if (!aprendizadoConfigurado()) {
     return NextResponse.json({ configurado: false, itens: [], resumo: null });
   }
 

@@ -2,10 +2,12 @@ import React from "react";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { ComparativoAprendizado } from "@/components/aprendizado/ComparativoAprendizado";
 import { obterTenantAtivo, montarNomesFiliais } from "@/lib/cockpit/opcoes-tenant";
+import { obterUsuarioAtual, rotuloPapel } from "@/lib/autenticacao/servidor";
 
 export const dynamic = "force-dynamic";
 
-export default function PaginaAprendizado() {
+export default async function PaginaAprendizado() {
+  const usuario = await obterUsuarioAtual();
   const tenant = obterTenantAtivo();
   const nomesFiliais = montarNomesFiliais(tenant);
 

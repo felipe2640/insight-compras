@@ -6,9 +6,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { motivoValido } from "@core/aprendizado";
-import { obterUsuarioDaRequisicao, podeGerirAprendizado } from "@/lib/seguranca/usuario-requisicao";
+import { obterUsuarioDaRequisicao, podeGerirAprendizado, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { gravarFeedback } from "@/lib/aprendizado/repositorio";
-import { supabaseConfigurado } from "@/lib/aprendizado/supabase";
+import { aprendizadoConfigurado } from "@/lib/aprendizado/repositorio";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +19,12 @@ const esquema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const usuario = obterUsuarioDaRequisicao(request);
+  const usuario = await obterUsuarioDaRequisicao(request);
+  if (!usuario) return respostaNaoAutenticado();
   if (!podeGerirAprendizado(usuario)) {
     return NextResponse.json({ erro: "sem permissão" }, { status: 403 });
   }
-  if (!supabaseConfigurado()) {
+  if (!aprendizadoConfigurado()) {
     return NextResponse.json({ erro: "supabase_nao_configurado" }, { status: 503 });
   }
 

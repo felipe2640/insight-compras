@@ -67,7 +67,7 @@ const PERFIL: Record<string, string> = {
   ALTO_GIRO: "Alto", MEDIO_GIRO: "Médio", BAIXO_GIRO_INTERMITENTE: "Baixo", SEM_HISTORICO_SUFICIENTE: "Sem hist.",
 };
 
-const CABECALHOS_GESTOR = { "x-user-role": "GESTOR", "Content-Type": "application/json" };
+const CABECALHOS_GESTOR = { "Content-Type": "application/json" }; // identidade vem do cookie de sessão
 
 export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonly<Record<number, string>> }) {
   const [dias, setDias] = useState("30");

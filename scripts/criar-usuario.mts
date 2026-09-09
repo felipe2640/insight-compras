@@ -1,0 +1,45 @@
+/**
+ * Cria um usuário no provedor de autenticação configurado (server-side, chave privilegiada).
+ *
+ *   npx tsx scripts/criar-usuario.mts --email gestor@empresa.com.br --nome "Nome" --papel GESTOR [--tenant carreiro] [--fornecedores 12,34]
+ *
+ * A senha vem de SENHA_NOVO_USUARIO no ambiente (nunca em argumento: fica no histórico do shell).
+ * Se ausente, uma senha aleatória é gerada e impressa UMA vez.
+ */
+import fs from "node:fs";
+import crypto from "node:crypto";
+
+const env = fs.readFileSync(".env.local", "utf8").replace(/^﻿/, "");
+for (const linha of env.split(/\r?\n/)) {
+  const m = linha.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)$/);
+  if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "").trim();
+}
+
+function arg(nome: string): string | undefined {
+  const i = process.argv.indexOf(`--${nome}`);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+const { obterAdministradorUsuarios, normalizarPapel, normalizarFornecedores } = await import("../src/lib/autenticacao/index.ts");
+
+const email = arg("email");
+const nome = arg("nome");
+const papel = normalizarPapel(arg("papel"));
+const tenantId = arg("tenant") ?? "carreiro";
+const fornecedores = normalizarFornecedores(arg("fornecedores"));
+if (!email || !nome || !papel) {
+  console.error("uso: --email <e-mail> --nome <nome> --papel COMPRADOR|GESTOR|ADMIN [--tenant id] [--fornecedores 1,2]");
+  process.exit(2);
+}
+
+let senha = process.env.SENHA_NOVO_USUARIO;
+let senhaGerada = false;
+if (!senha) {
+  senha = crypto.randomBytes(9).toString("base64url");
+  senhaGerada = true;
+}
+
+const admin = obterAdministradorUsuarios();
+const criado = await admin.criarUsuario({ email, senha, nome, papel, tenantId, fornecedores });
+console.log(`usuário criado: ${criado.email} (${criado.papel}, tenant ${criado.tenantId}, id ${criado.id})`);
+if (senhaGerada) console.log(`senha inicial (mostrada uma única vez): ${senha}`);
