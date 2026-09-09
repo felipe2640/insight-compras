@@ -586,6 +586,7 @@ export function converterParaLinhasCockpit(
       custo: p.precoCusto,
       dtUltVenda,
       dtUltimaCompra,
+      dtUltimoPedido: p.dataUltimoPedido ?? null,
       curvaAbcSistema: curvaAbc,
       produtosVend90d: vendas90d,
       consumoDiario: cmdDiario,

@@ -18,6 +18,7 @@ import { GerenciadorCacheResiliente } from "./cache-resiliente";
 import {
   CONSULTA_DAX_FRESCOR,
   CONSULTA_DAX_ENTRADAS_HOJE,
+  CONSULTA_DAX_ULTIMO_PEDIDO,
   gerarConsultaDaxSimilares,
   TAMANHO_PAGINA_SIMILARES,
   gerarConsultaDaxMovimentosEstoque,
@@ -37,6 +38,7 @@ import {
   mapearEntradasNFeDax,
   mapearSimilaresDax,
   aplicarRupturaReconstruida,
+  aplicarUltimoPedido,
 } from "./mapeador-dax";
 import {
   carregarSnapshotCarreiroLocal,
@@ -130,6 +132,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             linhasEntradas,
             linhasSimilares,
             linhasMovimentos,
+            linhasUltimoPedido,
           ] = await Promise.all([
             this.carregarCatalogoPaginado(filtro),
             this.clienteDax.executarConsultaDax(gerarConsultaDaxHistoricoVendas(filtro)),
@@ -159,9 +162,16 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             }),
             this.carregarSimilaresPaginado(),
             this.carregarMovimentosDaJanela(),
+            this.clienteDax.executarConsultaDax(CONSULTA_DAX_ULTIMO_PEDIDO).catch((e) => {
+              console.warn("[Adaptador Carreiro] Aviso ao consultar solicitações de compra:", e);
+              return [] as readonly Record<string, unknown>[];
+            }),
           ]);
 
-          const produtos = mapearProdutosDax(linhasAtributos);
+          const produtos = aplicarUltimoPedido(
+            mapearProdutosDax(linhasAtributos),
+            linhasUltimoPedido
+          );
 
           // Cada página traz a filial no contexto, não em cada linha.
           const estoques = new Map<string, EstoqueFilial>();

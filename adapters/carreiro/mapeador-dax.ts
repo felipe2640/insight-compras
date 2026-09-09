@@ -569,3 +569,27 @@ export function aplicarRupturaReconstruida(
     });
   }
 }
+
+/** Junta a data do último pedido aos produtos já mapeados. */
+export function aplicarUltimoPedido(
+  produtos: readonly Produto[],
+  linhasPedidos: readonly Record<string, unknown>[]
+): Produto[] {
+  if (linhasPedidos.length === 0) return [...produtos];
+
+  const porProduto = new Map<number, string>();
+  for (const linhaBruta of linhasPedidos) {
+    const linha = normalizarLinhaDax(linhaBruta);
+    const id = extrairIdProduto(linha.CODIGO_PRODUTO ?? linha.Produto ?? linha.codigoProduto);
+    if (!id) continue;
+    const data = normalizarDataIso(linha.UltimoPedido ?? linha.DH_CRIACAO);
+    if (!data) continue;
+    const atual = porProduto.get(id);
+    if (!atual || data > atual) porProduto.set(id, data);
+  }
+
+  return produtos.map((p) => {
+    const data = porProduto.get(p.id);
+    return data ? { ...p, dataUltimoPedido: data } : p;
+  });
+}

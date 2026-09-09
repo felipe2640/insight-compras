@@ -329,6 +329,35 @@ export function criarColunasCockpit({
       enableSorting: true,
     },
 
+    // Último pedido: quando alguém pediu esta peça pela última vez.
+    // Nível de PRODUTO, não de loja — a fonte do cliente não separa quem pediu.
+    {
+      id: "dtUltimoPedido",
+      accessorFn: (row) => row.dtUltimoPedido ?? "",
+      size: 100,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Último pedido" />
+      ),
+      cell: ({ row }) => {
+        const data = row.original.dtUltimoPedido;
+        return (
+          <div className="flex justify-center">
+            {data ? (
+              <span className="text-xs text-slate-700 dark:text-slate-300">
+                {new Date(`${data}T12:00:00`).toLocaleDateString("pt-BR")}
+              </span>
+            ) : (
+              <span className="text-xs text-slate-400" title="Nenhuma solicitação de compra registrada para este item">
+                —
+              </span>
+            )}
+          </div>
+        );
+      },
+      meta: { variante: "data", label: "Último pedido", align: "center" },
+      enableSorting: true,
+    },
+
     // 10. Curva ABC sistema
     {
       id: "curvaAbcSistema",

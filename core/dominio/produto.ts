@@ -33,4 +33,9 @@ export interface Produto {
   readonly loteMultiplo: number; // 1 = avulso, 2 = par, 4 = jogo
   readonly dataUltimaVenda?: string | null;
   readonly dataUltimaCompra?: string | null;
+  /**
+   * Data da última solicitação de compra. Nível de PRODUTO: a fonte do cliente
+   * não distingue a loja que pediu.
+   */
+  readonly dataUltimoPedido?: string | null;
 }

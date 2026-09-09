@@ -546,3 +546,26 @@ SELECTCOLUMNS(
 ORDER BY [Produto], [Data]
 `.trim();
 }
+
+/**
+ * Data do último PEDIDO (solicitação de compra) por produto.
+ *
+ * Fonte: TBL_SOLICITACOES_COMPRAS_HIST, publicada pelo cliente. Cobre 15.219
+ * produtos, de set/2024 até hoje.
+ *
+ * NÍVEL DE PRODUTO, NÃO DE LOJA: todas as 88.277 solicitações têm ACODEMPRESA
+ * igual a "1" — a tabela não distingue a loja que pediu. Rotular por loja seria
+ * inventar precisão que o dado não tem.
+ *
+ * A QUANTIDADE em aberto NÃO é usada como "já pedido" no motor: das 100
+ * solicitações abertas e aprovadas, nenhuma tem PEDIDO_COMPRA_ID, ou seja, nenhuma
+ * virou pedido ao fornecedor. Tratar pedido interno como mercadoria a caminho
+ * faria o motor comprar menos do que precisa.
+ */
+export const CONSULTA_DAX_ULTIMO_PEDIDO = `
+EVALUATE
+SUMMARIZECOLUMNS(
+    TBL_SOLICITACOES_COMPRAS_HIST[CODIGO_PRODUTO],
+    "UltimoPedido", MAX(TBL_SOLICITACOES_COMPRAS_HIST[DH_CRIACAO])
+)
+`.trim();

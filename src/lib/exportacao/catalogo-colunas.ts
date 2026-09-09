@@ -62,6 +62,7 @@ const colunas: readonly ColunaExportavel[] = [
   { id: "dias_sem_venda", rotulo: "Dias sem venda", tipo: "inteiro", grupo: "Estoque", extrair: (i) => i.diasSemVenda ?? null },
   { id: "ultima_venda", rotulo: "Última venda", tipo: "data", grupo: "Estoque", extrair: (i) => i.dtUltVenda ?? null },
   { id: "ultima_compra", rotulo: "Última compra", tipo: "data", grupo: "Estoque", extrair: (i) => i.dtUltimaCompra ?? null },
+  { id: "ultimo_pedido", rotulo: "Último pedido", tipo: "data", grupo: "Estoque", extrair: (i) => i.dtUltimoPedido ?? null },
 
   // ---- Demanda ----
   { id: "vendas_30d", rotulo: "Vendas 30d", tipo: "inteiro", grupo: "Demanda", extrair: (i) => i.vendasLiquidas30d },

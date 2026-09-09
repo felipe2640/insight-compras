@@ -141,6 +141,8 @@ export interface LinhaCockpitMatriz {
   readonly custo?: number;
   readonly dtUltVenda?: string | null;
   readonly dtUltimaCompra?: string | null;
+  /** Última solicitação de compra. Nível de produto: a fonte não separa por loja. */
+  readonly dtUltimoPedido?: string | null;
   readonly curvaAbcSistema?: string;
   readonly produtosVend90d?: number;
   readonly consumoDiario?: number;
