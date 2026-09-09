@@ -270,7 +270,10 @@ export function CockpitPrincipal({
     }
 
     return {
-      totalSkus: itensComOverrides.length,
+      // Tamanho do CATÁLOGO, não do que já chegou ao navegador. Durante a carga
+      // progressiva, contar o que está em memória faria esta KPI dizer 2.236
+      // enquanto o chip "Todos" diz 19.118 — dois números para a mesma coisa.
+      totalSkus: gradeInicial ? grade.contagens.total : itensComOverrides.length,
       pecasTotaisSugeridas,
       valorTotalSugerido,
       totalRupturas,
@@ -278,7 +281,7 @@ export function CockpitPrincipal({
       totalTransferencias,
       totalZumbis,
     };
-  }, [itensComOverrides]);
+  }, [itensComOverrides, gradeInicial, grade.contagens.total]);
 
   // 8. Lista de Lojas Formatada
   const listaLojas = useMemo(() => {
