@@ -88,96 +88,67 @@ describe("Adaptador Carreiro & Cliente DAX REST API (Marco 2)", () => {
   describe("AdaptadorInventarioCarreiro", () => {
     it("deve orquestrar consultas DAX e retornar RespostaCargaInventario consolidada", async () => {
       const mockFetch = vi.fn();
-
-      // 4 queries paralelas do carregarInventarioCompleto:
-      // 1. Produtos/Estoque
-      mockFetch.mockResolvedValueOnce({
+      const resposta = (rows: unknown[]) => ({
         ok: true,
-        json: async () => ({
-          results: [
-            {
-              tables: [
-                {
-                  rows: [
-                    {
-                      "PRODUTOS[ACODPRODUTO]": 501,
-                      "PRODUTOS[ACODEMPRESA]": 1,
-                      "PRODUTOS[ADESCRICAO]": "DISCO DE FREIO FREMAX",
-                      "PRODUTOS[AMARCA]": "FREMAX",
-                      "PRODUTOS[NESTOQATUAL]": 14,
-                      "PRODUTOS[NPRECOCOMPRA]": 90,
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        }),
+        json: async () => ({ results: [{ tables: [{ rows }] }] }),
       });
+
+      // Ordem das chamadas no Promise.all do adaptador:
+      // 1. atributos de produto  2. histórico  3..7. posição das 5 lojas  8. entradas
+      // (similares não é consultada: a tabela não existe no modelo do cliente)
+
+      // 1. Atributos — SEM medidas de estoque, que vêm da consulta de posição
+      mockFetch.mockResolvedValueOnce(
+        resposta([
+          {
+            "[Produto]": 501,
+            "[Empresa]": 1,
+            "[Descricao]": "DISCO DE FREIO FREMAX",
+            "[Marca]": "FREMAX",
+            "[PrecoCompraERP]": 90,
+          },
+        ])
+      );
 
       // 2. Histórico
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          results: [
-            {
-              tables: [
-                {
-                  rows: [
-                    {
-                      "PRODUTOS[ACODPRODUTO]": 501,
-                      "CADEMP[ACODEMP]": 1,
-                      VendasQtd30d: 5,
-                      VendasQtd90d: 15,
-                      VendasQtd180d: 30,
-                      NotasVenda90d: 8,
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        }),
-      });
+      mockFetch.mockResolvedValueOnce(
+        resposta([
+          {
+            "PRODUTOS[ACODPRODUTO]": 501,
+            "CADEMP[ACODEMP]": 1,
+            "[VendasQtd30d]": 5,
+            "[VendasQtd90d]": 15,
+            "[VendasQtd180d]": 30,
+            "[NotasVenda90d]": 8,
+            "[MesesAtivos12m]": 6,
+            "[MedianaLinhaVenda]": 2,
+          },
+        ])
+      );
 
-      // 3. Entradas
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          results: [
-            {
-              tables: [
-                {
-                  rows: [
-                    {
-                      Produto: 501,
-                      Filial: 1,
-                      Quantidade: 10,
-                      Observacao: "NF-888999",
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        }),
-      });
+      // 3. Posição da filial 1 (as demais voltam vazias)
+      mockFetch.mockResolvedValueOnce(
+        resposta([
+          {
+            "PRODUTOS[ACODPRODUTO]": 501,
+            "[EstoqueQtd]": 14,
+            "[EstoqueMinimo]": 4,
+            "[ConsumoMedioDiario]": 0.25,
+            "[DiasSemVenda]": 3,
+            "[DecisaoCompra]": "MANTER COMPRAS",
+            "[MargemRealizada]": 0.38,
+            "[MargemAlvo]": 0.42,
+          },
+        ])
+      );
+      for (let i = 0; i < 4; i += 1) {
+        mockFetch.mockResolvedValueOnce(resposta([]));
+      }
 
-      // 4. Similares
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          results: [
-            {
-              tables: [
-                {
-                  rows: [],
-                },
-              ],
-            },
-          ],
-        }),
-      });
+      // 8. Entradas de NF-e do dia
+      mockFetch.mockResolvedValueOnce(
+        resposta([{ Produto: 501, Filial: 1, Quantidade: 10, Observacao: "NF-888999" }])
+      );
 
       const clienteDax = new ClienteDaxPowerBI({
         accessTokenFixo: "TOKEN_FIXO",
@@ -192,8 +163,20 @@ describe("Adaptador Carreiro & Cliente DAX REST API (Marco 2)", () => {
       expect(inventario.produtos).toHaveLength(1);
       expect(inventario.produtos[0].id).toBe(501);
       expect(inventario.produtos[0].loteMultiplo).toBe(2); // Disco de freio = lote 2 (par)
-      expect(inventario.estoques.get("501:1")?.saldoFisico).toBe(14);
+
+      // A posição vem da consulta por loja, não mais dos atributos.
+      const estoque = inventario.estoques.get("501:1");
+      expect(estoque?.saldoFisico).toBe(14);
+      expect(estoque?.estoqueMinimoSeguranca).toBe(4);
+      expect(estoque?.consumoMedioDiarioErp).toBe(0.25);
+      expect(estoque?.sinalGovernancaCompra).toBe("MANTER");
+      expect(estoque?.margemRealizada).toBe(0.38);
+      expect(estoque?.margemAlvo).toBe(0.42);
+      // Pedido em aberto continua declarado como não medido nesta fonte.
+      expect(estoque?.camposIndisponiveis).toContain("quantidadeJaPedida");
+
       expect(inventario.historicos.get("501:1")?.vendasLiquidas90dias).toBe(15);
+      expect(inventario.historicos.get("501:1")?.mesesAtivos12meses).toBe(6);
       expect(inventario.entradasHoje).toHaveLength(1);
       expect(inventario.entradasHoje[0].numeroNotaFiscal).toBe("NF-888999");
       expect(inventario.metadados.provedor).toBe("POWERBI_FABRIC_DAX");

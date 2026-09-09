@@ -39,3 +39,6 @@ Thumbs.db
 # Arquivos temporários e dados brutos locais
 *.tmp
 scratch/
+
+# Snapshot de dados reais do cliente (31 MB, contém posição de estoque e margens)
+data/carreiro/

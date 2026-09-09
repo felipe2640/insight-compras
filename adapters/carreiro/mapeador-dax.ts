@@ -32,6 +32,21 @@ export const NOMES_FILIAIS_CARREIRO: Readonly<Record<number, string>> = {
 };
 
 /**
+ * Nome EXATO de cada filial na tabela CADEMP do modelo semântico.
+ *
+ * Difere do rótulo de exibição em `NOMES_FILIAIS_CARREIRO`: as consultas que
+ * filtram por loja precisam do valor literal de 'CADEMP'[ANOMEFANTASIA],
+ * conferido ao vivo em 07/09/2026.
+ */
+export const NOMES_CADEMP_CARREIRO: Readonly<Record<number, string>> = {
+  1: "CARREIRO PEDRO II",
+  2: "MELO DISTRIBUIDORA",
+  3: "CARREIRO PORANGA",
+  4: "CEARA AUTO PECAS CAMPO MAIOR",
+  5: "CARREIRO JOSE DE FREITAS",
+};
+
+/**
  * Identifica o código inteiro (1 a 5) e o nome oficial da filial a partir
  * de GUIDs do CADEMP, códigos numéricos ou strings de nome.
  */

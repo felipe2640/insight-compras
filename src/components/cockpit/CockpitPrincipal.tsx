@@ -193,12 +193,22 @@ export function CockpitPrincipal({
     let totalRupturas = 0;
     let totalTransferencias = 0;
     let totalZumbis = 0;
+    // A ruptura só é exibível se a fonte do cliente REALMENTE mediu dias zerados.
+    // Quando não mede, o cockpit mostra "—": um zero aqui afirmaria que nenhuma
+    // peça faltou no balcão, que é diferente de "não sabemos".
+    let rupturaMedida = false;
 
-    for (const item of itensFiltrados) {
+    // Os KPIs resumem a REDE, não a aba aberta. Recalcular sobre o filtro fazia
+    // "Catálogo Total" cair para 114 ao abrir em Comprar, e "Travas Anti-Encalhe"
+    // zerar mesmo com 2.001 itens travados — o cabeçalho contradizia os chips.
+    for (const item of itensComOverrides) {
       const qtdCompra = item.pedidoCustom > 0 ? item.pedidoCustom : item.sugestaoFinalCompra;
       if (qtdCompra > 0) {
         pecasTotaisSugeridas += qtdCompra;
         valorTotalSugerido += qtdCompra * item.precoCusto;
+      }
+      if (item.rupturaPercentual !== null) {
+        rupturaMedida = true;
       }
       if (item.classificacaoRuptura === "Grave" || item.classificacaoRuptura === "Atenção") {
         totalRupturas++;
@@ -212,14 +222,15 @@ export function CockpitPrincipal({
     }
 
     return {
-      totalSkus: itensFiltrados.length,
+      totalSkus: itensComOverrides.length,
       pecasTotaisSugeridas,
       valorTotalSugerido,
       totalRupturas,
+      rupturaMedida,
       totalTransferencias,
       totalZumbis,
     };
-  }, [itensFiltrados]);
+  }, [itensComOverrides]);
 
   // 8. Lista de Lojas Formatada
   const listaLojas = useMemo(() => {
@@ -463,17 +474,32 @@ export function CockpitPrincipal({
             </div>
 
             {/* Rupturas no Balcão */}
-            <div className="bg-white p-3 rounded-xl border border-rose-200 bg-rose-50/40 shadow-sm dark:border-rose-900 dark:bg-rose-950/20 flex flex-col justify-between">
-              <span className="text-rose-800 font-semibold uppercase text-[10px] dark:text-rose-300">
-                Rupturas Críticas
-              </span>
-              <div className="flex items-baseline justify-between mt-1">
-                <span className="text-xl font-black text-rose-700 dark:text-rose-400">
-                  {kpis.totalRupturas.toLocaleString("pt-BR")}
+            {kpis.rupturaMedida ? (
+              <div className="bg-white p-3 rounded-xl border border-rose-200 bg-rose-50/40 shadow-sm flex flex-col justify-between">
+                <span className="text-rose-800 font-semibold uppercase text-[10px]">
+                  Rupturas Críticas
                 </span>
-                <span className="text-[11px] font-medium text-rose-600 dark:text-rose-400">Saldo 0 com saída</span>
+                <div className="flex items-baseline justify-between mt-1">
+                  <span className="text-xl font-black text-rose-700">
+                    {kpis.totalRupturas.toLocaleString("pt-BR")}
+                  </span>
+                  <span className="text-[11px] font-medium text-rose-600">Saldo 0 com saída</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div
+                className="bg-white p-3 rounded-xl border border-slate-200 bg-slate-50/60 shadow-sm flex flex-col justify-between"
+                title="A fonte de dados deste cliente não expõe histórico de saldo diário, então dias de ruptura não são medidos. Exibir zero aqui afirmaria que nenhuma peça faltou."
+              >
+                <span className="text-slate-600 font-semibold uppercase text-[10px]">
+                  Rupturas Críticas
+                </span>
+                <div className="flex items-baseline justify-between mt-1">
+                  <span className="text-xl font-black text-slate-400">—</span>
+                  <span className="text-[11px] font-medium text-slate-500">Não medido na fonte</span>
+                </div>
+              </div>
+            )}
 
             {/* Transferência Segura */}
             <div className="bg-white p-3 rounded-xl border border-indigo-200 bg-indigo-50/40 shadow-sm dark:border-indigo-900 dark:bg-indigo-950/20 flex flex-col justify-between">

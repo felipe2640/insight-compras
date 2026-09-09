@@ -11,6 +11,9 @@ async function CarregarDadosCockpit() {
   const carga = await adaptador.carregarInventarioCompleto({
     fornecedoresPermitidos: null,
     filialId: 1,
+    // O comprador decide sobre o que tem saldo ou saiu recentemente. Trazer o
+    // catálogo inteiro enche a grade de item morto e atrasa a carga.
+    apenasComEstoqueOuVenda: true,
   });
   // Parâmetros calibrados do tenant (Carreiro: fator 0,90 do backtest).
   const linhas = converterParaLinhasCockpit(carga, montarOpcoesMatriz(1));
