@@ -39,6 +39,9 @@ import {
 } from "@/components/ui/data-grid";
 import { DialogSimilares } from "@/components/tooltips/DialogSimilares";
 import { BannerRascunho } from "./BannerRascunho";
+import { DialogExportacao } from "./DialogExportacao";
+import { obterTenantAtivo, montarNomesFiliais } from "@/lib/cockpit/opcoes-tenant";
+import type { ContextoExportacao } from "@/lib/exportacao/tipos";
 import { CurvaABC } from "@core/dominio";
 import { cn } from "@/lib/utils";
 
@@ -331,40 +334,34 @@ export function CockpitPrincipal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // 13. Exportar Pedidos para CSV
-  const handleExportarCsv = useCallback(() => {
-    const itensParaComprar = itensComOverrides.filter(
-      (item) => (item.pedidoCustom > 0 || item.sugestaoFinalCompra > 0)
-    );
-
-    if (itensParaComprar.length === 0) {
-      alert("Nenhum item com quantidade para compra neste filtro.");
-      return;
-    }
-
-    const cabecalho = "SKU;Descricao;Marca;Fornecedor;QtdSugerida;QtdComprador;PrecoCusto;ValorTotal;Motivo\n";
-    const linhasCsv = itensParaComprar
-      .map((item) => {
-        const qtd = item.pedidoCustom > 0 ? item.pedidoCustom : item.sugestaoFinalCompra;
-        const total = (qtd * item.precoCusto).toFixed(2);
-        return `"${item.codigoSku}";"${item.descricao}";"${item.marca}";"${item.nomeFornecedor ?? ""}";${item.sugestaoFinalCompra};${qtd};${item.precoCusto.toFixed(2)};${total};"${item.motivoDecisao}"`;
-      })
-      .join("\n");
-
-    const blob = new Blob([cabecalho + linhasCsv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `pedido_carreiro_loja${lojaFocoId}_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, [itensComOverrides, lojaFocoId]);
+  // 13. Exportação configurável por cliente (layouts, formato e colunas do tenant)
+  const [dialogExportacaoAberto, setDialogExportacaoAberto] = useState(false);
+  const tenantAtivo = useMemo(() => obterTenantAtivo(), []);
+  const nomesFiliaisTenant = useMemo(() => montarNomesFiliais(tenantAtivo), [tenantAtivo]);
+  const contextoExportacao = useMemo<ContextoExportacao>(
+    () => ({
+      tenantId: tenantAtivo.id,
+      nomeTenant: tenantAtivo.nome,
+      filialId: lojaFocoId,
+      nomeLoja: nomesFiliaisTenant[lojaFocoId] ?? `Loja ${lojaFocoId}`,
+      dataReferencia: new Date(),
+    }),
+    [tenantAtivo, nomesFiliaisTenant, lojaFocoId]
+  );
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
       {/* 1. Menu Lateral Retrátil com Navegação e Configurações */}
       <AppSidebar />
+
+      <DialogExportacao
+        aberto={dialogExportacaoAberto}
+        onFechar={() => setDialogExportacaoAberto(false)}
+        itensFiltrados={itensFiltrados as LinhaCockpitMatriz[]}
+        itensSelecionados={table.getSelectedRowModel().rows.map((r) => r.original as LinhaCockpitMatriz)}
+        configuracao={tenantAtivo.exportacao}
+        contexto={contextoExportacao}
+      />
 
       {/* 2. Conteúdo Principal Rolável */}
       <div className="flex flex-1 flex-col overflow-y-auto">
@@ -406,12 +403,12 @@ export function CockpitPrincipal({
 
               <button
                 type="button"
-                onClick={handleExportarCsv}
+                onClick={() => setDialogExportacaoAberto(true)}
                 className="bg-[#D4AF37] hover:bg-[#B89628] text-slate-950 font-bold px-3 py-1.5 rounded shadow flex items-center gap-1.5 transition-colors"
-                title="Exportar pedidos para arquivo CSV"
+                title="Exportar pedidos e transferências (CSV, XLSX ou PDF) no layout do cliente"
               >
                 <Download className="h-3.5 w-3.5" />
-                Exportar CSV
+                Exportar
               </button>
 
               <Link

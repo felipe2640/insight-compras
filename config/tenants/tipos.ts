@@ -5,6 +5,7 @@
  */
 
 import { ParametrosMotorCompra } from "@core/calculo/necessidade";
+import { ConfiguracaoExportacaoTenant } from "@/lib/exportacao/tipos";
 
 export interface CoresInstitucionaisTenant {
   /** Cor de destaque principal (botões, cabeçalhos, destaques) - ex: #0F2B5C */
@@ -122,6 +123,12 @@ export interface ConfiguracaoTenant {
   readonly assinatura: AssinaturaInsightDTenant;
   /** Parâmetros calibrados do motor de compra deste cliente. */
   readonly parametrosMotor: ParametrosMotorTenant;
+  /**
+   * Layouts de exportação (CSV/XLSX/PDF) deste cliente.
+   * O ERP e os fornecedores de cada cliente exigem colunas, rótulos e
+   * separadores próprios; o motor de exportação é comum, o layout é daqui.
+   */
+  readonly exportacao: ConfiguracaoExportacaoTenant;
 }
 
 /**
