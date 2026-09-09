@@ -1,4 +1,4 @@
-import React, { Suspense } from "react";
+import React from "react";
 import { obterAdaptadorInventario } from "@adapters/index";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
 import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
@@ -38,25 +38,19 @@ async function CarregarDadosCockpit() {
   );
 }
 
-function EsqueletoCarregamento() {
-  return (
-    <div className="flex flex-col min-h-screen bg-slate-100 p-4 animate-pulse">
-      <div className="h-14 bg-[#0F2B5C] rounded-lg mb-4" />
-      <div className="grid grid-cols-5 gap-3 mb-4">
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="h-20 bg-white rounded-lg border border-slate-200" />
-        ))}
-      </div>
-      <div className="h-12 bg-white rounded-lg border border-slate-200 mb-4" />
-      <div className="flex-1 min-h-[500px] bg-white rounded-lg border border-slate-200" />
-    </div>
-  );
-}
-
+/**
+ * SEM <Suspense> DE PROPÓSITO.
+ *
+ * Com um limite de Suspense em volta deste componente de servidor assíncrono, o
+ * React servia o HTML mas NUNCA terminava de hidratar esta subárvore sozinho —
+ * medido: 30 s sem interação e nenhum efeito rodava. A grade parecia pronta e
+ * respondia a cliques (hidratação seletiva), mas nada que dependesse de
+ * useEffect acontecia: nem a carga do catálogo completo, nem a sessão no rodapé
+ * do menu. Tirar o limite resolveu — efeitos rodam em ~1,3 s.
+ *
+ * A página é `force-dynamic` e espera o servidor de qualquer forma, então o
+ * esqueleto que o limite exibia comprava pouco e custava a interatividade.
+ */
 export default function PaginaCockpitCompras() {
-  return (
-    <Suspense fallback={<EsqueletoCarregamento />}>
-      <CarregarDadosCockpit />
-    </Suspense>
-  );
+  return <CarregarDadosCockpit />;
 }

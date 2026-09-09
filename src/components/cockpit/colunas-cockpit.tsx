@@ -153,7 +153,7 @@ export function criarColunasCockpit({
           </div>
         );
       },
-      meta: {
+      meta: { variante: "texto",
         label: "Código",
         align: "left",
         pinned: "left",
@@ -174,7 +174,7 @@ export function criarColunasCockpit({
           {row.original.descricao}
         </div>
       ),
-      meta: {
+      meta: { variante: "texto",
         label: "Descrição",
         align: "left",
         pinned: "left",
@@ -210,7 +210,7 @@ export function criarColunasCockpit({
           </TooltipProvider>
         );
       },
-      meta: {
+      meta: { variante: "texto",
         label: "Aplicação",
         align: "left",
       },
@@ -230,7 +230,7 @@ export function criarColunasCockpit({
           {row.original.refFabricante || "—"}
         </span>
       ),
-      meta: { label: "Ref. Fabric", align: "left" },
+      meta: { variante: "texto", label: "Ref. Fabric", align: "left" },
       enableSorting: true,
     },
 
@@ -247,7 +247,7 @@ export function criarColunasCockpit({
           {row.original.marca || "—"}
         </span>
       ),
-      meta: { label: "Marca", align: "left" },
+      meta: { variante: "texto", label: "Marca", align: "left" },
       enableSorting: true,
     },
 
@@ -264,7 +264,7 @@ export function criarColunasCockpit({
           {formatarMoedaPtBr(row.original.custo ?? row.original.precoCusto ?? 0)}
         </span>
       ),
-      meta: { label: "Custo", align: "right" },
+      meta: { variante: "numero", label: "Custo", align: "right" },
       enableSorting: true,
     },
 
@@ -281,7 +281,7 @@ export function criarColunasCockpit({
           {formatarDataPtBr(row.original.dtUltVenda)}
         </span>
       ),
-      meta: { label: "Dt Ult Venda", align: "center" },
+      meta: { variante: "data", label: "Dt Ult Venda", align: "center" },
       enableSorting: true,
     },
 
@@ -298,7 +298,7 @@ export function criarColunasCockpit({
           {formatarDataPtBr(row.original.dtUltimaCompra)}
         </span>
       ),
-      meta: { label: "Última compra", align: "center" },
+      meta: { variante: "data", label: "Última compra", align: "center" },
       enableSorting: true,
     },
 
@@ -326,7 +326,7 @@ export function criarColunasCockpit({
           </div>
         );
       },
-      meta: { label: "Curva ABC", align: "center" },
+      meta: { variante: "selecao", label: "Curva ABC", align: "center" },
       enableSorting: true,
     },
 
@@ -343,7 +343,7 @@ export function criarColunasCockpit({
           {formatarNumero(row.original.produtosVend90d ?? 0, 0)}
         </span>
       ),
-      meta: { label: "Produtos Vend 90d", align: "center" },
+      meta: { variante: "numero", label: "Produtos Vend 90d", align: "center" },
       enableSorting: true,
     },
 
@@ -360,7 +360,7 @@ export function criarColunasCockpit({
           {formatarNumero(row.original.notasLiquidas90d, 0)}
         </span>
       ),
-      meta: { label: "Notas Líq. 90d", align: "center" },
+      meta: { variante: "numero", label: "Notas Líq. 90d", align: "center" },
       enableSorting: true,
     },
 
@@ -377,7 +377,7 @@ export function criarColunasCockpit({
           {(row.original.consumoDiario ?? 0).toFixed(4)}
         </span>
       ),
-      meta: { label: "Consumo Diário", align: "center" },
+      meta: { variante: "numero", label: "Consumo Diário", align: "center" },
       enableSorting: true,
     },
 
@@ -394,7 +394,7 @@ export function criarColunasCockpit({
           {(row.original.consumoMensal ?? 0).toFixed(2)}
         </span>
       ),
-      meta: { label: "Consumo Mensal", align: "center" },
+      meta: { variante: "numero", label: "Consumo Mensal", align: "center" },
       enableSorting: true,
     },
 
@@ -413,7 +413,7 @@ export function criarColunasCockpit({
             : `${row.original.vendaACadaDias.toFixed(1)} d`}
         </span>
       ),
-      meta: { label: "Venda a cada", align: "center" },
+      meta: { variante: "numero", label: "Venda a cada", align: "center" },
       enableSorting: true,
     },
 
@@ -430,7 +430,7 @@ export function criarColunasCockpit({
           {formatarNumero(row.original.consumoUltimos30DiasQtd ?? 0, 0)}
         </span>
       ),
-      meta: { label: "Consumo Últ. 30 Dias (qtd)", align: "center" },
+      meta: { variante: "numero", label: "Consumo Últ. 30 Dias (qtd)", align: "center" },
       enableSorting: true,
     },
 
@@ -458,7 +458,7 @@ export function criarColunasCockpit({
           </div>
         );
       },
-      meta: { label: "Giro últ. venda", align: "center" },
+      meta: { variante: "selecao", label: "Giro últ. venda", align: "center" },
       enableSorting: true,
     },
 
@@ -484,7 +484,7 @@ export function criarColunasCockpit({
           </div>
         );
       },
-      meta: { label: "Frequência", align: "center" },
+      meta: { variante: "selecao", label: "Frequência", align: "center" },
       enableSorting: true,
     },
 
@@ -503,7 +503,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: "Consumo", align: "center" },
+      meta: { variante: "selecao", label: "Consumo", align: "center" },
       enableSorting: true,
     },
 
@@ -531,7 +531,7 @@ export function criarColunasCockpit({
           </div>
         );
       },
-      meta: { label: "Ruptura", align: "center" },
+      meta: { variante: "selecao", label: "Ruptura", align: "center" },
       enableSorting: true,
     },
 
@@ -550,7 +550,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: "Período ideal", align: "center" },
+      meta: { variante: "selecao", label: "Período ideal", align: "center" },
       enableSorting: true,
     },
 
@@ -569,7 +569,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: "Hist vendas 90d", align: "center" },
+      meta: { variante: "numero", label: "Hist vendas 90d", align: "center" },
       enableSorting: true,
     },
 
@@ -588,7 +588,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: "Hist prod vend 90d", align: "center" },
+      meta: { variante: "numero", label: "Hist prod vend 90d", align: "center" },
       enableSorting: true,
     },
 
@@ -607,7 +607,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: "Dias sem venda", align: "center" },
+      meta: { variante: "numero", label: "Dias sem venda", align: "center" },
       enableSorting: true,
     },
 
@@ -626,7 +626,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: rotuloEstoqueFoco, align: "center" },
+      meta: { variante: "numero", label: rotuloEstoqueFoco, align: "center" },
       enableSorting: true,
     },
 
@@ -645,7 +645,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: rotuloEstoqueOutra, align: "center" },
+      meta: { variante: "numero", label: rotuloEstoqueOutra, align: "center" },
       enableSorting: true,
     },
 
@@ -680,7 +680,7 @@ export function criarColunasCockpit({
           </div>
         );
       },
-      meta: { label: "Mov nova", align: "center" },
+      meta: { variante: "selecao", label: "Mov nova", align: "center" },
       enableSorting: true,
     },
 

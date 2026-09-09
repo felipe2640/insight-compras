@@ -6,6 +6,10 @@ import {
   useReactTable,
   getCoreRowModel,
   getSortedRowModel,
+  getFilteredRowModel,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
+  ColumnFiltersState,
   SortingState,
   ColumnPinningState,
   VisibilityState,
@@ -28,6 +32,9 @@ import { useSessionDraft } from "@/hooks/useSessionDraft";
 import { NOMES_FILIAIS_CARREIRO } from "@adapters/carreiro/mapeador-dax";
 import { AppSidebar, UsuarioSidebar } from "@/components/layout/app-sidebar";
 import { PayloadGradeTabular, PAYLOAD_TABULAR_VAZIO } from "@/lib/cockpit/codificacao-tabular";
+import { funcaoFiltroColuna } from "@/lib/cockpit/filtro-tanstack";
+import { ChipsFiltroColuna } from "@/components/cockpit/ChipsFiltroColuna";
+import { LegendaGrade } from "@/components/cockpit/LegendaGrade";
 import { ContagensStatusGrade } from "@/lib/cockpit/escopo-grade";
 import { useGradeProgressiva } from "@/hooks/useGradeProgressiva";
 import { AvisoCatalogo } from "@/components/cockpit/AvisoCatalogo";
@@ -304,6 +311,8 @@ export function CockpitPrincipal({
   });
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  // Filtros tipados por coluna: compõem com a busca livre e os chips de status.
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [rowHeight, setRowHeight] = useState<"compact" | "default" | "relaxed">("default");
 
   const handleSortChange = useCallback((optionId: string, desc?: boolean) => {
@@ -333,16 +342,24 @@ export function CockpitPrincipal({
       columnPinning,
       columnSizing,
       rowSelection,
+      columnFilters,
     },
     enableRowSelection: true,
     enableColumnResizing: true,
     columnResizeMode: "onChange",
     onRowSelectionChange: setRowSelection,
+    onColumnFiltersChange: setColumnFilters,
+    filterFns: { coluna: funcaoFiltroColuna },
+    defaultColumn: { filterFn: funcaoFiltroColuna },
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
     onColumnPinningChange: setColumnPinning,
     onColumnSizingChange: setColumnSizing,
     getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    // Valores distintos por coluna, para o filtro "é um de". Calculado sob demanda.
+    getFacetedRowModel: getFacetedRowModel(),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
     getSortedRowModel: getSortedRowModel(),
   });
 
@@ -707,6 +724,10 @@ export function CockpitPrincipal({
 
         {/* 5. Seção da Grade Operacional Fiel com TanStack Virtualizer e 29 Colunas */}
         <main className="max-w-[1920px] mx-auto px-4 pb-6 w-full flex-1 flex flex-col">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <ChipsFiltroColuna table={table} />
+            <LegendaGrade className="ml-auto" />
+          </div>
           <DataTableSection
             table={table}
             filteredCount={itensFiltrados.length}

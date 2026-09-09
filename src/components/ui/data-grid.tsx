@@ -53,9 +53,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { FiltroColunaPopover } from "@/components/ui/filtro-coluna-popover";
 
 export type ColumnMeta = {
   label?: string;
+  /** Tipo do dado da coluna. Só colunas com variante ganham filtro no cabeçalho. */
+  variante?: "texto" | "numero" | "selecao" | "data";
   align?: "left" | "center" | "right";
   width?: number | string;
   pinned?: "left" | "right" | false;
@@ -328,6 +331,9 @@ export function DataGrid<TData>({
                           <ColumnMenuTrigger header={header} align={align} label={renderedHeader} />
                         ) : (
                           renderedHeader ?? <ColumnMenuTrigger header={header} align={align} />
+                        )}
+                        {meta?.variante && header.column.getCanFilter() && (
+                          <FiltroColunaPopover header={header} />
                         )}
                         <div
                           onMouseDown={header.getResizeHandler()}
