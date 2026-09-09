@@ -450,9 +450,14 @@ export function mapearSimilaresDax(
       saldoFisicoDisponivelRede: saldoDisponivel,
     };
 
+    // O mesmo par aparece repetido em PRODUTOS_SEMELHANTES (uma vez por empresa).
+    // Sem deduplicar, o diálogo de intercambiáveis lista a mesma peça cinco
+    // vezes e o comprador acha que tem cinco alternativas onde só existe uma.
     const existentes = mapaSimilares.get(idOrigem) ?? [];
-    existentes.push(itemSimilar);
-    mapaSimilares.set(idOrigem, existentes);
+    if (!existentes.some((e) => e.produtoIdSimilar === idSimilar)) {
+      existentes.push(itemSimilar);
+      mapaSimilares.set(idOrigem, existentes);
+    }
   }
 
   return mapaSimilares;

@@ -18,7 +18,8 @@ import { GerenciadorCacheResiliente } from "./cache-resiliente";
 import {
   CONSULTA_DAX_FRESCOR,
   CONSULTA_DAX_ENTRADAS_HOJE,
-  CONSULTA_DAX_SIMILARES,
+  gerarConsultaDaxSimilares,
+  TAMANHO_PAGINA_SIMILARES,
   gerarConsultaDaxProdutosEstoque,
   TAMANHO_PAGINA_PRODUTOS,
   gerarConsultaDaxPosicaoEstoque,
@@ -151,11 +152,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
               console.warn("[Adaptador Carreiro] Aviso ao consultar MOVESTOQ entradas:", e);
               return [] as readonly Record<string, unknown>[];
             }),
-            // A tabela TMP_AUDIT_PRODUTOS_SEMELHANTES_20260819 não está carregada no
-            // modelo semântico do cliente (confirmado ao vivo: "não é um nome de
-            // tabela válido"). Consultar a cada carga só gasta round-trip e polui o
-            // log com erro esperado. Reativar quando o BI publicar a tabela.
-            Promise.resolve([] as readonly Record<string, unknown>[]),
+            this.carregarSimilaresPaginado(),
           ]);
 
           const produtos = mapearProdutosDax(linhasAtributos);
@@ -275,6 +272,42 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
       // do que repetir a mesma página para sempre.
       if (!proximoCursor || proximoCursor === cursor) break;
       cursor = proximoCursor;
+    }
+
+    return todas;
+  }
+
+
+  /**
+   * Intercambiáveis, em páginas por ID.
+   *
+   * A tabela PRODUTOS_SEMELHANTES passou a existir no modelo do cliente em
+   * 09/09/2026 (antes era uma temporária de auditoria, e a carga vinha vazia).
+   * São 135.334 pares contra um teto de resposta de 100.000 — sem paginar,
+   * 35 mil relações sumiriam em silêncio.
+   *
+   * Falhar aqui NÃO derruba a carga: sem similares o cockpit perde o aviso de
+   * "existe equivalente com saldo", mas a compra continua decidível.
+   */
+  private async carregarSimilaresPaginado(): Promise<readonly Record<string, unknown>[]> {
+    const MAXIMO_PAGINAS = 20;
+    const todas: Record<string, unknown>[] = [];
+    let cursor: number | null = null;
+
+    try {
+      for (let pagina = 0; pagina < MAXIMO_PAGINAS; pagina++) {
+        const linhas = await this.clienteDax.executarConsultaDax(gerarConsultaDaxSimilares(cursor));
+        todas.push(...(linhas as Record<string, unknown>[]));
+        if (linhas.length < TAMANHO_PAGINA_SIMILARES) break;
+
+        const ultimo = linhas[linhas.length - 1] as Record<string, unknown>;
+        const proximo = Number(ultimo?.Id);
+        if (!Number.isFinite(proximo) || proximo === cursor) break;
+        cursor = proximo;
+      }
+    } catch (erro) {
+      console.warn("[Adaptador Carreiro] Aviso ao consultar PRODUTOS_SEMELHANTES:", erro);
+      return todas;
     }
 
     return todas;

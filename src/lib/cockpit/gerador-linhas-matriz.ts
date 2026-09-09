@@ -605,7 +605,11 @@ export function converterParaLinhasCockpit(
       statusMovimentacao,
       sugestaoCompra: sugestaoFinalCompra,
       sugestaoTransferencia: quantidadeTransferenciaSugerida,
-      temSimilarComEstoque: similares.length > 0,
+      // COM ESTOQUE, não "existe similar cadastrado". A linha roxa manda o
+      // comprador conferir antes de comprar porque há equivalente disponível na
+      // rede; se todos estão zerados, não há nada para conferir e o aviso vira
+      // ruído que ensina a ignorar a cor.
+      temSimilarComEstoque: similares.some((s) => s.saldoFisicoDisponivelRede > 0),
       exigeMultiploEmbalagem: loteMultiplo > 1,
     });
   }

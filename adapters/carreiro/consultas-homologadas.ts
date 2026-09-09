@@ -454,12 +454,39 @@ FILTER(
 /**
  * 7. Consulta de Peças Similares Intercambiáveis (TMP_AUDIT_PRODUTOS_SEMELHANTES_20260819)
  */
-export const CONSULTA_DAX_SIMILARES = `
+/**
+ * Página da tabela de intercambiáveis.
+ *
+ * PRODUTOS_SEMELHANTES tem 135.334 linhas e a resposta da API para no teto de
+ * 100.000 — medido ao vivo em 09/09/2026, sem erro nenhum. Paginar por ID é o
+ * que garante que o par que falta não seja justamente o que o comprador
+ * precisava ver antes de comprar uma peça que já existe na rede com outra marca.
+ */
+export const TAMANHO_PAGINA_SIMILARES = 40000;
+
+export function gerarConsultaDaxSimilares(cursor?: number | null): string {
+  const clausulaCursor =
+    typeof cursor === "number" && Number.isFinite(cursor)
+      ? ` && 'PRODUTOS_SEMELHANTES'[ID] > ${Math.floor(cursor)}`
+      : "";
+
+  return `
 EVALUATE
-SELECTCOLUMNS(
-    TMP_AUDIT_PRODUTOS_SEMELHANTES_20260819,
-    "ProdutoOrigem", TMP_AUDIT_PRODUTOS_SEMELHANTES_20260819[ACODPRODUTO],
-    "ProdutoSimilar", TMP_AUDIT_PRODUTOS_SEMELHANTES_20260819[ACODPRODUTO_SEMELHANTE],
-    "TipoSimilaridade", TMP_AUDIT_PRODUTOS_SEMELHANTES_20260819[TIPO]
+TOPN(
+  ${TAMANHO_PAGINA_SIMILARES},
+  SELECTCOLUMNS(
+    FILTER(
+        PRODUTOS_SEMELHANTES,
+        NOT ISBLANK('PRODUTOS_SEMELHANTES'[ACODPRODUTO])
+          && NOT ISBLANK('PRODUTOS_SEMELHANTES'[ACODPRODUTO_SEMELHANTE])${clausulaCursor}
+    ),
+    "Id", 'PRODUTOS_SEMELHANTES'[ID],
+    "ProdutoOrigem", 'PRODUTOS_SEMELHANTES'[ACODPRODUTO],
+    "ProdutoSimilar", 'PRODUTOS_SEMELHANTES'[ACODPRODUTO_SEMELHANTE],
+    "TipoSimilaridade", 'PRODUTOS_SEMELHANTES'[TIPO]
+  ),
+  [Id], ASC
 )
+ORDER BY [Id]
 `.trim();
+}
