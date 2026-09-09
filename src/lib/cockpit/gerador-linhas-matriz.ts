@@ -513,7 +513,7 @@ export function converterParaLinhasCockpit(
       rupturaDiasZerados: diasZerados,
       rupturaPercentual,
       classificacaoRuptura,
-      dataUltimoZeramento: null,
+      dataUltimoZeramento: rupturaMedida ? histFoco?.dataUltimoZeramento ?? null : null,
       vendaPerdidaEstimadaReais: vendaPerdidaEstimada,
 
       // Frequência

@@ -44,6 +44,15 @@ export interface HistoricoVendasFilial {
   /** Dias com saldo zerado na janela de 90 dias. */
   readonly diasRuptura90dias: number;
 
+  /** Dia mais recente em que o item esteve zerado. null = não zerou na janela. */
+  readonly dataUltimoZeramento?: string | null;
+
+  /**
+   * false quando a reconstrução do saldo passado exigiu valores implausíveis —
+   * sinal de movimento não registrado no ERP. Ver core/calculo/ruptura.
+   */
+  readonly rupturaConfiavel?: boolean;
+
   /** Dias efetivamente auditados para o cálculo de ruptura (denominador). */
   readonly diasObservados: number;
 

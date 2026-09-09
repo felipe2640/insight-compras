@@ -490,3 +490,59 @@ TOPN(
 ORDER BY [Id]
 `.trim();
 }
+
+/**
+ * Movimentos de estoque da janela de ruptura, por loja.
+ *
+ * O ERP guarda o saldo ATUAL, não o histórico: a coluna `ESTOQUEATUAL` de
+ * MOVESTOQ está inteiramente vazia (verificado ao vivo em 09/09/2026, nenhuma
+ * linha com valor). O que existe são os movimentos com data e quantidade — e
+ * com o saldo de hoje eles bastam para reconstruir o passado de trás para
+ * frente. Ver `core/calculo/ruptura`.
+ *
+ * `NQTDEMOV` já vem com sinal: saída é negativa. Por isso o delta é a própria
+ * quantidade, sem depender de interpretar `ATIPOMOV`.
+ *
+ * Uma loja de 90 dias dá cerca de 12 mil linhas de 4 colunas — folga larga
+ * contra o corte de resposta da API.
+ */
+export const DIAS_JANELA_RUPTURA = 90;
+
+export const DIAS_BLOCO_MOVIMENTOS = 30;
+
+/**
+ * Um bloco de dias da janela. `inicioAtras`/`fimAtras` são recuos em dias a
+ * partir de hoje (30, 0 = últimos 30 dias).
+ *
+ * Sem filtro de loja: a tentativa de filtrar por `RELATED('CADEMP'...)` devolveu
+ * 21 linhas onde havia milhares — o relacionamento não resolve nesse sentido. A
+ * empresa vem em cada linha e o mapeamento para filial é feito no adapter, com a
+ * mesma função das outras consultas.
+ */
+export function gerarConsultaDaxMovimentosEstoque(
+  inicioAtras: number,
+  fimAtras: number
+): string {
+  const de = Math.max(0, Math.floor(inicioAtras));
+  const ate = Math.max(0, Math.floor(fimAtras));
+  if (de <= ate) {
+    throw new Error("Bloco de movimentos inválido: o início tem que ser mais antigo que o fim.");
+  }
+
+  return `
+EVALUATE
+SELECTCOLUMNS(
+    FILTER(
+        MOVESTOQ,
+        MOVESTOQ[DATA_HORA] >= TODAY() - ${de}
+          && MOVESTOQ[DATA_HORA] < TODAY() - ${ate} + 1
+          && COALESCE(MOVESTOQ[NQTDEMOV], 0) <> 0
+    ),
+    "Produto", MOVESTOQ[ACODPRODUTO],
+    "Empresa", MOVESTOQ[ACODEMPRESA],
+    "Data", MOVESTOQ[DATA_HORA],
+    "Delta", MOVESTOQ[NQTDEMOV]
+)
+ORDER BY [Produto], [Data]
+`.trim();
+}

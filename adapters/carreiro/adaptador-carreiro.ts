@@ -20,6 +20,9 @@ import {
   CONSULTA_DAX_ENTRADAS_HOJE,
   gerarConsultaDaxSimilares,
   TAMANHO_PAGINA_SIMILARES,
+  gerarConsultaDaxMovimentosEstoque,
+  DIAS_JANELA_RUPTURA,
+  DIAS_BLOCO_MOVIMENTOS,
   gerarConsultaDaxProdutosEstoque,
   TAMANHO_PAGINA_PRODUTOS,
   gerarConsultaDaxPosicaoEstoque,
@@ -33,6 +36,7 @@ import {
   mapearHistoricoVendasDax,
   mapearEntradasNFeDax,
   mapearSimilaresDax,
+  aplicarRupturaReconstruida,
 } from "./mapeador-dax";
 import {
   carregarSnapshotCarreiroLocal,
@@ -125,6 +129,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             paginasPosicao,
             linhasEntradas,
             linhasSimilares,
+            linhasMovimentos,
           ] = await Promise.all([
             this.carregarCatalogoPaginado(filtro),
             this.clienteDax.executarConsultaDax(gerarConsultaDaxHistoricoVendas(filtro)),
@@ -153,6 +158,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
               return [] as readonly Record<string, unknown>[];
             }),
             this.carregarSimilaresPaginado(),
+            this.carregarMovimentosDaJanela(),
           ]);
 
           const produtos = mapearProdutosDax(linhasAtributos);
@@ -170,6 +176,10 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
           }
 
           const historicos = mapearHistoricoVendasDax(linhasHistorico);
+
+          // Ruptura: o ERP não guarda saldo histórico, então é reconstruída a
+          // partir do saldo de hoje e dos movimentos da janela.
+          aplicarRupturaReconstruida(historicos, estoques, linhasMovimentos);
 
           const mapaProdutosPorId = new Map(produtos.map((p) => [p.id, p]));
 
@@ -311,6 +321,36 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
     }
 
     return todas;
+  }
+
+
+  /**
+   * Movimentos da janela de ruptura, em blocos de dias.
+   *
+   * Sem bloco, uma janela maior encostaria no teto de resposta da API — o mesmo
+   * corte silencioso que escondia um terço do catálogo. Blocos de 30 dias dão
+   * cerca de 20 mil linhas cada, com folga larga.
+   *
+   * Falhar aqui NÃO derruba a carga: sem movimentos a ruptura fica "não medida",
+   * que é exatamente o que o cockpit mostrava antes.
+   */
+  private async carregarMovimentosDaJanela(): Promise<readonly Record<string, unknown>[]> {
+    const blocos: Array<[number, number]> = [];
+    for (let de = DIAS_JANELA_RUPTURA; de > 0; de -= DIAS_BLOCO_MOVIMENTOS) {
+      blocos.push([de, Math.max(0, de - DIAS_BLOCO_MOVIMENTOS)]);
+    }
+
+    try {
+      const partes = await Promise.all(
+        blocos.map(([de, ate]) =>
+          this.clienteDax.executarConsultaDax(gerarConsultaDaxMovimentosEstoque(de, ate))
+        )
+      );
+      return partes.flat() as readonly Record<string, unknown>[];
+    } catch (erro) {
+      console.warn("[Adaptador Carreiro] Aviso ao consultar movimentos de estoque:", erro);
+      return [];
+    }
   }
 
 }

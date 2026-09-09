@@ -14,6 +14,8 @@ import {
   SinalGovernancaCompra,
 } from "@core/dominio";
 import { inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
+import { agruparMovimentosPorDia, calcularDiasEmRuptura } from "@core/calculo/ruptura";
+import { DIAS_JANELA_RUPTURA } from "./consultas-homologadas";
 import {
   EntradaNFeDoDia,
   ItemSimilarIntercambiavel,
@@ -106,6 +108,32 @@ export function extrairIdProduto(valor: unknown): number {
  * Converte linhas tabulares de produtos retornadas pelo DAX para a entidade Produto.
  * Deduplica produtos que aparecem com registros em múltiplas lojas.
  */
+
+/** Data do DAX (ISO ou Date) em ISO curta. Vazio e sentinelas viram null. */
+function normalizarDataIso(valor: unknown): string | null {
+  if (valor === null || valor === undefined || valor === "") return null;
+  const texto = String(valor).trim();
+  if (!texto) return null;
+  const t = Date.parse(texto);
+  if (Number.isNaN(t)) return null;
+  // O ERP usa 1900-01-01 como "nunca". Uma data assim na grade seria pior do
+  // que campo vazio: parece medição.
+  const ano = new Date(t).getUTCFullYear();
+  if (ano < 1990) return null;
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+/** Fica com a data mais recente entre as lojas. */
+function mesclarDatasProduto(a: Produto, b: Produto): Produto {
+  const maior = (x: string | null | undefined, y: string | null | undefined) =>
+    !x ? (y ?? null) : !y ? x : x >= y ? x : y;
+  return {
+    ...b,
+    dataUltimaVenda: maior(a.dataUltimaVenda, b.dataUltimaVenda),
+    dataUltimaCompra: maior(a.dataUltimaCompra, b.dataUltimaCompra),
+  };
+}
+
 export function mapearProdutosDax(
   linhasDax: readonly Record<string, unknown>[]
 ): readonly Produto[] {
@@ -162,6 +190,15 @@ export function mapearProdutosDax(
     const aplicacao = linha.Aplicacao ?? linha.aplicacaoVeicular ? String(linha.Aplicacao ?? linha.aplicacaoVeicular).trim() : null;
     const familia = linha.FamiliaId ?? linha.familiaId ? String(linha.FamiliaId ?? linha.familiaId).trim() : null;
 
+    // Datas de última venda/compra. Vinham na consulta de ATRIBUTOS e eram
+    // descartadas aqui; quem tentava lê-las era o mapeador de estoque, e a
+    // consulta de posição não traz essas colunas. Resultado: as duas colunas da
+    // grade ficavam vazias em 100% dos itens.
+    const ultVendaBruta = linha.UltimaVenda ?? linha.DULTIMAVENDA ?? linha.dataUltimaVenda;
+    const ultCompraBruta = linha.UltimaCompra ?? linha.DULTIMACOMPRA ?? linha.dataUltimaCompra;
+    const dataUltimaVenda = normalizarDataIso(ultVendaBruta);
+    const dataUltimaCompra = normalizarDataIso(ultCompraBruta);
+
     const loteMultiplo = inferirLotePadraoPorCategoria(descricao);
 
     const produto: Produto = {
@@ -182,9 +219,15 @@ export function mapearProdutosDax(
       precoCusto,
       precoVenda,
       loteMultiplo,
+      dataUltimaVenda,
+      dataUltimaCompra,
     };
 
-    produtosPorId.set(id, produto);
+    // O produto aparece uma vez por empresa. Para a rede, a data que interessa é
+    // a MAIS RECENTE de qualquer loja: "vendeu na semana passada em Poranga" é
+    // informação, "nunca vendeu na Matriz" sozinha induz a engano.
+    const jaVisto = produtosPorId.get(id);
+    produtosPorId.set(id, jaVisto ? mesclarDatasProduto(jaVisto, produto) : produto);
   }
 
   return Array.from(produtosPorId.values());
@@ -461,4 +504,68 @@ export function mapearSimilaresDax(
   }
 
   return mapaSimilares;
+}
+
+/**
+ * Preenche a ruptura dos históricos reconstruindo o saldo dia a dia.
+ *
+ * O ERP da Carreiro guarda o saldo ATUAL e não o histórico — a coluna
+ * `ESTOQUEATUAL` de MOVESTOQ está inteiramente vazia. O que sobra são os
+ * movimentos: com o saldo de hoje e eles, o passado é aritmética. A conta em si
+ * mora em `core/calculo/ruptura`, sem saber de Power BI.
+ *
+ * Sem movimentos, NADA é preenchido: `diasRuptura90dias` continua marcado como
+ * indisponível e o cockpit segue mostrando "não medido". Preencher com zero
+ * afirmaria que nenhuma peça faltou no balcão, que é diferente de não saber.
+ */
+export function aplicarRupturaReconstruida(
+  historicos: Map<string, HistoricoVendasFilial>,
+  estoques: ReadonlyMap<string, EstoqueFilial>,
+  linhasMovimentos: readonly Record<string, unknown>[],
+  hoje: Date = new Date()
+): void {
+  if (linhasMovimentos.length === 0) return;
+
+  const movimentosPorChave = new Map<string, Array<{ data: string; delta: number }>>();
+  for (const linhaBruta of linhasMovimentos) {
+    const linha = normalizarLinhaDax(linhaBruta);
+    const produtoId = extrairIdProduto(linha.Produto ?? linha.ACODPRODUTO);
+    if (!produtoId) continue;
+
+    const delta = Number(linha.Delta ?? linha.NQTDEMOV ?? 0);
+    if (!Number.isFinite(delta) || delta === 0) continue;
+
+    const data = linha.Data ?? linha.DATA_HORA;
+    if (data === null || data === undefined || data === "") continue;
+
+    const { filialId } = mapearFilialCarreiro(linha.Empresa ?? linha.ACODEMPRESA);
+    const chave = `${produtoId}:${filialId}`;
+    const lista = movimentosPorChave.get(chave);
+    if (lista) lista.push({ data: String(data), delta });
+    else movimentosPorChave.set(chave, [{ data: String(data), delta }]);
+  }
+
+  for (const [chave, historico] of historicos) {
+    const estoque = estoques.get(chave);
+    // Sem posição não há de onde partir a caminhada para trás.
+    if (!estoque) continue;
+
+    const resultado = calcularDiasEmRuptura({
+      saldoAtual: estoque.saldoFisico,
+      movimentos: agruparMovimentosPorDia(movimentosPorChave.get(chave) ?? []),
+      diasJanela: DIAS_JANELA_RUPTURA,
+      hoje,
+    });
+
+    historicos.set(chave, {
+      ...historico,
+      diasRuptura90dias: resultado.diasZerados,
+      diasObservados: resultado.diasAnalisados,
+      dataUltimoZeramento: resultado.dataUltimoZeramento,
+      rupturaConfiavel: resultado.confiavel,
+      camposIndisponiveis: (historico.camposIndisponiveis ?? []).filter(
+        (campo: string) => campo !== "diasRuptura90dias"
+      ),
+    });
+  }
 }
