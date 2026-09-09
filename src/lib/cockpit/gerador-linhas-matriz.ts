@@ -500,6 +500,7 @@ export function converterParaLinhasCockpit(
       aplicacaoVeicular: p.aplicacaoVeicular,
       secaoId: p.secaoId ?? undefined,
       secaoNome: p.nomeSecao,
+      subgrupo: p.subgrupoNome ?? null,
       fornecedorId: p.fornecedorId,
       nomeFornecedor: p.nomeFornecedor,
       precoCusto: p.precoCusto,

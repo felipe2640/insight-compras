@@ -8,6 +8,7 @@
  */
 
 import { FiltroCargaInventario } from "../AdaptadorInventario";
+import { escaparLiteralTextoDax } from "@/lib/seguranca/sanitizador-dax";
 
 /**
  * Sanitiza e formata uma lista de IDs numéricos para cláusula IN segura no DAX.
@@ -109,7 +110,23 @@ ORDER BY 'CADEMP'[ANOMEFANTASIA]
  * 4. Posição Atual de Produtos, Estoque e Custo ERP (current_product.dax)
  * Suporta injeção de filtro seguro por fornecedores e seção.
  */
-export function gerarConsultaDaxProdutosEstoque(filtro?: FiltroCargaInventario): string {
+/**
+ * Tamanho de página do catálogo.
+ *
+ * O executeQueries corta a resposta por TAMANHO, não por número de linhas.
+ * Medido ao vivo em 09/09/2026 sobre 126.280 linhas de PRODUTOS: com 2 colunas
+ * vieram 100.000 linhas; com 5 (incluindo APLICACAO, que é texto longo) só
+ * 59.473; com o conjunto real de atributos, 26.362. E o corte é SILENCIOSO — a
+ * API não avisa. Sem paginar, o catálogo chegava com um terço a menos de itens,
+ * e sempre os mesmos (a ordenação faz a perda cair na cauda dos códigos).
+ */
+export const TAMANHO_PAGINA_PRODUTOS = 12000;
+
+export function gerarConsultaDaxProdutosEstoque(
+  filtro?: FiltroCargaInventario,
+  /** Último ACODPRODUTO da página anterior. null = primeira página. */
+  cursor?: string | null
+): string {
   let clausulaFiltro = "";
 
   if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
@@ -130,6 +147,13 @@ export function gerarConsultaDaxProdutosEstoque(filtro?: FiltroCargaInventario):
     ? `FILTER(PRODUTOS, NOT ISBLANK('PRODUTOS'[ACODPRODUTO])${clausulaFiltro}),`
     : "";
 
+  // Paginação por cursor (keyset): a página seguinte começa depois do último
+  // código da anterior. Ordenar e cortar por ACODPRODUTO dá ordem total, porque
+  // o código já embute a empresa ("031576|<guid>").
+  const clausulaCursor = cursor
+    ? ` && 'PRODUTOS'[ACODPRODUTO] > ${escaparLiteralTextoDax(cursor)}`
+    : "";
+
   // Somente ATRIBUTOS de cadastro — sem medidas.
   // As medidas de estoque vivem em `gerarConsultaDaxPosicaoEstoque`: misturar as duas
   // coisas quebra o resultado. Verificado ao vivo em 07/09/2026: agrupando por 14
@@ -140,10 +164,12 @@ export function gerarConsultaDaxProdutosEstoque(filtro?: FiltroCargaInventario):
   // inconsistência silenciosa que não gera erro algum.
   return `
 EVALUATE
-SELECTCOLUMNS(
+TOPN(
+  ${TAMANHO_PAGINA_PRODUTOS},
+  SELECTCOLUMNS(
     FILTER(
         PRODUTOS,
-        NOT ISBLANK('PRODUTOS'[ACODPRODUTO])${clausulaFiltro}
+        NOT ISBLANK('PRODUTOS'[ACODPRODUTO])${clausulaFiltro}${clausulaCursor}
     ),
     "Empresa", 'PRODUTOS'[ACODEMPRESA],
     "Produto", 'PRODUTOS'[ACODPRODUTO],
@@ -153,14 +179,24 @@ SELECTCOLUMNS(
     "RefFabricante", 'PRODUTOS'[AREFERENCIA],
     "Aplicacao", 'PRODUTOS'[APLICACAO],
     "Secao", 'PRODUTOS'[ACLASSE],
+    // O ERP guarda classe e subclasse como CÓDIGO; o nome legível está em
+    // CLASSES/SUBCLASSES. Sem esta junção a "Seção" chegava como 2000000000005.
+    // O SUB-GRUPO é o tipo da peça (BIELETA, PIVO, BOMBA COMBUSTIVEL) e é o
+    // agrupamento que o comprador realmente usa. O GRUPO é menos confiável:
+    // algumas lojas cadastraram marca como classe ("PERFECT - PEÇAS AUTOMOTIVAS").
+    "NomeSecao", LOOKUPVALUE(CLASSES[ADESCRICAO], CLASSES[ACODCLASSE], 'PRODUTOS'[ACLASSE]),
+    "Subgrupo", 'PRODUTOS'[ASUBCLASSE],
+    "NomeSubgrupo", LOOKUPVALUE(SUBCLASSES[ADESCRICAO], SUBCLASSES[ACODSUBCLASSE], 'PRODUTOS'[ASUBCLASSE]),
     "Fornecedor", 'PRODUTOS'[ICODFORN],
     "NomeFornecedor", 'PRODUTOS'[Nome Fornecedor],
     "PrecoCompraERP", 'PRODUTOS'[NPRECOCOMPRA],
     "PrecoVenda", 'PRODUTOS'[NPRECOVENDA],
     "UltimaVenda", 'PRODUTOS'[DULTIMAVENDA],
     "UltimaCompra", 'PRODUTOS'[DULTIMACOMPRA]
+  ),
+  [Produto], ASC
 )
-ORDER BY [Empresa], [Produto]
+ORDER BY [Produto]
   `.trim();
 }
 

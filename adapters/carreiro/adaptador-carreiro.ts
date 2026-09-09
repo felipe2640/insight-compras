@@ -20,6 +20,7 @@ import {
   CONSULTA_DAX_ENTRADAS_HOJE,
   CONSULTA_DAX_SIMILARES,
   gerarConsultaDaxProdutosEstoque,
+  TAMANHO_PAGINA_PRODUTOS,
   gerarConsultaDaxPosicaoEstoque,
   gerarConsultaDaxHistoricoVendas,
 } from "./consultas-homologadas";
@@ -124,7 +125,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             linhasEntradas,
             linhasSimilares,
           ] = await Promise.all([
-            this.clienteDax.executarConsultaDax(gerarConsultaDaxProdutosEstoque(filtro)),
+            this.carregarCatalogoPaginado(filtro),
             this.clienteDax.executarConsultaDax(gerarConsultaDaxHistoricoVendas(filtro)),
             Promise.all(
               lojasParaCarregar.map(async (filialId) => {
@@ -244,5 +245,40 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   public obterGerenciadorCache(): GerenciadorCacheResiliente<RespostaCargaInventario> {
     return this.gerenciadorCache;
   }
+
+  /**
+   * Catálogo em páginas, por cursor no código do produto.
+   *
+   * O executeQueries corta a resposta por TAMANHO e não avisa. Medido ao vivo:
+   * a consulta de atributos devolvia 26.362 das 126.280 linhas de PRODUTOS —
+   * um terço do catálogo faltava, sempre na cauda dos códigos, porque a
+   * ordenação faz o corte cair sempre nos mesmos itens. Paginar é a única
+   * forma de saber que veio tudo: a última página vem menor que a página cheia.
+   */
+  private async carregarCatalogoPaginado(
+    filtro?: FiltroCargaInventario
+  ): Promise<readonly Record<string, unknown>[]> {
+    const MAXIMO_PAGINAS = 40; // trava contra laço infinito se o cursor não andar
+    const todas: Record<string, unknown>[] = [];
+    let cursor: string | null = null;
+
+    for (let pagina = 0; pagina < MAXIMO_PAGINAS; pagina++) {
+      const linhas = await this.clienteDax.executarConsultaDax(
+        gerarConsultaDaxProdutosEstoque(filtro, cursor)
+      );
+      todas.push(...(linhas as Record<string, unknown>[]));
+      if (linhas.length < TAMANHO_PAGINA_PRODUTOS) break;
+
+      const ultimo = linhas[linhas.length - 1];
+      const proximoCursor = ultimo?.Produto !== undefined ? String(ultimo.Produto) : null;
+      // Cursor parado significa página cheia de códigos iguais: parar é melhor
+      // do que repetir a mesma página para sempre.
+      if (!proximoCursor || proximoCursor === cursor) break;
+      cursor = proximoCursor;
+    }
+
+    return todas;
+  }
+
 }
 

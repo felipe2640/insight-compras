@@ -23,6 +23,7 @@ function gerarLinhasTeste(quantidade: number): LinhaCockpitMatriz[] {
       aplicacaoVeicular: "APLICACAO VEICULAR COMPLETA",
       secaoId: 1,
       secaoNome: "Suspensão",
+      subgrupo: null,
       precoCusto: 100.0,
       precoVenda: 160.0,
       curvaAbc: i <= 5 ? "A" : i <= 15 ? "B" : "C",

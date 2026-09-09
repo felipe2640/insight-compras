@@ -44,6 +44,8 @@ export interface LinhaCockpitMatriz {
   readonly aplicacaoVeicular: string | null;
   readonly secaoId?: number;
   readonly secaoNome: string | null;
+  /** Sub-grupo: tipo da peça (BIELETA, PIVO). null = o ERP não classificou. */
+  readonly subgrupo: string | null;
   readonly fornecedorId?: number;
   readonly nomeFornecedor?: string;
   readonly precoCusto: number;

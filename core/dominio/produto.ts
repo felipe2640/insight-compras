@@ -21,7 +21,11 @@ export interface Produto {
   readonly aplicacaoVeicular: string | null;
   readonly familiaId: string | null;
   readonly secaoId: number | null;
+  /** Grupo/classe do ERP. Cuidado: alguns clientes usam marca como classe. */
   readonly nomeSecao: string | null;
+  /** Sub-grupo (tipo da peça: BIELETA, PIVO, BOMBA COMBUSTIVEL). */
+  readonly subgrupoId?: number | null;
+  readonly subgrupoNome?: string | null;
   readonly fornecedorId: number;
   readonly nomeFornecedor: string;
   readonly precoCusto: number;

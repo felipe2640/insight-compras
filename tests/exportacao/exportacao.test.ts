@@ -28,6 +28,7 @@ function criarLinha(sobrescritas: Partial<LinhaCockpitMatriz> = {}): LinhaCockpi
     referenciaFabricante: "KBT4067",
     aplicacaoVeicular: "POLO/GOL",
     secaoNome: "Suspensão",
+    subgrupo: null,
     fornecedorId: 12,
     nomeFornecedor: "Distribuidora X",
     precoCusto: 18.9,

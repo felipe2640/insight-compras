@@ -64,6 +64,7 @@ function gerar25kLinhasCockpit(): LinhaCockpitMatriz[] {
       aplicacaoVeicular: veiculo,
       secaoId: secao.id,
       secaoNome: secao.nome,
+      subgrupo: null,
       fornecedorId,
       nomeFornecedor: `DISTRIBUIDORA ${marca}`,
       precoCusto: 50.0 + (i % 300),

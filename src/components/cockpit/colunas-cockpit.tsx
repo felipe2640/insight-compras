@@ -15,6 +15,7 @@ import {
 import { DataGridColumnHeader } from "@/components/ui/data-grid";
 import { LinhaCockpitCompras } from "@/tipos/cockpit";
 import { cn } from "@/lib/utils";
+import { TooltipCriterio, TooltipFrequencia, TooltipRuptura } from "@/components/tooltips";
 
 export interface OpcoesColunasCockpit {
   nomeLojaFoco?: string;
@@ -251,6 +252,32 @@ export function criarColunasCockpit({
       enableSorting: true,
     },
 
+    // Sub-grupo: o tipo da peça, como o ERP classifica. É por aqui que o
+    // comprador agrupa ("todas as bieletas"), não por fornecedor — fornecedor
+    // muda, o tipo da peça não.
+    {
+      id: "subgrupo",
+      accessorFn: (row) => row.subgrupo ?? "",
+      size: 130,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="left" label="Sub-grupo" />
+      ),
+      cell: ({ row }) => {
+        const sub = row.original.subgrupo;
+        return sub ? (
+          <span className="block truncate text-xs text-slate-700 dark:text-slate-300" title={sub}>
+            {sub}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-400" title="O ERP do cliente não classificou este item">
+            —
+          </span>
+        );
+      },
+      meta: { variante: "selecao", label: "Sub-grupo", align: "left" },
+      enableSorting: true,
+    },
+
     // 7. Custo (R$)
     {
       id: "custo",
@@ -450,11 +477,31 @@ export function criarColunasCockpit({
             : giro === "Média"
             ? "text-blue-700 bg-blue-50 border-blue-200"
             : "text-slate-500 bg-slate-50 border-slate-200";
+        const dias = row.original.diasSemVenda;
         return (
           <div className="flex justify-center">
-            <span className={cn("rounded px-1.5 py-0.2 text-[10px] font-semibold border", color)}>
-              {giro}
-            </span>
+            <TooltipCriterio
+              titulo="Giro pela última venda"
+              classificacao={giro}
+              semMedida={
+                giro === "Sem histórico"
+                  ? "Sem data de última venda na fonte do cliente. Não é o mesmo que parado: é não medido."
+                  : null
+              }
+              medidas={[
+                { rotulo: "Dias sem venda", valor: dias === null || dias === undefined ? null : String(dias), destaque: true },
+                { rotulo: "Última venda", valor: row.original.dtUltVenda ?? null },
+              ]}
+              faixas={[
+                { rotulo: "Alta", condicao: "até 30 dias" },
+                { rotulo: "Média", condicao: "31 a 90 dias" },
+                { rotulo: "Baixa", condicao: "mais de 90 dias" },
+              ]}
+            >
+              <span className={cn("cursor-help rounded px-1.5 py-0.2 text-[10px] font-semibold border", color)}>
+                {giro}
+              </span>
+            </TooltipCriterio>
           </div>
         );
       },
@@ -478,9 +525,20 @@ export function criarColunasCockpit({
             : freq === "Média"
             ? "text-blue-700 font-semibold"
             : "text-slate-500";
+        const item = row.original;
         return (
           <div className="flex justify-center">
-            <span className={cn("text-xs", color)}>{freq}</span>
+            <TooltipFrequencia
+              notasVenda={item.notasVenda90d}
+              notasDevolucao={item.notasDevolucao90d}
+              notasLiquidas={item.notasLiquidas90d}
+              frequenciaPercentual={item.frequenciaPercentual90d}
+              classificacao={item.classificacaoFrequencia}
+              totalPecasVendidas={item.totalPecasVendidas90d}
+              extratoMovimentacoes={item.extratoFrequencia90d}
+            >
+              <span className={cn("cursor-help text-xs", color)}>{freq}</span>
+            </TooltipFrequencia>
           </div>
         );
       },
@@ -496,13 +554,32 @@ export function criarColunasCockpit({
       header: ({ header }) => (
         <DataGridColumnHeader header={header} align="center" label="Consumo" />
       ),
-      cell: ({ row }) => (
-        <div className="flex justify-center">
-          <span className="text-xs text-slate-700 dark:text-slate-300">
-            {row.original.classificacaoConsumo}
-          </span>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const item = row.original;
+        return (
+          <div className="flex justify-center">
+            <TooltipCriterio
+              titulo="Consumo pela quantidade vendida"
+              classificacao={item.classificacaoConsumo}
+              medidas={[
+                { rotulo: "Vendas líquidas 90d", valor: `${item.vendasLiquidas90d} un`, destaque: true },
+                { rotulo: "Vendas líquidas 30d", valor: `${item.vendasLiquidas30d} un` },
+                { rotulo: "Vendas líquidas 180d", valor: `${item.vendasLiquidas180d} un` },
+                { rotulo: "Peças vendidas 90d", valor: `${item.totalPecasVendidas90d} un` },
+              ]}
+              faixas={[
+                { rotulo: "Alta", condicao: "100 un ou mais em 90d" },
+                { rotulo: "Média", condicao: "30 a 99 un em 90d" },
+                { rotulo: "Baixa", condicao: "menos de 30 un em 90d" },
+              ]}
+            >
+              <span className="cursor-help text-xs text-slate-700 dark:text-slate-300">
+                {item.classificacaoConsumo}
+              </span>
+            </TooltipCriterio>
+          </div>
+        );
+      },
       meta: { variante: "selecao", label: "Consumo", align: "center" },
       enableSorting: true,
     },
@@ -516,18 +593,39 @@ export function criarColunasCockpit({
         <DataGridColumnHeader header={header} align="center" label="Ruptura" />
       ),
       cell: ({ row }) => {
-        const rup = row.original.ruptura;
+        const item = row.original;
+        const rup = item.ruptura;
+        // "Sem histórico" NÃO é vermelho. Antes caía no ramo final e ficava
+        // pintado como ruptura grave — o cockpit gritava perigo onde só faltava
+        // medição. Não medido é cinza, e o tooltip diz de quem é a lacuna.
         const color =
           rup === "Boa"
             ? "text-emerald-700 bg-emerald-50 border-emerald-200"
             : rup === "Atenção"
             ? "text-amber-700 bg-amber-50 border-amber-200 font-semibold"
-            : "text-rose-700 bg-rose-50 border-rose-200 font-bold";
+            : rup === "Grave"
+            ? "text-rose-700 bg-rose-50 border-rose-200 font-bold"
+            : "text-slate-500 bg-slate-50 border-slate-200 border-dashed";
+        const rotulo =
+          item.rupturaPercentual !== null
+            ? `${item.rupturaPercentual.toFixed(1).replace(".", ",")}%`
+            : rup;
         return (
           <div className="flex justify-center">
-            <span className={cn("rounded px-1.5 py-0.2 text-[10px] border", color)}>
-              {rup}
-            </span>
+            <TooltipRuptura
+              diasAnalisados={item.rupturaDiasAnalisados}
+              diasZerados={item.rupturaDiasZerados}
+              percentualRuptura={item.rupturaPercentual}
+              classificacao={item.classificacaoRuptura}
+              dataUltimoZeramento={item.dataUltimoZeramento}
+              vendaPerdidaEstimadaReais={item.vendaPerdidaEstimadaReais}
+              consumoDiarioReferencia={item.consumoMedioDiario90d}
+              precoVenda={item.precoVenda}
+            >
+              <span className={cn("cursor-help rounded px-1.5 py-0.2 text-[10px] border", color)}>
+                {rotulo}
+              </span>
+            </TooltipRuptura>
           </div>
         );
       },

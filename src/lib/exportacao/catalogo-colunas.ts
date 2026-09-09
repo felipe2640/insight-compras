@@ -46,6 +46,7 @@ const colunas: readonly ColunaExportavel[] = [
   { id: "ref_fabricante", rotulo: "Ref. Fabricante", tipo: "texto", grupo: "Produto", extrair: (i) => i.referenciaFabricante },
   { id: "aplicacao", rotulo: "Aplicação", tipo: "texto", grupo: "Produto", extrair: (i) => i.aplicacaoVeicular },
   { id: "secao", rotulo: "Seção", tipo: "texto", grupo: "Produto", extrair: (i) => i.secaoNome },
+  { id: "sub_grupo", rotulo: "Sub-grupo", tipo: "texto", grupo: "Produto", extrair: (i) => i.subgrupo },
   { id: "fornecedor", rotulo: "Fornecedor", tipo: "texto", grupo: "Produto", extrair: (i) => i.nomeFornecedor },
   { id: "fornecedor_id", rotulo: "Cód. Fornecedor", tipo: "inteiro", grupo: "Produto", extrair: (i) => i.fornecedorId },
   { id: "curva_abc", rotulo: "Curva ABC", tipo: "texto", grupo: "Produto", extrair: (i) => i.curvaAbc },

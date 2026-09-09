@@ -97,6 +97,7 @@ function gerarDatasetAdversarial(quantidade: number): LinhaCockpitMatriz[] {
       aplicacaoVeicular: veiculo,
       secaoId: secao.id,
       secaoNome: secao.nome,
+      subgrupo: null,
       fornecedorId,
       nomeFornecedor: `DISTRIBUIDORA DE AUTOPEÇAS ${marca}`,
       precoCusto: 45.0 + (i % 450),

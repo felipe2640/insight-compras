@@ -134,6 +134,16 @@ export function mapearProdutosDax(
     const secaoId = secaoVal !== undefined && secaoVal !== null ? Number(secaoVal) : null;
     const nomeSecao = linha.NomeSecao ?? linha.nomeSecao ? String(linha.NomeSecao ?? linha.nomeSecao).trim() : null;
 
+    // Sub-grupo: tipo da peça. Ausente em ~12% do catálogo da Carreiro — fica
+    // null e o cockpit mostra "—", nunca um rótulo inventado.
+    const subVal = linha.Subgrupo ?? linha.subgrupoId;
+    const subgrupoId = subVal !== undefined && subVal !== null ? Number(subVal) : null;
+    const subgrupoBruto = linha.NomeSubgrupo ?? linha.subgrupoNome;
+    const subgrupoNome =
+      subgrupoBruto !== undefined && subgrupoBruto !== null && String(subgrupoBruto).trim() !== ""
+        ? String(subgrupoBruto).trim()
+        : null;
+
     const fornecedorVal = linha.Fornecedor ?? linha.ACODFORNECEDOR ?? linha.fornecedorId ?? 1;
     const fornecedorId = Number(fornecedorVal) || 1;
     const nomeFornecedor = String(
@@ -165,6 +175,8 @@ export function mapearProdutosDax(
       familiaId: familia && familia.length > 0 ? familia : null,
       secaoId,
       nomeSecao,
+      subgrupoId: Number.isFinite(subgrupoId as number) ? subgrupoId : null,
+      subgrupoNome,
       fornecedorId,
       nomeFornecedor,
       precoCusto,

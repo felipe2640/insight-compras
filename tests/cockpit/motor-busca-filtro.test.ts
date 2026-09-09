@@ -18,6 +18,7 @@ function criarItemMock(parciais: Partial<LinhaCockpitMatriz>): LinhaCockpitMatri
     aplicacaoVeicular: "TOYOTA COROLLA 2015-2022",
     secaoId: 10,
     secaoNome: "Suspensão",
+    subgrupo: null,
     fornecedorId: 501,
     nomeFornecedor: "DISTRIBUIDORA MONROE",
     precoCusto: 250.0,
