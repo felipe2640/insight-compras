@@ -134,6 +134,11 @@ function gerarDatasetAdversarial(quantidade: number): LinhaCockpitMatriz[] {
       quantidadeJaPedidaFoco: 0,
       estoqueOutrasLojasRede: 25,
       sugestaoFinalCompra: temCompra ? 12 : 0,
+      previsaoBrutaModelo: 0,
+      horizonteDiasAplicado: 0,
+      margemSegurancaAplicada: 0,
+      fatorCalibracaoAplicado: 1,
+      motivoInelegibilidade: null,
       statusSugestao: isZumbi
         ? "TRAVADO_MARCA_ZUMBI"
         : temCompra

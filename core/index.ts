@@ -8,3 +8,4 @@ export * from "./dominio";
 export * from "./calculo";
 export * from "./transferencia";
 export * from "./travas";
+export * from "./aprendizado";

@@ -3,7 +3,7 @@ import { obterAdaptadorInventario } from "@adapters/index";
 import { aplicarGuardrailInventarioServerSide } from "@/lib/rbac/validador-carteira";
 import { UsuarioAutenticado, ErroAcessoNegado } from "@/lib/rbac/tipos";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
-import { montarOpcoesMatriz } from "@/lib/cockpit/opcoes-tenant";
+import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
 
 export const dynamic = "force-dynamic";
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
     const carga = await adaptador.carregarInventarioCompleto(filtroValidado);
 
     // 5. Transformação Canônica em Linhas da Matriz de Decisão
-    const linhas = converterParaLinhasCockpit(carga, montarOpcoesMatriz(filialId));
+    const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(filialId));
 
     const tempoExecucaoMs = Date.now() - inicio;
 

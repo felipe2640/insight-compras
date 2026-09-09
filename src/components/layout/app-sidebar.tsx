@@ -51,6 +51,11 @@ const GRUPO_OPERACAO: ItemNavegacao[] = [
     badge: "Compliance",
     somenteAdmin: true,
   },
+  {
+    titulo: "Modelo × Comprador",
+    href: "/aprendizado",
+    icone: ShieldCheck,
+  },
 ];
 
 const GRUPO_CONFIGURACOES: ItemNavegacao[] = [

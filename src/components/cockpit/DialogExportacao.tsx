@@ -36,6 +36,7 @@ import {
   layoutPadraoDoTenant,
 } from "@/lib/exportacao";
 import { cn } from "@/lib/utils";
+import { capturarSnapshotAprendizado } from "@/lib/aprendizado/captura-cliente";
 
 export interface DialogExportacaoProps {
   readonly aberto: boolean;
@@ -175,6 +176,17 @@ export function DialogExportacao({
         csvPadrao: configuracao.csvPadrao,
       });
       baixarArquivoNoNavegador(arquivo);
+      // Ciclo de aprendizado: grava decisão do comprador × sugestão do modelo.
+      // Fire-and-forget — nunca atrasa nem quebra o download. "todos" é análise,
+      // não decisão de compra, e por isso não vira snapshot.
+      if (layout.escopo !== "todos") {
+        capturarSnapshotAprendizado({
+          itens: filtrarPorEscopo(itensBase, layout.escopo),
+          filialId: contexto.filialId,
+          layoutId: layout.id,
+          formato,
+        });
+      }
       onFechar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao gerar o arquivo.");

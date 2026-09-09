@@ -549,6 +549,14 @@ export function converterParaLinhasCockpit(
       sugestaoFinalCompra,
       statusSugestao,
       motivoDecisao,
+      previsaoBrutaModelo: resultadoNecessidade.previsaoBruta,
+      horizonteDiasAplicado: resultadoNecessidade.horizonteDias,
+      margemSegurancaAplicada: resultadoNecessidade.margemSeguranca,
+      fatorCalibracaoAplicado: resultadoNecessidade.fatorCalibracao,
+      motivoInelegibilidade:
+        perfilGiro === "SEM_HISTORICO_SUFICIENTE"
+          ? `Sem recorrência: ${notasVenda90d} nota(s) e ${mesesAtivos} mês(es) com venda (mínimo ${parametrosMotor.elegibilidade.minimoNotasDistintas} e ${parametrosMotor.elegibilidade.minimoMesesAtivos})`
+          : null,
 
       // Ajustes e Múltiplos
       loteMultiplo,

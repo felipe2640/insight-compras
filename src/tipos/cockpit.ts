@@ -100,6 +100,15 @@ export interface LinhaCockpitMatriz {
 
   // Sugestão e Decisão do Motor
   readonly sugestaoFinalCompra: number;
+  /**
+   * Contexto do modelo congelado na linha — o ciclo de aprendizado grava isto
+   * no snapshot para recalcular a calibração sem depender da fonte do cliente.
+   */
+  readonly previsaoBrutaModelo: number;
+  readonly horizonteDiasAplicado: number;
+  readonly margemSegurancaAplicada: number;
+  readonly fatorCalibracaoAplicado: number;
+  readonly motivoInelegibilidade: string | null;
   readonly statusSugestao: StatusSugestao;
   readonly motivoDecisao: string;
 

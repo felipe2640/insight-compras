@@ -1,7 +1,7 @@
 import React, { Suspense } from "react";
 import { obterAdaptadorInventario } from "@adapters/index";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
-import { montarOpcoesMatriz } from "@/lib/cockpit/opcoes-tenant";
+import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { CockpitPrincipal } from "@/components/cockpit/CockpitPrincipal";
 
 export const revalidate = 60; // Cache de 1 minuto com revalidação estrita
@@ -16,7 +16,7 @@ async function CarregarDadosCockpit() {
     apenasComEstoqueOuVenda: true,
   });
   // Parâmetros calibrados do tenant (Carreiro: fator 0,90 do backtest).
-  const linhas = converterParaLinhasCockpit(carga, montarOpcoesMatriz(1));
+  const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(1));
 
   return <CockpitPrincipal itensIniciais={linhas} filialFocoIdInicial={1} />;
 }
