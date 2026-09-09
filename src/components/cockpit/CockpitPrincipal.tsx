@@ -34,6 +34,7 @@ import { AppSidebar, UsuarioSidebar } from "@/components/layout/app-sidebar";
 import { PayloadGradeTabular, PAYLOAD_TABULAR_VAZIO } from "@/lib/cockpit/codificacao-tabular";
 import { funcaoFiltroColuna } from "@/lib/cockpit/filtro-tanstack";
 import { ChipsFiltroColuna } from "@/components/cockpit/ChipsFiltroColuna";
+import { MenuFiltrosGrade } from "@/components/ui/menu-filtros-grade";
 import { LegendaGrade } from "@/components/cockpit/LegendaGrade";
 import { ContagensStatusGrade } from "@/lib/cockpit/escopo-grade";
 import { useGradeProgressiva } from "@/hooks/useGradeProgressiva";
@@ -629,6 +630,7 @@ export function CockpitPrincipal({
 
             {/* Controles da Grade: Menus de Coluna, Ordenação, Altura e Atalhos */}
             <DataGridMenuBar className="ml-auto">
+              <MenuFiltrosGrade table={table} />
               <DataGridSortMenu
                 value={sortValue}
                 onChange={handleSortChange}

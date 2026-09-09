@@ -14,7 +14,7 @@
 
 import React, { useMemo, useState } from "react";
 import type { Header } from "@tanstack/react-table";
-import { Filter, FilterX, Check } from "lucide-react";
+import { Filter, FilterX } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -26,7 +26,8 @@ import {
   filtroEstaCompleto,
   operadorPadraoDaVariante,
 } from "@/lib/cockpit/filtros-coluna";
-import { lerFiltroDaColuna, varianteDaColuna } from "@/lib/cockpit/filtro-tanstack";
+import { lerFiltroDaColuna, opcoesFacetadasDaColuna, varianteDaColuna } from "@/lib/cockpit/filtro-tanstack";
+import { SeletorValoresFacetados } from "@/components/ui/seletor-valores-facetados";
 import { cn } from "@/lib/utils";
 
 const LIMITE_OPCOES_SELECAO = 300;
@@ -45,7 +46,6 @@ export function FiltroColunaPopover<TData>({ header }: { header: Header<TData, u
   const [valor, setValor] = useState<string>(String(filtroAtual?.valor ?? ""));
   const [valor2, setValor2] = useState<string>(String(filtroAtual?.valor2 ?? ""));
   const [valores, setValores] = useState<Set<string>>(new Set(filtroAtual?.valores ?? []));
-  const [buscaOpcao, setBuscaOpcao] = useState("");
 
   const operadores = OPERADORES_POR_VARIANTE[variante];
   const pedeValor = !OPERADORES_SEM_VALOR.includes(operador);
@@ -54,22 +54,10 @@ export function FiltroColunaPopover<TData>({ header }: { header: Header<TData, u
 
   // Só calcula a lista de opções quando o popover abre: em 19 mil linhas isso não
   // pode acontecer a cada render da grade.
-  const opcoes = useMemo(() => {
-    if (!aberto || !pedeLista) return [] as Array<[string, number]>;
-    const mapa = coluna.getFacetedUniqueValues?.();
-    if (!mapa) return [];
-    return Array.from(mapa.entries())
-      .filter(([v]) => v !== null && v !== undefined && String(v).trim() !== "")
-      .map(([v, n]) => [String(v), n] as [string, number])
-      .sort((a, b) => a[0].localeCompare(b[0], "pt-BR"))
-      .slice(0, LIMITE_OPCOES_SELECAO);
-  }, [aberto, pedeLista, coluna]);
-
-  const opcoesVisiveis = useMemo(() => {
-    if (!buscaOpcao) return opcoes;
-    const b = buscaOpcao.toLowerCase();
-    return opcoes.filter(([v]) => v.toLowerCase().includes(b));
-  }, [opcoes, buscaOpcao]);
+  const opcoes = useMemo(
+    () => (aberto && pedeLista ? opcoesFacetadasDaColuna(coluna, LIMITE_OPCOES_SELECAO) : []),
+    [aberto, pedeLista, coluna]
+  );
 
   function aoAbrir(novo: boolean) {
     if (novo) {
@@ -78,7 +66,6 @@ export function FiltroColunaPopover<TData>({ header }: { header: Header<TData, u
       setValor(atual?.valor === null || atual?.valor === undefined ? "" : String(atual.valor));
       setValor2(atual?.valor2 === null || atual?.valor2 === undefined ? "" : String(atual.valor2));
       setValores(new Set(atual?.valores ?? []));
-      setBuscaOpcao("");
     }
     setAberto(novo);
   }
@@ -150,60 +137,18 @@ export function FiltroColunaPopover<TData>({ header }: { header: Header<TData, u
         </select>
 
         {pedeLista && (
-          <div className="space-y-1">
-            <input
-              type="text"
-              value={buscaOpcao}
-              onChange={(e) => setBuscaOpcao(e.target.value)}
-              placeholder="Buscar valor..."
-              className="w-full rounded border border-slate-200 bg-slate-50 px-2 py-1 text-xs outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800"
-            />
-            <div className="max-h-40 space-y-0.5 overflow-y-auto pr-1">
-              {opcoesVisiveis.length === 0 ? (
-                <p className="py-2 text-center text-[11px] text-slate-400">Nenhum valor</p>
-              ) : (
-                opcoesVisiveis.map(([opcao, quantas]) => {
-                  const marcado = valores.has(opcao);
-                  return (
-                    <label
-                      key={opcao}
-                      className="flex cursor-pointer items-center justify-between rounded px-1.5 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span
-                          className={cn(
-                            "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
-                            marcado
-                              ? "border-blue-600 bg-blue-600 text-white"
-                              : "border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900"
-                          )}
-                        >
-                          {marcado && <Check className="h-2.5 w-2.5 stroke-[3]" />}
-                        </span>
-                        <span className="truncate" title={opcao}>
-                          {opcao}
-                        </span>
-                      </span>
-                      <input
-                        type="checkbox"
-                        className="sr-only"
-                        checked={marcado}
-                        onChange={() =>
-                          setValores((antes) => {
-                            const proximo = new Set(antes);
-                            if (proximo.has(opcao)) proximo.delete(opcao);
-                            else proximo.add(opcao);
-                            return proximo;
-                          })
-                        }
-                      />
-                      <span className="ml-1 shrink-0 font-mono text-[10px] text-slate-400">{quantas}</span>
-                    </label>
-                  );
-                })
-              )}
-            </div>
-          </div>
+          <SeletorValoresFacetados
+            opcoes={opcoes}
+            selecionados={valores}
+            onAlternar={(opcao) =>
+              setValores((antes) => {
+                const proximo = new Set(antes);
+                if (proximo.has(opcao)) proximo.delete(opcao);
+                else proximo.add(opcao);
+                return proximo;
+              })
+            }
+          />
         )}
 
         {pedeValor && !pedeLista && (

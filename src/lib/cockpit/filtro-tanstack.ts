@@ -38,3 +38,20 @@ export function lerFiltroDaColuna(valor: unknown): FiltroColuna | null {
   const f = valor as FiltroColuna;
   return typeof f.operador === "string" ? f : null;
 }
+
+/**
+ * Valores distintos de uma coluna, com quantas linhas cada um tem.
+ * Usado pelo operador "é um de". Calculado sob demanda pelo TanStack.
+ */
+export function opcoesFacetadasDaColuna(
+  coluna: { getFacetedUniqueValues?: () => Map<unknown, number> },
+  limite = 300
+): Array<[string, number]> {
+  const mapa = coluna.getFacetedUniqueValues?.();
+  if (!mapa) return [];
+  return Array.from(mapa.entries())
+    .filter(([v]) => v !== null && v !== undefined && String(v).trim() !== "")
+    .map(([v, n]) => [String(v), n] as [string, number])
+    .sort((a, b) => a[0].localeCompare(b[0], "pt-BR"))
+    .slice(0, limite);
+}

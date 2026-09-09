@@ -12,7 +12,7 @@
 import React from "react";
 import { X, Filter } from "lucide-react";
 import type { Table } from "@tanstack/react-table";
-import { descreverFiltroColuna } from "@/lib/cockpit/filtros-coluna";
+import { descreverFiltroColuna, filtroEstaCompleto } from "@/lib/cockpit/filtros-coluna";
 import { lerFiltroDaColuna, varianteDaColuna } from "@/lib/cockpit/filtro-tanstack";
 import { cn } from "@/lib/utils";
 
@@ -22,7 +22,12 @@ export interface ChipsFiltroColunaProps<TData> {
 }
 
 export function ChipsFiltroColuna<TData>({ table, className }: ChipsFiltroColunaProps<TData>) {
-  const filtros = table.getState().columnFilters;
+  // Só os filtros que de fato filtram. Uma linha pela metade no construtor
+  // ("Custo é maior que ___") não deve virar chip: anunciaria um recorte que
+  // não está acontecendo.
+  const filtros = table
+    .getState()
+    .columnFilters.filter((f) => filtroEstaCompleto(lerFiltroDaColuna(f.value)));
   if (filtros.length === 0) return null;
 
   const totalAntes = table.getPreFilteredRowModel().rows.length;
