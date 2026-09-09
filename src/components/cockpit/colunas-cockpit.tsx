@@ -700,6 +700,11 @@ export function criarColunasCockpit({
           <div className="flex justify-center">
             <div className="relative inline-flex items-center justify-center">
               <input
+                // `key` pela SKU: a grade é virtualizada e o React reaproveita o
+                // <input> do slot quando a linha muda. Como o valor é `defaultValue`
+                // (não controlado), sem a key o input mostrava a quantidade da
+                // linha ANTERIOR naquele slot ao trocar de aba ou rolar.
+                key={item.codigoSku}
                 type="number"
                 min="0"
                 defaultValue={item.pedidoCustom ?? item.sugestaoCompra}
@@ -748,6 +753,10 @@ export function criarColunasCockpit({
         return (
           <div className="flex justify-center">
             <input
+              // Mesma razão da coluna Pedido: sem `key` o slot virtualizado
+              // mantinha o valor da linha anterior (aba Transferir mostrava 0
+              // em itens com transferência sugerida).
+              key={item.codigoSku}
               type="number"
               min="0"
               disabled={!podeTransferir}

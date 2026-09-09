@@ -21,9 +21,16 @@ import {
 } from "@core/travas";
 import {
   calcularNecessidadeItem,
+  aplicarGovernancaCompra,
   PARAMETROS_MOTOR_PADRAO,
   ParametrosMotorCompra,
+  ResultadoCalculoNecessidade,
 } from "@core/calculo/necessidade";
+import {
+  calcularBalanceamentoRede,
+  SaldoFilialParaTransferencia,
+} from "@core/transferencia/balanceamento";
+import { Produto } from "@core/dominio";
 import { calcularConsumoDiario, classificarPerfilGiro } from "@core/calculo/demanda-diaria";
 import { calcularCurvaAbc } from "@core/calculo/curva-abc";
 import { StatusSugestao, CurvaABC, campoHistoricoDisponivel, campoEstoqueDisponivel } from "@core/dominio";
@@ -78,6 +85,53 @@ function classificarGiroPorDiasSemVenda(
 }
 
 /**
+ * Calcula a necessidade de um produto em UMA loja qualquer, com a mesma régua
+ * usada para a loja em foco. Serve ao balanceamento de rede: para decidir quem
+ * doa e quem recebe, todas as lojas precisam ser avaliadas pela mesma lógica.
+ *
+ * Devolve null quando a loja não tem posição nem histórico para o item.
+ */
+function calcularNecessidadeLoja(
+  p: Produto,
+  filialId: number,
+  carga: RespostaCargaInventario,
+  parametrosMotor: ParametrosMotorCompra,
+  leadTimeDias: number
+): ResultadoCalculoNecessidade | null {
+  const chave = `${p.id}:${filialId}`;
+  const est = carga.estoques.get(chave);
+  const hist = carga.historicos.get(chave);
+  if (!est && !hist) return null;
+
+  const cmd = calcularConsumoDiario({
+    vendasLiquidasJanela: hist?.vendasLiquidas180dias ?? 0,
+    diasJanela: 180,
+  });
+  const perfil = classificarPerfilGiro(
+    cmd,
+    hist?.notasFiscaisVenda90dias ?? 0,
+    hist?.mesesAtivos12meses ?? 0,
+    parametrosMotor.elegibilidade
+  );
+  const pedidosMedidos = campoEstoqueDisponivel(est, "quantidadeJaPedida");
+
+  return calcularNecessidadeItem({
+    consumoDiario: cmd,
+    perfilGiro: perfil,
+    saldoFisico: est?.saldoFisico ?? 0,
+    estoqueMinimoCadastrado: est?.estoqueMinimoSeguranca ?? 0,
+    medianaLinhaVenda: hist?.medianaLinhaVenda ?? 0,
+    quantidadeJaPedida: pedidosMedidos ? est?.quantidadeJaPedida ?? 0 : 0,
+    loteMultiplo: p.loteMultiplo > 1 ? p.loteMultiplo : 1,
+    parametrosMotor,
+    leadTimeDias,
+    sinalGovernanca: est?.sinalGovernancaCompra ?? null,
+    margemRealizada: est?.margemRealizada ?? null,
+    margemAlvo: est?.margemAlvo ?? null,
+  });
+}
+
+/**
  * Converte o inventário bruto carregado do adapter na matriz de decisão do cockpit,
  * calculando todos os indicadores analíticos, travas de encalhe e transferências inter-filiais.
  */
@@ -122,6 +176,11 @@ export function converterParaLinhasCockpit(
     };
   });
   const mapaCurvaAbc = calcularCurvaAbc(itensParaCurva);
+
+  // Todas as filiais conhecidas na carga (para o balanceamento de rede).
+  const todasAsFiliais = new Set<number>();
+  for (const est of carga.estoques.values()) todasAsFiliais.add(est.filialId);
+  for (const h of carga.historicos.values()) todasAsFiliais.add(h.filialId);
 
   // 4. Transformação de cada Produto na Linha da Matriz de Decisão
   const linhas: LinhaCockpitMatriz[] = [];
@@ -248,56 +307,92 @@ export function converterParaLinhasCockpit(
     const loteMultiplo = p.loteMultiplo > 1 ? p.loteMultiplo : 1;
     const embalagemMinima = 1;
 
-    // Cálculo da necessidade com os parâmetros CALIBRADOS do tenant.
-    const resultadoNecessidade = calcularNecessidadeItem({
-      consumoDiario: cmdDiario,
-      perfilGiro,
-      saldoFisico: saldoFoco,
-      estoqueMinimoCadastrado: minStockFoco,
-      medianaLinhaVenda: medianaLinha,
-      quantidadeJaPedida: pedidosFoco ?? 0,
-      loteMultiplo,
-      parametrosMotor,
-      leadTimeDias,
-      // Régua de governança do processo de compra do próprio cliente.
-      // O corte do REDUZIR sai da saúde de margem do item.
-      sinalGovernanca: estFoco?.sinalGovernancaCompra ?? null,
-      margemRealizada: estFoco?.margemRealizada ?? null,
-      margemAlvo: estFoco?.margemAlvo ?? null,
-    });
+    // Necessidade de TODAS as lojas da rede para este item, pela mesma régua.
+    // Sem isso não há como saber quem doa, quem recebe e quem tem prioridade.
+    const necessidadesPorLoja = new Map<number, ResultadoCalculoNecessidade>();
+    for (const filialId of todasAsFiliais) {
+      const r = calcularNecessidadeLoja(p, filialId, carga, parametrosMotor, leadTimeDias);
+      if (r) necessidadesPorLoja.set(filialId, r);
+    }
+
+    const resultadoNecessidade =
+      necessidadesPorLoja.get(filialFocoId) ??
+      calcularNecessidadeItem({
+        consumoDiario: cmdDiario,
+        perfilGiro,
+        saldoFisico: saldoFoco,
+        estoqueMinimoCadastrado: minStockFoco,
+        medianaLinhaVenda: medianaLinha,
+        quantidadeJaPedida: pedidosFoco ?? 0,
+        loteMultiplo,
+        parametrosMotor,
+        leadTimeDias,
+        sinalGovernanca: estFoco?.sinalGovernancaCompra ?? null,
+        margemRealizada: estFoco?.margemRealizada ?? null,
+        margemAlvo: estFoco?.margemAlvo ?? null,
+      });
 
     let necessidadeCompra = resultadoNecessidade.necessidadeLiquida;
 
-    // Oportunidade de Transferência Inter-Filiais Segura
-    let melhorOrigemTransferencia: {
-      filialId: number;
-      nomeFilial: string;
-      saldoOrigem: number;
-      minStockOrigem: number;
-      sobraReal: number;
-      quantidade: number;
-    } | null = null;
-
-    if (necessidadeCompra > 0) {
-      let maiorSobra = 0;
-      for (const est of outrasLojas) {
-        if (est.filialId !== filialFocoId) {
-          const sobra = Math.max(0, est.saldo - est.minStock);
-          if (sobra > maiorSobra) {
-            maiorSobra = sobra;
-            const qtdTransferir = Math.min(necessidadeCompra, sobra);
-            melhorOrigemTransferencia = {
-              filialId: est.filialId,
-              nomeFilial: nomesFiliais[est.filialId] ?? `Loja ${est.filialId}`,
-              saldoOrigem: est.saldo,
-              minStockOrigem: est.minStock,
-              sobraReal: sobra,
-              quantidade: qtdTransferir,
-            };
-          }
-        }
-      }
+    // Balanceamento de rede — as regras do diário, para 5 lojas:
+    //
+    // 1. Prioridade para a loja que MAIS precisa (o core ordena destinos por
+    //    maior necessidade e doadoras por maior sobra).
+    // 2. A doadora só doa o que excede a demanda DELA: o piso é a previsão
+    //    calibrada da própria loja, não o mínimo do ERP. Loja com giro guarda o
+    //    que vai vender; loja onde a peça está parada doa tudo.
+    // 3. Loja que tem estoque suficiente não recebe: sua necessidade é zero.
+    //
+    // A necessidade usada aqui é a ANTES da governança: "não compre mais disso"
+    // não impede realocar o que a rede já tem. A governança volta a atuar sobre
+    // o que sobrar para comprar do fornecedor.
+    const filiaisParaBalanceamento: SaldoFilialParaTransferencia[] = [];
+    for (const [filialId, r] of necessidadesPorLoja) {
+      const est = carga.estoques.get(`${p.id}:${filialId}`);
+      filiaisParaBalanceamento.push({
+        filialId,
+        nomeFilial: nomesFiliais[filialId] ?? `Loja ${filialId}`,
+        saldoFisico: Math.max(0, est?.saldoFisico ?? 0),
+        estoqueMinimo: r.previsaoCalibrada,
+        necessidadeCompra: r.necessidadeAntesGovernanca,
+      });
     }
+
+    const transferenciasRede =
+      filiaisParaBalanceamento.length >= 2
+        ? calcularBalanceamentoRede(filiaisParaBalanceamento, {
+            produtoId: p.id,
+            codigoSku: p.codigoSku,
+          })
+        : [];
+
+    // O que CHEGA na loja em foco (pode vir de mais de uma doadora).
+    const recebimentosFoco = transferenciasRede.filter((t) => t.filialDestinoId === filialFocoId);
+    const totalRecebidoFoco = recebimentosFoco.reduce((acc, t) => acc + t.quantidadeTransferir, 0);
+    const principalOrigem = [...recebimentosFoco].sort(
+      (a, b) => b.quantidadeTransferir - a.quantidadeTransferir
+    )[0];
+
+    // Quando mais de uma loja doa, os números de origem são AGREGADOS: saldo,
+    // piso e sobra somados. Assim a conta fecha no tooltip (saldo − mantém ≥ doa).
+    // Mostrar só a doadora principal com a quantidade total dava "saldo 27,
+    // mantém 7, doa 26", que não fecha e mina a confiança do comprador.
+    const melhorOrigemTransferencia = principalOrigem
+      ? {
+          filialId: principalOrigem.filialOrigemId,
+          nomeFilial:
+            recebimentosFoco.length > 1
+              ? recebimentosFoco.map((t) => t.nomeFilialOrigem).join(" + ")
+              : principalOrigem.nomeFilialOrigem,
+          saldoOrigem: recebimentosFoco.reduce((acc, t) => acc + t.saldoOrigemAntes, 0),
+          minStockOrigem: recebimentosFoco.reduce((acc, t) => acc + t.estoqueMinimoOrigem, 0),
+          sobraReal: recebimentosFoco.reduce(
+            (acc, t) => acc + (t.saldoOrigemAntes - t.estoqueMinimoOrigem),
+            0
+          ),
+          quantidade: totalRecebidoFoco,
+        }
+      : null;
 
     // Definição da Sugestão Final de Compra e Status
     let sugestaoFinalCompra = 0;
@@ -319,21 +414,26 @@ export function converterParaLinhasCockpit(
       motivoDecisao =
         `GOVERNANÇA DO CLIENTE: compra pausada para este item (demanda calculada era ` +
         `${resultadoNecessidade.necessidadeAntesGovernanca} un). Origem: Decisão de Compra do Power BI.`;
-    } else if (melhorOrigemTransferencia && melhorOrigemTransferencia.quantidade >= necessidadeCompra) {
-      quantidadeTransferenciaSugerida = melhorOrigemTransferencia.quantidade;
-      sugestaoFinalCompra = 0;
-      statusSugestao = "COBERTO_POR_TRANSFERENCIA";
-      motivoDecisao = `Atendido por transferência segura de ${melhorOrigemTransferencia.nomeFilial} (Sobra Real: ${melhorOrigemTransferencia.sobraReal} un)`;
     } else {
-      const necessidadeAposTransferencia = melhorOrigemTransferencia
-        ? necessidadeCompra - melhorOrigemTransferencia.quantidade
-        : necessidadeCompra;
+      // Transferência primeiro; o fornecedor só entra no que a rede não cobre.
+      // A governança do cliente atua sobre esse restante, não sobre a realocação.
+      const necessidadeBrutaFoco = resultadoNecessidade.necessidadeAntesGovernanca;
+      const restanteAposTransferencia = Math.max(0, necessidadeBrutaFoco - totalRecebidoFoco);
+      const necessidadeAposTransferencia = aplicarGovernancaCompra(
+        restanteAposTransferencia,
+        sinalGov,
+        resultadoNecessidade.fatorReducaoAplicado
+      );
 
       if (melhorOrigemTransferencia) {
         quantidadeTransferenciaSugerida = melhorOrigemTransferencia.quantidade;
       }
 
-      if (necessidadeAposTransferencia > 0) {
+      if (melhorOrigemTransferencia && restanteAposTransferencia === 0) {
+        sugestaoFinalCompra = 0;
+        statusSugestao = "COBERTO_POR_TRANSFERENCIA";
+        motivoDecisao = `Atendido por transferência de ${melhorOrigemTransferencia.nomeFilial}: ${totalRecebidoFoco} un (a origem mantém o que vai vender)`;
+      } else if (necessidadeAposTransferencia > 0) {
         const ajuste = ajustarQuantidadePorLote({
           quantidadeDesejada: necessidadeAposTransferencia,
           multiploLote: loteMultiplo,
@@ -341,7 +441,10 @@ export function converterParaLinhasCockpit(
         });
         sugestaoFinalCompra = ajuste.quantidadeAjustada;
         statusSugestao = "APROVADO_COMPRA";
-        motivoDecisao = `Demanda calculada: ${necessidadeAposTransferencia} un (Ajustado p/ múltiplo ${loteMultiplo}: ${sugestaoFinalCompra} un)`;
+        motivoDecisao =
+          totalRecebidoFoco > 0
+            ? `Transferir ${totalRecebidoFoco} un de ${melhorOrigemTransferencia?.nomeFilial} e comprar ${sugestaoFinalCompra} un (múltiplo ${loteMultiplo})`
+            : `Demanda calculada: ${necessidadeAposTransferencia} un (Ajustado p/ múltiplo ${loteMultiplo}: ${sugestaoFinalCompra} un)`;
       } else {
         sugestaoFinalCompra = 0;
         statusSugestao = "ESTOQUE_SUFICIENTE";
