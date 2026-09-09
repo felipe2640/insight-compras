@@ -4,6 +4,8 @@ import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz"
 import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { CockpitPrincipal } from "@/components/cockpit/CockpitPrincipal";
 import { obterUsuarioAtual, rotuloPapel } from "@/lib/autenticacao/servidor";
+import { codificarGradeTabular } from "@/lib/cockpit/codificacao-tabular";
+import { contarStatusGrade, separarAcionaveis } from "@/lib/cockpit/escopo-grade";
 
 // A página lê a sessão (cookies), portanto é dinâmica por requisição; o cache de dados fica no adapter.
 export const dynamic = "force-dynamic";
@@ -21,9 +23,15 @@ async function CarregarDadosCockpit() {
   // Parâmetros calibrados do tenant (Carreiro: fator 0,90 do backtest).
   const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(1));
 
+  // A página entrega APENAS o que pede decisão hoje. O catálogo inteiro (19 mil
+  // itens) chega em segundo plano pela /api/compras: mandá-lo aqui significava
+  // 54 MB de HTML, porque o RSC serializa o dado duas vezes (SSR + hidratação).
+  const { acionaveis } = separarAcionaveis(linhas);
+
   return (
     <CockpitPrincipal
-      itensIniciais={linhas}
+      gradeInicial={codificarGradeTabular(acionaveis)}
+      contagensCatalogo={contarStatusGrade(linhas)}
       filialFocoIdInicial={1}
       usuarioSessao={usuario ? { nome: usuario.nome, papelRotulo: rotuloPapel(usuario.role) } : null}
     />

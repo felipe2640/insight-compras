@@ -27,6 +27,10 @@ import { useFiltrosCockpit } from "@/hooks/useFiltrosCockpit";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
 import { NOMES_FILIAIS_CARREIRO } from "@adapters/carreiro/mapeador-dax";
 import { AppSidebar, UsuarioSidebar } from "@/components/layout/app-sidebar";
+import { PayloadGradeTabular, PAYLOAD_TABULAR_VAZIO } from "@/lib/cockpit/codificacao-tabular";
+import { ContagensStatusGrade } from "@/lib/cockpit/escopo-grade";
+import { useGradeProgressiva } from "@/hooks/useGradeProgressiva";
+import { AvisoCatalogo } from "@/components/cockpit/AvisoCatalogo";
 import { DataTableSection } from "@/components/cockpit/data-table-section";
 import { criarColunasCockpit } from "@/components/cockpit/colunas-cockpit";
 import { QuickFilterChip } from "@/components/cockpit/quick-filter-chip";
@@ -46,12 +50,31 @@ import { CurvaABC } from "@core/dominio";
 import { cn } from "@/lib/utils";
 
 export interface CockpitPrincipalProps {
-  itensIniciais: readonly LinhaCockpitMatriz[];
+  /**
+   * Linhas já prontas. Caminho direto, usado em teste e em telas que não fazem
+   * carga progressiva. Em produção o cockpit recebe `gradeInicial`.
+   */
+  itensIniciais?: readonly LinhaCockpitMatriz[];
+  /**
+   * Linhas ACIONÁVEIS em formato tabular. O catálogo completo vem depois, pela
+   * /api/compras — ver useGradeProgressiva para o porquê.
+   */
+  gradeInicial?: PayloadGradeTabular;
+  /** Contagens do catálogo inteiro, do servidor: os chips não podem mentir na espera. */
+  contagensCatalogo?: ContagensStatusGrade;
   fornecedoresPermitidosInicial?: readonly number[] | null;
   filialFocoIdInicial?: number;
-  /** Sessão resolvida no servidor: evita o rodapé "vazio" enquanto a página de 19 mil itens hidrata. */
+  /** Sessão resolvida no servidor: evita o rodapé "vazio" enquanto a página hidrata. */
   usuarioSessao?: UsuarioSidebar | null;
 }
+
+const CONTAGENS_VAZIAS: ContagensStatusGrade = {
+  total: 0,
+  pedir: 0,
+  transferir: 0,
+  ruptura: 0,
+  zumbi: 0,
+};
 
 const CARTEIRAS_DEMO = [
   { id: "GESTOR", nome: "Gestor Geral (Visão Completa da Rede)", fornecedores: null },
@@ -71,11 +94,22 @@ const OPCOES_ORDENACAO = [
 
 export function CockpitPrincipal({
   itensIniciais,
+  gradeInicial,
+  contagensCatalogo,
   fornecedoresPermitidosInicial = null,
   filialFocoIdInicial = 1,
   usuarioSessao = null,
 }: CockpitPrincipalProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // 0. Grade: acionáveis agora, catálogo completo em segundo plano.
+  const grade = useGradeProgressiva({
+    gradeInicial: gradeInicial ?? PAYLOAD_TABULAR_VAZIO,
+    contagensCatalogo: contagensCatalogo ?? CONTAGENS_VAZIAS,
+    filialId: filialFocoIdInicial,
+    automatico: gradeInicial !== undefined,
+  });
+  const linhasBase = itensIniciais ?? grade.itens;
 
   // 1. Estado de Carteira / Comprador Selecionado (RBAC)
   const [carteiraSelecionada, setCarteiraSelecionada] = useState<string>("GESTOR");
@@ -113,9 +147,9 @@ export function CockpitPrincipal({
 
   // 4. Aplicação dos Deltas sobre a base de dados
   const itensComOverrides = useMemo(() => {
-    if (Object.keys(deltas).length === 0) return itensIniciais;
+    if (Object.keys(deltas).length === 0) return linhasBase;
 
-    return itensIniciais.map((item) => {
+    return linhasBase.map((item) => {
       const delta = deltas[item.codigoSku] ?? deltas[String(item.produtoId)];
       if (!delta) return item;
 
@@ -137,7 +171,7 @@ export function CockpitPrincipal({
           : item.motivoDecisao,
       };
     });
-  }, [itensIniciais, deltas]);
+  }, [linhasBase, deltas]);
 
   // 5. Hook de Filtros de Alta Performance (< 250ms para 25.000 SKUs)
   const {
@@ -159,6 +193,7 @@ export function CockpitPrincipal({
     itens: itensComOverrides,
     fornecedoresPermitidos: fornecedoresAtivos,
     lojaFocoIdInicial: filialFocoIdInicial,
+    contagensCatalogo: gradeInicial ? grade.contagens : undefined,
   });
 
   // 6. Callbacks de Ajuste de Pedido e Transferência
@@ -630,6 +665,16 @@ export function CockpitPrincipal({
 
             {/* Filtros Rápidos por Chip (Curva ABC, Marcas) e Botão Limpar */}
             <div className="flex flex-wrap items-center gap-2">
+              {gradeInicial && (
+                <AvisoCatalogo
+                  estado={grade.estadoCatalogo}
+                  totalCatalogo={grade.contagens.total}
+                  totalCarregado={itensComOverrides.length}
+                  erro={grade.erro}
+                  onTentarNovamente={grade.carregarCatalogo}
+                />
+              )}
+
               <QuickFilterChip
                 label="Curva ABC"
                 options={opcoesCurva}

@@ -12,6 +12,18 @@
       "env": {
         "CARREIRO_PREFERIR_SNAPSHOT": "true"
       }
+    },
+    {
+      "name": "insight-compras-prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "start"
+      ],
+      "port": 3000,
+      "env": {
+        "CARREIRO_PREFERIR_SNAPSHOT": "true"
+      }
     }
   ]
 }

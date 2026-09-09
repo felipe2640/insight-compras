@@ -7,6 +7,7 @@ import {
   StatusFilterOption,
 } from "@/tipos/cockpit";
 import { CurvaABC } from "@core/dominio";
+import { ContagensStatusGrade } from "@/lib/cockpit/escopo-grade";
 
 const REGEX_DIACRITICOS = /[\u0300-\u036f]/g;
 
@@ -146,6 +147,8 @@ export function filtrarLinhasCockpit(
 }
 
 export interface UseFiltrosCockpitParams {
+  /** Contagens calculadas no servidor sobre o catálogo inteiro (carga progressiva). */
+  contagensCatalogo?: ContagensStatusGrade;
   itens: readonly LinhaCockpitMatriz[];
   fornecedoresPermitidos?: readonly number[] | null;
   lojaFocoIdInicial?: number;
@@ -158,6 +161,7 @@ export function useFiltrosCockpit({
   fornecedoresPermitidos = null,
   lojaFocoIdInicial = 1,
   statusInicial = "PEDIR",
+  contagensCatalogo,
 }: UseFiltrosCockpitParams) {
   // Input imediato para feedback a 60fps sem lag
   const [rawQuery, setRawQuery] = useState("");
@@ -249,7 +253,10 @@ export function useFiltrosCockpit({
       marcas: marcasMap,
       secoes: secoesMap,
       curvas: curvasMap,
-      contagensStatus: {
+      // As contagens do servidor, quando existem, valem sobre as locais: enquanto
+      // o catálogo completo não chegou, contar só o que está em memória faria os
+      // chips mentirem sobre o tamanho do catálogo.
+      contagensStatus: contagensCatalogo ?? {
         total: itens.length,
         pedir: totalPedir,
         transferir: totalTransferir,
@@ -257,7 +264,7 @@ export function useFiltrosCockpit({
         zumbi: totalZumbi,
       },
     };
-  }, [itens]);
+  }, [itens, contagensCatalogo]);
 
   const toggleMarca = useCallback((marca: string) => {
     startTransition(() => {

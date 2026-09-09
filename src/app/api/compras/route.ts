@@ -6,6 +6,8 @@ import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autentic
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
 import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
+import { codificarGradeTabular } from "@/lib/cockpit/codificacao-tabular";
+import { contarStatusGrade, separarAcionaveis } from "@/lib/cockpit/escopo-grade";
 
 export const dynamic = "force-dynamic";
 
@@ -55,15 +57,29 @@ export async function GET(request: NextRequest) {
     // 5. Transformação Canônica em Linhas da Matriz de Decisão
     const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(filialId));
 
+    // Escopo: a grade abre com o que pede decisão e completa o catálogo depois.
+    // As contagens saem SEMPRE do conjunto completo — os chips não podem mentir
+    // enquanto o restante ainda está a caminho.
+    const escopo = searchParams.get("escopo") === "acionaveis" ? "acionaveis" : "todos";
+    const contagens = contarStatusGrade(linhas);
+    const linhasDoEscopo = escopo === "acionaveis" ? separarAcionaveis(linhas).acionaveis : linhas;
+
     const tempoExecucaoMs = Date.now() - inicio;
 
+    // Formato tabular: mesmo conteúdo, sem repetir o nome dos 94 campos em cada
+    // uma das ~19 mil linhas (medido: 48,4 MB -> 15,1 MB).
+    const tabular = searchParams.get("formato") === "tabular";
     const resposta = NextResponse.json({
       sucesso: true,
-      total: linhas.length,
+      total: linhasDoEscopo.length,
+      escopo,
+      contagens,
       filialFocoId: filialId,
       tempoExecucaoMs,
       provedorDados: carga.metadados.provedor,
-      dados: linhas,
+      ...(tabular
+        ? { grade: codificarGradeTabular(linhasDoEscopo) }
+        : { dados: linhasDoEscopo }),
     });
 
     // Injeta cabeçalhos de segurança HTTP
