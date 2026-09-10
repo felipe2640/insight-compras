@@ -475,11 +475,18 @@ export function converterParaLinhasCockpit(
     const classificacaoConsumo = classificarConsumoPorQuantidade(vendas90d);
     const periodoIdeal = obterPeriodoIdealAnalise(classificacaoFrequencia);
 
-    // Estas duas colunas exigem a janela de 90 dias ANTERIOR à última venda do item,
-    // que o modelo semântico não expõe. Antes eram preenchidas com `valor * 0,95`,
-    // um número inventado. Sem a consulta, o cockpit mostra "—".
-    const histVendas90d: number | null = null;
-    const histProdVend90d: number | null = null;
+    // Janela ANTERIOR de 90 dias (de 180 a 90 dias atrás), que é o termo de
+    // comparação: "vendeu 12 agora contra 30 antes" conta uma história que "12"
+    // sozinho não conta. Sai de 180d menos 90d, sem consulta nova.
+    //
+    // Já foram preenchidas com `valor * 0,95`, um número inventado; depois
+    // viraram null. Agora são medição de verdade.
+    // Sem registro de histórico na loja, as duas seguem a mesma régua das colunas
+    // irmãs da janela atual, que já assumem zero: misturar zero numa e travessão
+    // na outra faria a mesma linha contar duas histórias.
+    const notas180d = histFoco?.notasFiscaisVenda180dias ?? 0;
+    const histVendas90d: number | null = Math.max(0, vendas180d - vendas90d);
+    const histProdVend90d: number | null = Math.max(0, notas180d - notasVenda90d);
 
     const statusMovimentacao =
       statusSugestao === "APROVADO_COMPRA"

@@ -687,7 +687,7 @@ export function criarColunasCockpit({
       accessorFn: (row) => row.histVendas90d,
       size: 90,
       header: ({ header }) => (
-        <DataGridColumnHeader header={header} align="center" label="Hist vendas 90d" />
+        <DataGridColumnHeader header={header} align="center" label="Vendas 90d anteriores" />
       ),
       cell: ({ row }) => (
         <div className="flex justify-center">
@@ -696,7 +696,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { variante: "numero", label: "Hist vendas 90d", align: "center" },
+      meta: { variante: "numero", label: "Vendas 90d anteriores", align: "center" },
       enableSorting: true,
     },
 
@@ -715,7 +715,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { variante: "numero", label: "Hist prod vend 90d", align: "center" },
+      meta: { variante: "numero", label: "Notas 90d anteriores", align: "center" },
       enableSorting: true,
     },
 

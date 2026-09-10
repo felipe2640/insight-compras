@@ -27,6 +27,12 @@ export interface HistoricoVendasFilial {
    * contar no cabeçalho devolve o total de notas da loja, idêntico para todo SKU.
    */
   readonly notasFiscaisVenda90dias: number;
+
+  /**
+   * Notas de venda em 180 dias. Serve para compor a janela ANTERIOR de 90 dias
+   * (180d menos 90d), que é o termo de comparação da grade.
+   */
+  readonly notasFiscaisVenda180dias?: number;
   readonly notasFiscaisDevolucao90dias: number;
 
   /**

@@ -392,6 +392,10 @@ SUMMARIZECOLUMNS(
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
         Periodo90d
     ),
+    "NotasVenda180d", CALCULATE(
+        [Quantidade de Notas],
+        KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
+    ),
     "Devolucoes90d", CALCULATE(
         SUM('NOTAS_ITEMS'[QTDE_DEV]),
         ${FILTROS_VENDA_VALIDA}

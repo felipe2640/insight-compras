@@ -405,6 +405,10 @@ export function mapearHistoricoVendasDax(
       vendasLiquidas180dias,
       devolucoes90dias,
       notasFiscaisVenda90dias,
+      notasFiscaisVenda180dias: Math.max(
+        notasFiscaisVenda90dias,
+        Number(linha.NotasVenda180d ?? 0) || 0
+      ),
       notasFiscaisDevolucao90dias,
       mesesAtivos12meses,
       medianaLinhaVenda,
