@@ -1,7 +1,7 @@
 /**
  * Cria um usuário no provedor de autenticação configurado (server-side, chave privilegiada).
  *
- *   npx tsx scripts/criar-usuario.mts --email gestor@empresa.com.br --nome "Nome" --papel GESTOR [--tenant carreiro] [--fornecedores 12,34]
+ *   npx tsx scripts/criar-usuario.mts --usuario gestor --nome "Nome" --papel GESTOR [--tenant carreiro] [--fornecedores 12,34]
  *
  * A senha vem de SENHA_NOVO_USUARIO no ambiente (nunca em argumento: fica no histórico do shell).
  * Se ausente, uma senha aleatória é gerada e impressa UMA vez.
@@ -22,13 +22,13 @@ function arg(nome: string): string | undefined {
 
 const { obterAdministradorUsuarios, normalizarPapel, normalizarFornecedores } = await import("../src/lib/autenticacao/index.ts");
 
-const email = arg("email");
+const usuario = arg("usuario") ?? arg("email");
 const nome = arg("nome");
 const papel = normalizarPapel(arg("papel"));
 const tenantId = arg("tenant") ?? "carreiro";
 const fornecedores = normalizarFornecedores(arg("fornecedores"));
-if (!email || !nome || !papel) {
-  console.error("uso: --email <e-mail> --nome <nome> --papel COMPRADOR|GESTOR|ADMIN [--tenant id] [--fornecedores 1,2]");
+if (!usuario || !nome || !papel) {
+  console.error("uso: --usuario <usuario> --nome <nome> --papel COMPRADOR|GESTOR|ADMIN [--tenant id] [--fornecedores 1,2]");
   process.exit(2);
 }
 
@@ -40,6 +40,6 @@ if (!senha) {
 }
 
 const admin = obterAdministradorUsuarios();
-const criado = await admin.criarUsuario({ email, senha, nome, papel, tenantId, fornecedores });
-console.log(`usuário criado: ${criado.email} (${criado.papel}, tenant ${criado.tenantId}, id ${criado.id})`);
+const criado = await admin.criarUsuario({ usuario, senha, nome, papel, tenantId, fornecedores });
+console.log(`usuário criado: ${criado.usuario} (${criado.papel}, tenant ${criado.tenantId}, id ${criado.id})`);
 if (senhaGerada) console.log(`senha inicial (mostrada uma única vez): ${senha}`);

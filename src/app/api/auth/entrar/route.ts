@@ -14,7 +14,7 @@ import { rotuloPapel } from "@/lib/autenticacao/servidor";
 export const dynamic = "force-dynamic";
 
 const esquema = z.object({
-  email: z.string().trim().email().max(200),
+  usuario: z.string().trim().min(1).max(60),
   senha: z.string().min(1).max(200),
 });
 
@@ -23,19 +23,19 @@ export async function POST(request: NextRequest) {
   try {
     corpo = esquema.parse(await request.json());
   } catch {
-    return NextResponse.json({ erro: "informe e-mail e senha válidos" }, { status: 400 });
+    return NextResponse.json({ erro: "informe usuário e senha" }, { status: 400 });
   }
 
   const tenantId = request.headers.get("x-tenant-id") ?? obterTenantAtivo().id;
   const provedor = obterProvedorAutenticacao();
 
   try {
-    const sessao = await provedor.entrar({ email: corpo.email, senha: corpo.senha, tenantId });
+    const sessao = await provedor.entrar({ usuario: corpo.usuario, senha: corpo.senha, tenantId });
     const resposta = NextResponse.json({
       usuario: {
         id: sessao.usuario.id,
         nome: sessao.usuario.nome,
-        email: sessao.usuario.email,
+        usuario: sessao.usuario.email,
         papel: sessao.usuario.role,
         papelRotulo: rotuloPapel(sessao.usuario.role),
         tenantId: sessao.usuario.tenantId,

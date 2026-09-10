@@ -2,12 +2,12 @@
 
 import React, { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ShieldCheck, Lock, Mail, Building2 } from "lucide-react";
+import { ShieldCheck, Lock, User, Building2 } from "lucide-react";
 
 function FormularioLogin() {
   const router = useRouter();
   const parametros = useSearchParams();
-  const [email, setEmail] = useState("");
+  const [usuario, setUsuario] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
@@ -25,7 +25,7 @@ function FormularioLogin() {
       const r = await fetch("/api/auth/entrar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, senha }),
+        body: JSON.stringify({ usuario, senha }),
       });
       const corpo = (await r.json().catch(() => ({}))) as { erro?: string };
       if (!r.ok) {
@@ -52,18 +52,20 @@ function FormularioLogin() {
       </div>
 
       <div className="space-y-1">
-        <label htmlFor="email" className="font-semibold text-slate-700">E-mail</label>
+        <label htmlFor="usuario" className="font-semibold text-slate-700">Usuário</label>
         <div className="relative">
-          <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
           <input
-            id="email"
-            type="email"
+            id="usuario"
+            type="text"
             required
             autoComplete="username"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            autoCapitalize="none"
+            spellCheck={false}
+            value={usuario}
+            onChange={(e) => setUsuario(e.target.value)}
             className="w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 py-2 text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            placeholder="seu.email@empresa.com.br"
+            placeholder="seu.usuario"
           />
         </div>
       </div>
@@ -124,7 +126,7 @@ export default function PaginaLogin() {
           <FormularioLogin />
         </Suspense>
         <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 text-[11px] text-slate-500 text-center">
-          Acesso por conta individual. O papel e a carteira vêm do cadastro, não da tela.
+          Acesso por usuário e senha. O papel e a carteira vêm do cadastro, não da tela.
         </div>
       </div>
     </div>

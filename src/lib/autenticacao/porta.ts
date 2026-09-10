@@ -20,7 +20,8 @@ import { ErroNaoAutenticado } from "@/lib/rbac/tipos";
 export type IdProvedorAutenticacao = "supabase" | "demo";
 
 export interface CredenciaisLogin {
-  readonly email: string;
+  /** Nome de usuário. A plataforma não pede e-mail de ninguém. */
+  readonly usuario: string;
   readonly senha: string;
   /** Tenant resolvido pelo middleware (subdomínio/cookie). O usuário precisa pertencer a ele. */
   readonly tenantId: string;
@@ -49,7 +50,7 @@ export interface ProvedorAutenticacao {
 // ---------------------------------------------------------------------------
 
 export interface NovoUsuario {
-  readonly email: string;
+  readonly usuario: string;
   readonly senha: string;
   readonly nome: string;
   readonly papel: PapelUsuario;
@@ -60,7 +61,7 @@ export interface NovoUsuario {
 
 export interface UsuarioCadastrado {
   readonly id: string;
-  readonly email: string;
+  readonly usuario: string;
   readonly nome: string;
   readonly papel: PapelUsuario;
   readonly tenantId: string;
@@ -91,6 +92,34 @@ export class ErroProvedorIndisponivel extends Error {
   }
 }
 
+/**
+ * Regra do nome de usuário: minúsculas, números, ponto, hífen e sublinhado.
+ *
+ * O comprador de balcão não tem e-mail corporativo e não deveria precisar de um
+ * para entrar. O nome é a identidade; o e-mail que alguns provedores exigem por
+ * dentro é detalhe de implementação e nunca aparece na tela.
+ */
+export const REGEX_NOME_USUARIO = /^[a-z0-9][a-z0-9._-]{2,29}$/;
+
+export function normalizarNomeUsuario(valor: unknown): string | null {
+  if (typeof valor !== "string") return null;
+  const limpo = valor
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+  return REGEX_NOME_USUARIO.test(limpo) ? limpo : null;
+}
+
+/**
+ * Endereço sintético para provedores que exigem e-mail (o GoTrue do Supabase,
+ * por exemplo). O domínio `.invalid` é reservado justamente para isto: garante
+ * que ninguém tente mandar mensagem para ele.
+ */
+export function emailInternoDoUsuario(usuario: string, tenantId: string): string {
+  return `${usuario}@${tenantId}.invalid`;
+}
+
 const PAPEIS: readonly PapelUsuario[] = ["COMPRADOR", "GESTOR", "ADMIN"];
 
 export function normalizarPapel(valor: unknown): PapelUsuario | null {
@@ -112,7 +141,7 @@ export function normalizarFornecedores(valor: unknown): number[] | null {
 /** Monta o usuário canônico a partir dos atributos que qualquer provedor consegue devolver. */
 export function montarUsuarioAutenticado(atributos: {
   readonly id: string;
-  readonly email: string;
+  readonly usuario: string;
   readonly nome: unknown;
   readonly papel: unknown;
   readonly tenantId: unknown;
@@ -124,8 +153,11 @@ export function montarUsuarioAutenticado(atributos: {
   const fornecedores = normalizarFornecedores(atributos.fornecedores);
   return {
     id: atributos.id,
-    email: atributos.email,
-    nome: typeof atributos.nome === "string" && atributos.nome.trim() ? atributos.nome.trim() : atributos.email,
+    email: atributos.usuario,
+    nome:
+      typeof atributos.nome === "string" && atributos.nome.trim()
+        ? atributos.nome.trim()
+        : atributos.usuario,
     role: papel,
     // Comprador sem carteira definida não enxerga nada (falha fechada); gestor/admin é irrestrito.
     allowedSupplierIds: papel === "COMPRADOR" ? fornecedores ?? [] : fornecedores,

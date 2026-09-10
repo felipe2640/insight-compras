@@ -26,6 +26,8 @@ import {
   montarUsuarioAutenticado,
   normalizarFornecedores,
   normalizarPapel,
+  normalizarNomeUsuario,
+  emailInternoDoUsuario,
 } from "../porta";
 
 export interface ConfiguracaoSupabaseAuth {
@@ -66,7 +68,9 @@ function mapearUsuario(u: UsuarioGoTrue, tenantId: string): UsuarioAutenticado |
   return montarUsuarioAutenticado(
     {
       id: u.id,
-      email: u.email ?? "",
+      // O nome de usuário mora em app_metadata: só a chave privilegiada escreve
+      // lá, então ninguém troca a própria identidade.
+      usuario: String(meta.usuario ?? (u.email ?? "").split("@")[0] ?? ""),
       nome: meta.nome ?? u.user_metadata?.nome,
       papel: meta.papel,
       tenantId: meta.tenant_id,
@@ -109,11 +113,22 @@ export class ProvedorAutenticacaoSupabase implements ProvedorAutenticacao, Admin
   }
 
   async entrar(credenciais: CredenciaisLogin): Promise<SessaoAutenticada> {
+    const usuario = normalizarNomeUsuario(credenciais.usuario);
+    // Nome fora do padrão nem chega ao provedor: é credencial inválida, e dizer
+    // "formato errado" entregaria de graça quais nomes existem.
+    if (!usuario) throw new ErroCredenciaisInvalidas();
+
     let res: Response;
     try {
       res = await this.auth(
         "token?grant_type=password",
-        { method: "POST", body: JSON.stringify({ email: credenciais.email.trim(), password: credenciais.senha }) },
+        {
+          method: "POST",
+          body: JSON.stringify({
+            email: emailInternoDoUsuario(usuario, credenciais.tenantId),
+            password: credenciais.senha,
+          }),
+        },
         this.cfg.chavePublica
       );
     } catch (erro) {
@@ -196,8 +211,8 @@ export class ProvedorAutenticacaoSupabase implements ProvedorAutenticacao, Admin
     if (!papel || typeof meta.tenant_id !== "string") return null;
     return {
       id: u.id,
-      email: u.email ?? "",
-      nome: typeof meta.nome === "string" ? meta.nome : u.email ?? "",
+      usuario: String(meta.usuario ?? (u.email ?? "").split("@")[0] ?? ""),
+      nome: typeof meta.nome === "string" ? meta.nome : String(meta.usuario ?? ""),
       papel,
       tenantId: meta.tenant_id,
       fornecedores: normalizarFornecedores(meta.fornecedores),
@@ -206,15 +221,29 @@ export class ProvedorAutenticacaoSupabase implements ProvedorAutenticacao, Admin
   }
 
   async criarUsuario(novo: NovoUsuario): Promise<UsuarioCadastrado> {
+    const usuarioNormalizado = normalizarNomeUsuario(novo.usuario);
+    if (!usuarioNormalizado) {
+      throw new ErroProvedorIndisponivel(
+        "supabase",
+        "nome de usuário inválido: use de 3 a 30 caracteres, minúsculas, números, ponto, hífen ou sublinhado."
+      );
+    }
+
     const res = await this.auth(
       "admin/users",
       {
         method: "POST",
         body: JSON.stringify({
-          email: novo.email.trim(),
+          email: emailInternoDoUsuario(usuarioNormalizado, novo.tenantId),
           password: novo.senha,
           email_confirm: true,
-          app_metadata: { nome: novo.nome, papel: novo.papel, tenant_id: novo.tenantId, fornecedores: novo.fornecedores },
+          app_metadata: {
+            usuario: usuarioNormalizado,
+            nome: novo.nome,
+            papel: novo.papel,
+            tenant_id: novo.tenantId,
+            fornecedores: novo.fornecedores,
+          },
           user_metadata: { nome: novo.nome },
         }),
       },

@@ -44,6 +44,11 @@ export function respostaSemPermissao(): NextResponse {
   return NextResponse.json({ erro: "sem permissão" }, { status: 403 });
 }
 
+/** Criar e listar usuários é só do administrador. */
+export function ehAdministrador(usuario: UsuarioAutenticado): boolean {
+  return usuario.role === "ADMIN";
+}
+
 /** Só gestor/admin publica calibração e registra motivo de divergência. */
 export function podeGerirAprendizado(usuario: UsuarioAutenticado): boolean {
   return usuario.role === "GESTOR" || usuario.role === "ADMIN";

@@ -18,16 +18,16 @@ import { base64UrlCodificar, base64UrlDecodificar } from "../sessao";
 
 interface UsuarioDemo {
   readonly id: string;
-  readonly email: string;
+  readonly usuario: string;
   readonly nome: string;
   readonly papel: PapelUsuario;
   readonly fornecedores: readonly number[] | null;
 }
 
 export const USUARIOS_DEMO: readonly UsuarioDemo[] = [
-  { id: "demo-gestor", email: "gestor@demo", nome: "Gestor Demonstração", papel: "GESTOR", fornecedores: null },
-  { id: "demo-admin", email: "admin@demo", nome: "Administrador Demonstração", papel: "ADMIN", fornecedores: null },
-  { id: "demo-comprador", email: "comprador@demo", nome: "Comprador Demonstração", papel: "COMPRADOR", fornecedores: null },
+  { id: "demo-gestor", usuario: "gestor", nome: "Gestor Demonstração", papel: "GESTOR", fornecedores: null },
+  { id: "demo-admin", usuario: "admin", nome: "Administrador Demonstração", papel: "ADMIN", fornecedores: null },
+  { id: "demo-comprador", usuario: "comprador", nome: "Comprador Demonstração", papel: "COMPRADOR", fornecedores: null },
 ];
 
 const DURACAO_SESSAO_MS = 12 * 3600 * 1000;
@@ -35,7 +35,7 @@ const SEGREDO_PADRAO_DEV = "insight-demo-segredo-somente-desenvolvimento";
 
 interface CargaToken {
   readonly sub: string;
-  readonly email: string;
+  readonly usuario: string;
   readonly nome: string;
   readonly papel: PapelUsuario;
   readonly tenantId: string;
@@ -84,7 +84,8 @@ export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao {
   }
 
   async entrar(credenciais: CredenciaisLogin): Promise<SessaoAutenticada> {
-    const usuario = this.usuarios.find((u) => u.email.toLowerCase() === credenciais.email.trim().toLowerCase());
+    const nome = String(credenciais.usuario ?? "").trim().toLowerCase();
+    const usuario = this.usuarios.find((u) => u.usuario === nome);
     if (!usuario || credenciais.senha !== this.senha) {
       throw new ErroCredenciaisInvalidas();
     }
@@ -93,7 +94,7 @@ export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao {
     const cargaCodificada = base64UrlCodificar(JSON.stringify(carga));
     const token = `${cargaCodificada}.${await assinar(this.segredo, cargaCodificada)}`;
     const usuarioAutenticado = montarUsuarioAutenticado(
-      { id: usuario.id, email: usuario.email, nome: usuario.nome, papel: usuario.papel, tenantId: credenciais.tenantId, fornecedores: usuario.fornecedores },
+      { id: usuario.id, usuario: usuario.usuario, nome: usuario.nome, papel: usuario.papel, tenantId: credenciais.tenantId, fornecedores: usuario.fornecedores },
       credenciais.tenantId
     )!;
     return { provedor: "demo", usuario: usuarioAutenticado, token, tokenRenovacao: null, expiraEm: exp };
@@ -114,7 +115,7 @@ export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao {
     }
     if (typeof carga.exp !== "number" || carga.exp <= this.agora()) return null;
     return montarUsuarioAutenticado(
-      { id: carga.sub, email: carga.email, nome: carga.nome, papel: carga.papel, tenantId: carga.tenantId, fornecedores: carga.fornecedores },
+      { id: carga.sub, usuario: carga.usuario, nome: carga.nome, papel: carga.papel, tenantId: carga.tenantId, fornecedores: carga.fornecedores },
       tenantId
     );
   }

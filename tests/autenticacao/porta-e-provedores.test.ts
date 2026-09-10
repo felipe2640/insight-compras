@@ -4,6 +4,8 @@ import {
   normalizarFornecedores,
   normalizarPapel,
   ErroCredenciaisInvalidas,
+  normalizarNomeUsuario,
+  emailInternoDoUsuario,
 } from "@/lib/autenticacao/porta";
 import {
   codificarCookieSessao,
@@ -32,7 +34,7 @@ describe("porta: normalização do perfil (igual para qualquer provedor)", () =>
   });
 
   it("usuário de outro tenant ou sem papel não entra", () => {
-    const base = { id: "u1", email: "a@b.c", nome: "Ana", papel: "GESTOR", tenantId: "carreiro", fornecedores: null };
+    const base = { id: "u1", usuario: "ana", nome: "Ana", papel: "GESTOR", tenantId: "carreiro", fornecedores: null };
     expect(montarUsuarioAutenticado(base, "carreiro")?.role).toBe("GESTOR");
     expect(montarUsuarioAutenticado(base, "outro")).toBeNull();
     expect(montarUsuarioAutenticado({ ...base, papel: null }, "carreiro")).toBeNull();
@@ -40,11 +42,11 @@ describe("porta: normalização do perfil (igual para qualquer provedor)", () =>
 
   it("comprador sem carteira falha fechado (lista vazia), gestor é irrestrito (null)", () => {
     const comprador = montarUsuarioAutenticado(
-      { id: "u", email: "c@x", nome: "", papel: "COMPRADOR", tenantId: "t", fornecedores: null }, "t");
+      { id: "u", usuario: "c", nome: "", papel: "COMPRADOR", tenantId: "t", fornecedores: null }, "t");
     expect(comprador?.allowedSupplierIds).toEqual([]);
-    expect(comprador?.nome).toBe("c@x");
+    expect(comprador?.nome).toBe("c");
     const gestor = montarUsuarioAutenticado(
-      { id: "u", email: "g@x", nome: "G", papel: "GESTOR", tenantId: "t", fornecedores: null }, "t");
+      { id: "u", usuario: "g", nome: "G", papel: "GESTOR", tenantId: "t", fornecedores: null }, "t");
     expect(gestor?.allowedSupplierIds).toBeNull();
   });
 });
@@ -83,19 +85,19 @@ describe("provedor demo", () => {
   const provedor = new ProvedorAutenticacaoDemo({ senha: "segredo", segredo: "chave-teste" });
 
   it("entra com usuário conhecido e senha certa; token valida de volta", async () => {
-    const sessao = await provedor.entrar({ email: "gestor@demo", senha: "segredo", tenantId: "carreiro" });
+    const sessao = await provedor.entrar({ usuario: "gestor", senha: "segredo", tenantId: "carreiro" });
     expect(sessao.usuario.role).toBe("GESTOR");
     const validado = await provedor.validar(sessao.token, "carreiro");
     expect(validado?.id).toBe("demo-gestor");
   });
 
   it("senha errada ou usuário desconhecido = credenciais inválidas", async () => {
-    await expect(provedor.entrar({ email: "gestor@demo", senha: "x", tenantId: "carreiro" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
-    await expect(provedor.entrar({ email: "ninguem@demo", senha: "segredo", tenantId: "carreiro" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
+    await expect(provedor.entrar({ usuario: "gestor", senha: "x", tenantId: "carreiro" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
+    await expect(provedor.entrar({ usuario: "ninguem", senha: "segredo", tenantId: "carreiro" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
   });
 
   it("token adulterado, assinado com outro segredo ou de outro tenant não valida", async () => {
-    const sessao = await provedor.entrar({ email: "comprador@demo", senha: "segredo", tenantId: "carreiro" });
+    const sessao = await provedor.entrar({ usuario: "comprador", senha: "segredo", tenantId: "carreiro" });
     const [carga, assinatura] = sessao.token.split(".");
     expect(await provedor.validar(`${carga}x.${assinatura}`, "carreiro")).toBeNull();
     const outro = new ProvedorAutenticacaoDemo({ senha: "segredo", segredo: "outra-chave" });
@@ -106,7 +108,7 @@ describe("provedor demo", () => {
   it("token expirado não valida", async () => {
     let relogio = 1_000_000;
     const p = new ProvedorAutenticacaoDemo({ senha: "s", segredo: "k", agora: () => relogio });
-    const sessao = await p.entrar({ email: "gestor@demo", senha: "s", tenantId: "t" });
+    const sessao = await p.entrar({ usuario: "gestor", senha: "s", tenantId: "t" });
     relogio += 13 * 3600 * 1000;
     expect(await p.validar(sessao.token, "t")).toBeNull();
   });
@@ -136,7 +138,7 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
       "token?grant_type=password": { status: 200, corpo: { access_token: "at", refresh_token: "rt", expires_in: 3600, user: usuarioGoTrue } },
     });
     const p = new ProvedorAutenticacaoSupabase(cfg, fn);
-    const s = await p.entrar({ email: "gestor@empresa.com.br", senha: "x", tenantId: "carreiro" });
+    const s = await p.entrar({ usuario: "gestor", senha: "x", tenantId: "carreiro" });
     expect(s.usuario).toMatchObject({ id: "uuid-1", nome: "Gestora", role: "GESTOR", tenantId: "carreiro" });
     expect(s.tokenRenovacao).toBe("rt");
     const h = chamadas[0].init.headers as Record<string, string>;
@@ -146,7 +148,7 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
 
   it("400 do GoTrue vira credenciais inválidas (sem vazar detalhe)", async () => {
     const { fn } = fetchSimulado({ "token?grant_type=password": { status: 400, corpo: { error_description: "Invalid login" } } });
-    await expect(new ProvedorAutenticacaoSupabase(cfg, fn).entrar({ email: "a@b.c", senha: "x", tenantId: "carreiro" }))
+    await expect(new ProvedorAutenticacaoSupabase(cfg, fn).entrar({ usuario: "abc", senha: "x", tenantId: "carreiro" }))
       .rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
   });
 
@@ -155,7 +157,7 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
       "token?grant_type=password": { status: 200, corpo: { access_token: "at", user: { ...usuarioGoTrue, app_metadata: { ...usuarioGoTrue.app_metadata, tenant_id: "outra" } } } },
       logout: { status: 204, corpo: {} },
     });
-    await expect(new ProvedorAutenticacaoSupabase(cfg, fn).entrar({ email: "a@b.c", senha: "x", tenantId: "carreiro" }))
+    await expect(new ProvedorAutenticacaoSupabase(cfg, fn).entrar({ usuario: "abc", senha: "x", tenantId: "carreiro" }))
       .rejects.toBeInstanceOf(ErroAcessoNegado);
     expect(chamadas.some((c) => c.url.endsWith("/auth/v1/logout"))).toBe(true);
   });
@@ -172,7 +174,7 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
       "admin/users": { status: 200, corpo: { ...usuarioGoTrue, created_at: "2026-09-09T00:00:00Z" } },
     });
     const p = new ProvedorAutenticacaoSupabase(cfg, fn);
-    const criado = await p.criarUsuario({ email: "gestor@empresa.com.br", senha: "s", nome: "Gestora", papel: "GESTOR", tenantId: "carreiro", fornecedores: null });
+    const criado = await p.criarUsuario({ usuario: "gestor", senha: "s", nome: "Gestora", papel: "GESTOR", tenantId: "carreiro", fornecedores: null });
     expect(criado.papel).toBe("GESTOR");
     const h = chamadas[0].init.headers as Record<string, string>;
     expect(h.Authorization).toBe("Bearer srv");
@@ -209,5 +211,28 @@ describe("fábrica", () => {
 
   it("pedir supabase sem chaves falha com mensagem clara", () => {
     expect(() => obterProvedorAutenticacao("supabase")).toThrow(/SUPABASE_URL/);
+  });
+});
+
+describe("nome de usuário (a plataforma não pede e-mail)", () => {
+  it("aceita o formato combinado e recusa o resto", () => {
+    expect(normalizarNomeUsuario("Carlos.Eduardo")).toBe("carlos.eduardo");
+    expect(normalizarNomeUsuario("  JOÃO_1 ")).toBe("joao_1");
+    expect(normalizarNomeUsuario("ab")).toBeNull(); // curto demais
+    expect(normalizarNomeUsuario("com espaço")).toBeNull();
+    expect(normalizarNomeUsuario("com@arroba")).toBeNull();
+    expect(normalizarNomeUsuario(".comecaComPonto")).toBeNull();
+    expect(normalizarNomeUsuario(null)).toBeNull();
+  });
+
+  it("o e-mail interno usa domínio reservado, para ninguém tentar escrever nele", () => {
+    expect(emailInternoDoUsuario("carlos", "carreiro")).toBe("carlos@carreiro.invalid");
+  });
+
+  it("nome fora do padrão é credencial inválida, não erro de formato", async () => {
+    const provedor = new ProvedorAutenticacaoDemo({ senha: "s", segredo: "k" });
+    await expect(
+      provedor.entrar({ usuario: "x", senha: "s", tenantId: "t" })
+    ).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
   });
 });
