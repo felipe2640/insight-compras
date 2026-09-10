@@ -39,6 +39,7 @@ import { LegendaGrade } from "@/components/cockpit/LegendaGrade";
 import { ContagensStatusGrade } from "@/lib/cockpit/escopo-grade";
 import { useGradeProgressiva } from "@/hooks/useGradeProgressiva";
 import { AvisoCatalogo } from "@/components/cockpit/AvisoCatalogo";
+import { BotoesExportacao } from "@/components/cockpit/BotoesExportacao";
 import { DataTableSection } from "@/components/cockpit/data-table-section";
 import { criarColunasCockpit } from "@/components/cockpit/colunas-cockpit";
 import { QuickFilterChip } from "@/components/cockpit/quick-filter-chip";
@@ -395,6 +396,8 @@ export function CockpitPrincipal({
 
   // 13. Exportação configurável por cliente (layouts, formato e colunas do tenant)
   const [dialogExportacaoAberto, setDialogExportacaoAberto] = useState(false);
+  // Muda a cada modelo salvo, para os botões recarregarem a lista.
+  const [versaoModelos, setVersaoModelos] = useState(0);
   const tenantAtivo = useMemo(() => obterTenantAtivo(), []);
   const nomesFiliaisTenant = useMemo(() => montarNomesFiliais(tenantAtivo), [tenantAtivo]);
   const contextoExportacao = useMemo<ContextoExportacao>(
@@ -419,6 +422,7 @@ export function CockpitPrincipal({
         itensFiltrados={itensFiltrados as LinhaCockpitMatriz[]}
         itensSelecionados={table.getSelectedRowModel().rows.map((r) => r.original as LinhaCockpitMatriz)}
         configuracao={tenantAtivo.exportacao}
+        onModeloSalvo={() => setVersaoModelos((v) => v + 1)}
         contexto={contextoExportacao}
       />
 
@@ -460,15 +464,14 @@ export function CockpitPrincipal({
                 </select>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setDialogExportacaoAberto(true)}
-                className="bg-[#D4AF37] hover:bg-[#B89628] text-slate-950 font-bold px-3 py-1.5 rounded shadow flex items-center gap-1.5 transition-colors"
-                title="Exportar pedidos e transferências (CSV, XLSX ou PDF) no layout do cliente"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Exportar
-              </button>
+              {/* Um botão por modelo: o comprador exporta o de sempre num clique. */}
+              <BotoesExportacao
+                itens={itensFiltrados as LinhaCockpitMatriz[]}
+                contexto={contextoExportacao}
+                csvPadrao={tenantAtivo.exportacao.csvPadrao}
+                onAbrirConfiguracao={() => setDialogExportacaoAberto(true)}
+                versao={versaoModelos}
+              />
 
               <Link
                 href="/pedidos"

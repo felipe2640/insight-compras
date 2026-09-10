@@ -108,3 +108,28 @@ revoke all on table aprendizado_snapshot, aprendizado_item, aprendizado_feedback
   aprendizado_confirmacao, parametros_modelo from anon, authenticated;
 grant select, insert, update, delete on table aprendizado_snapshot, aprendizado_item,
   aprendizado_feedback, aprendizado_confirmacao, parametros_modelo to service_role;
+
+-- ============================================================================
+-- Modelos de exportação salvos por cliente.
+-- Os layouts do arquivo do tenant são os de fábrica; aqui ficam os que o
+-- usuário cria ou ajusta. Um id igual ao de fábrica sobrescreve o padrão.
+-- ============================================================================
+create table if not exists exportacao_modelo (
+  tenant_id     text not null,
+  id            text not null,
+  nome          text not null,
+  escopo        text not null,
+  formato       text not null,
+  colunas       jsonb not null,
+  rotulos       jsonb,
+  csv           jsonb,
+  nome_arquivo  text not null,
+  titulo_pdf    text,
+  criado_por    text,
+  created_at    timestamptz not null default now(),
+  primary key (tenant_id, id)
+);
+
+alter table exportacao_modelo enable row level security;
+revoke all on table exportacao_modelo from anon, authenticated;
+grant select, insert, update, delete on table exportacao_modelo to service_role;

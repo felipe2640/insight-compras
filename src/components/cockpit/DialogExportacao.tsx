@@ -12,7 +12,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { FileSpreadsheet, FileText, FileDown, Loader2, RotateCcw } from "lucide-react";
+import { FileSpreadsheet, FileText, FileDown, Loader2, RotateCcw, BookmarkPlus, Check } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -45,6 +45,8 @@ export interface DialogExportacaoProps {
   readonly itensSelecionados: readonly LinhaCockpitMatriz[];
   readonly configuracao: ConfiguracaoExportacaoTenant;
   readonly contexto: ContextoExportacao;
+  /** Avisa o cockpit para recarregar os botões de modelo. */
+  readonly onModeloSalvo?: () => void;
 }
 
 type OrigemLinhas = "filtrados" | "selecionados";
@@ -88,6 +90,7 @@ export function DialogExportacao({
   itensSelecionados,
   configuracao,
   contexto,
+  onModeloSalvo,
 }: DialogExportacaoProps) {
   const layoutPadrao = useMemo(() => layoutPadraoDoTenant(configuracao), [configuracao]);
 
@@ -153,6 +156,55 @@ export function DialogExportacao({
     const padrao = new Set(layout.colunas);
     setColunas(padrao);
     salvarColunas(contexto.tenantId, layout.id, padrao);
+  };
+
+  // --- salvar a escolha atual como modelo -------------------------------
+  const [nomeModelo, setNomeModelo] = useState("");
+  const [salvandoModelo, setSalvandoModelo] = useState(false);
+  const [modeloSalvo, setModeloSalvo] = useState<string | null>(null);
+
+  const salvarComoModelo = async () => {
+    setErro(null);
+    setModeloSalvo(null);
+    if (nomeModelo.trim().length < 3) {
+      setErro("Dê um nome de ao menos 3 letras ao modelo.");
+      return;
+    }
+    if (colunas.size === 0) {
+      setErro("Marque ao menos uma coluna antes de salvar o modelo.");
+      return;
+    }
+    setSalvandoModelo(true);
+    try {
+      const r = await fetch("/api/exportacao/modelos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome: nomeModelo.trim(),
+          escopo: layout.escopo,
+          formato,
+          // A ORDEM do layout manda: o ERP do cliente espera as colunas naquela
+          // sequência, e um Set não guarda ordem.
+          colunas: layout.colunas.filter((c) => colunas.has(c)),
+          rotulosPersonalizados: layout.rotulosPersonalizados,
+          csv: layout.csv,
+          nomeArquivo: layout.nomeArquivo,
+          tituloPdf: layout.tituloPdf,
+        }),
+      });
+      const corpo = (await r.json()) as { erro?: string };
+      if (!r.ok) {
+        setErro(corpo.erro ?? "Não foi possível salvar o modelo.");
+        return;
+      }
+      setModeloSalvo(nomeModelo.trim());
+      setNomeModelo("");
+      onModeloSalvo?.();
+    } catch {
+      setErro("Sem conexão com o servidor.");
+    } finally {
+      setSalvandoModelo(false);
+    }
   };
 
   const exportar = async () => {
@@ -328,6 +380,36 @@ export function DialogExportacao({
             {erro}
           </p>
         )}
+
+        <div className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+          <label className="flex-1 space-y-1 text-xs">
+            <span className="font-semibold text-slate-700">Salvar esta escolha como modelo</span>
+            <input
+              value={nomeModelo}
+              onChange={(e) => setNomeModelo(e.target.value)}
+              placeholder="ex.: Pedido semanal Bosch"
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 outline-none focus:border-blue-500"
+            />
+            <span className="block text-[10px] text-slate-500">
+              Vira um botão de um clique no cockpit, com as colunas e o formato de agora.
+            </span>
+          </label>
+          <button
+            type="button"
+            onClick={salvarComoModelo}
+            disabled={salvandoModelo}
+            className="flex items-center gap-1.5 rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+          >
+            {salvandoModelo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookmarkPlus className="h-3.5 w-3.5" />}
+            Salvar modelo
+          </button>
+          {modeloSalvo && (
+            <span role="status" className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+              <Check className="h-3.5 w-3.5" />
+              &quot;{modeloSalvo}&quot; salvo
+            </span>
+          )}
+        </div>
 
         <DialogFooter>
           <button
