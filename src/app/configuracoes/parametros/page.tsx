@@ -1,204 +1,192 @@
-"use client";
+/**
+ * Parâmetros de compra — o que o motor está usando AGORA.
+ *
+ * Antes esta tela tinha sliders com números soltos, sem ligação com o motor:
+ * mexer não mudava a sugestão de nada. O que vale é o arquivo do tenant, e
+ * sobre ele pode haver uma calibração PUBLICADA pelo ciclo de aprendizado. A
+ * tela mostra os dois e diz qual está valendo.
+ *
+ * Mudar margem por aqui, na mão, seria contornar a calibração que aprende com o
+ * desfecho real. Quem quiser mudar publica pela tela Modelo × Comprador.
+ */
 
-import React, { useState } from "react";
+import React from "react";
+import Link from "next/link";
+import { Sliders, FileCode2, GraduationCap } from "lucide-react";
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { Sliders, Save, CheckCircle2 } from "lucide-react";
+import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
+import { obterUsuarioAtual, rotuloPapel } from "@/lib/autenticacao/servidor";
+import { carregarParametrosPublicados } from "@/lib/aprendizado/repositorio";
+import { PerfilRotatividade } from "@core/dominio";
 
-export default function PaginaParametros() {
-  const [salvo, setSalvo] = useState(false);
+export const dynamic = "force-dynamic";
 
-  // Estados dos parâmetros de negócio
-  const [coberturaCurvaA, setCoberturaCurvaA] = useState(21);
-  const [coberturaCurvaB, setCoberturaCurvaB] = useState(30);
-  const [coberturaCurvaC, setCoberturaCurvaC] = useState(45);
-  const [leadTimePadrao, setLeadTimePadrao] = useState(7);
-  const [diasTravaEncalhe, setDiasTravaEncalhe] = useState(120);
-  const [bloquearCompraSemGiro, setBloquearCompraSemGiro] = useState(true);
-  const [respeitarMultiplosEmbalagem, setRespeitarMultiplosEmbalagem] = useState(true);
+const ROTULO_PERFIL: Record<string, string> = {
+  ALTO_GIRO: "Alto giro",
+  MEDIO_GIRO: "Médio giro",
+  BAIXO_GIRO_INTERMITENTE: "Baixo giro / intermitente",
+  SEM_HISTORICO_SUFICIENTE: "Sem histórico suficiente",
+};
 
-  const handleSalvar = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSalvo(true);
-    setTimeout(() => setSalvo(false), 3000);
-  };
+const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
+
+export default async function PaginaParametros() {
+  const usuario = await obterUsuarioAtual();
+  const tenant = obterTenantAtivo();
+  const motor = tenant.parametrosMotor.motor;
+  const publicados = usuario ? await carregarParametrosPublicados(usuario.tenantId) : null;
+
+  const perfis = Object.keys(motor.horizontes) as PerfilRotatividade[];
+  const margensEmUso = publicados?.margens ?? motor.margens;
+  const fatorEmUso = publicados?.fatorCalibracao ?? motor.fatorCalibracao;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
-      <AppSidebar />
-
+    <div className="flex h-screen overflow-hidden bg-slate-100">
+      <AppSidebar
+        usuario={usuario ? { nome: usuario.nome, papelRotulo: rotuloPapel(usuario.role) } : null}
+      />
       <main className="flex flex-1 flex-col overflow-y-auto">
-        <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <Sliders className="h-5 w-5 text-blue-600" />
-                Parâmetros Globais do Motor de Compras
-              </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Ajuste os horizontes de cobertura por Curva ABC, lead times e travas de segurança contra compras de encalhe.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleSalvar}
-              className="flex items-center gap-1.5 rounded-lg bg-[#0F2B5C] px-4 py-2 text-xs font-bold text-white shadow hover:bg-[#0A1E40] transition-colors"
-            >
-              <Save className="h-4 w-4 text-[#D4AF37]" />
-              Salvar Alterações
-            </button>
-          </div>
+        <header className="sticky top-0 z-30 border-b border-[#D4AF37]/30 bg-[#0F2B5C] px-4 py-2.5 text-white shadow-md">
+          <h1 className="flex items-center gap-2 text-sm font-semibold">
+            <Sliders className="h-4 w-4 text-[#D4AF37]" />
+            Parâmetros de Compra
+          </h1>
+          <p className="text-xs text-white/70">
+            Em uso: <strong>{publicados ? `calibração ${publicados.versao}` : "arquivo do cliente"}</strong>
+          </p>
         </header>
 
-        <div className="p-6 max-w-4xl space-y-6">
-          {salvo && (
-            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs font-semibold text-emerald-800 animate-in fade-in">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              Parâmetros de compras atualizados com sucesso e persistidos para todos os compradores.
+        <div className="mx-auto w-full max-w-[1000px] space-y-3 p-4 text-xs">
+          <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-600 shadow-sm">
+            <FileCode2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+            <span>
+              A previsão é <code className="rounded bg-slate-100 px-1">consumo diário × horizonte × (1 + margem)</code>,
+              arredondada para o lote, com piso pela mediana da linha de venda, e depois
+              multiplicada pelo fator de calibração. Estes números vêm do arquivo do cliente
+              e podem ser substituídos por uma calibração publicada.
+            </span>
+          </p>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-3 py-2 font-semibold text-slate-800">
+              Horizonte e margem por perfil de giro
             </div>
-          )}
+            <table className="w-full">
+              <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-1.5 text-left">Perfil</th>
+                  <th className="px-3 py-1.5 text-right">Horizonte</th>
+                  <th className="px-3 py-1.5 text-right">Margem do arquivo</th>
+                  <th className="px-3 py-1.5 text-right">Margem em uso</th>
+                </tr>
+              </thead>
+              <tbody>
+                {perfis.map((p) => {
+                  const doArquivo = motor.margens[p];
+                  const emUso = margensEmUso[p];
+                  const mudou = doArquivo !== emUso;
+                  return (
+                    <tr key={p} className="border-t border-slate-100">
+                      <td className="px-3 py-1.5 font-semibold text-slate-800">
+                        {ROTULO_PERFIL[p] ?? p}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono text-slate-700">
+                        {motor.horizontes[p]} dias
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-mono text-slate-500">
+                        {pct(doArquivo)}
+                      </td>
+                      <td
+                        className={
+                          mudou
+                            ? "px-3 py-1.5 text-right font-mono font-bold text-blue-700"
+                            : "px-3 py-1.5 text-right font-mono text-slate-700"
+                        }
+                        title={mudou ? "Substituída por calibração publicada" : undefined}
+                      >
+                        {pct(emUso)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-          {/* Grupo 1: Cobertura de Estoque por Curva ABC */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
-            <h2 className="text-sm font-bold text-slate-800 dark:text-white border-b border-slate-100 pb-2 dark:border-slate-800">
-              1. Cobertura Alvo em Dias (Políticas de Estoque por Curva ABC)
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Curva A (Alto Giro)
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    value={coberturaCurvaA}
-                    onChange={(e) => setCoberturaCurvaA(Number(e.target.value))}
-                    className="w-24 rounded border border-slate-300 p-1.5 text-xs font-mono font-bold focus:ring-1 focus:ring-blue-500"
-                  />
-                  <span className="text-xs text-slate-500">dias de cobertura</span>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <p className="mb-1 font-semibold text-slate-800">Calibração</p>
+              <dl className="space-y-1 text-slate-600">
+                <div className="flex justify-between">
+                  <dt>Fator em uso</dt>
+                  <dd className="font-mono font-bold text-slate-900">{fatorEmUso.toFixed(2)}</dd>
                 </div>
-                <span className="text-[11px] text-slate-400 mt-1 block">Giro rápido: foco em 0 ruptura.</span>
-              </div>
+                <div className="flex justify-between">
+                  <dt>Origem do piso</dt>
+                  <dd className="font-mono">{motor.origemPiso}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt>Lead time padrão</dt>
+                  <dd className="font-mono">{tenant.parametrosMotor.leadTimePadraoDias} dias</dd>
+                </div>
+              </dl>
+            </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Curva B (Médio Giro)
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    value={coberturaCurvaB}
-                    onChange={(e) => setCoberturaCurvaB(Number(e.target.value))}
-                    className="w-24 rounded border border-slate-300 p-1.5 text-xs font-mono font-bold focus:ring-1 focus:ring-blue-500"
-                  />
-                  <span className="text-xs text-slate-500">dias de cobertura</span>
+            <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <p className="mb-1 font-semibold text-slate-800">Elegibilidade</p>
+              <p className="mb-1 text-slate-600">
+                Um item só recebe sugestão depois de provar recorrência.
+              </p>
+              <dl className="space-y-1 text-slate-600">
+                <div className="flex justify-between">
+                  <dt>Notas distintas (mín.)</dt>
+                  <dd className="font-mono">{motor.elegibilidade.minimoNotasDistintas}</dd>
                 </div>
-                <span className="text-[11px] text-slate-400 mt-1 block">Equilíbrio de lote e capital.</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Curva C (Baixo Giro)
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    value={coberturaCurvaC}
-                    onChange={(e) => setCoberturaCurvaC(Number(e.target.value))}
-                    className="w-24 rounded border border-slate-300 p-1.5 text-xs font-mono font-bold focus:ring-1 focus:ring-blue-500"
-                  />
-                  <span className="text-xs text-slate-500">dias de cobertura</span>
+                <div className="flex justify-between">
+                  <dt>Meses ativos em 12m (mín.)</dt>
+                  <dd className="font-mono">{motor.elegibilidade.minimoMesesAtivos}</dd>
                 </div>
-                <span className="text-[11px] text-slate-400 mt-1 block">Evitar compras excessivas.</span>
-              </div>
+              </dl>
             </div>
           </div>
 
-          {/* Grupo 2: Lead Times e Logística */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
-            <h2 className="text-sm font-bold text-slate-800 dark:text-white border-b border-slate-100 pb-2 dark:border-slate-800">
-              2. Prazos de Entrega (Lead Time) & Logística
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Lead Time Padrão do Fornecedor
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    value={leadTimePadrao}
-                    onChange={(e) => setLeadTimePadrao(Number(e.target.value))}
-                    className="w-24 rounded border border-slate-300 p-1.5 text-xs font-mono font-bold focus:ring-1 focus:ring-blue-500"
-                  />
-                  <span className="text-xs text-slate-500">dias úteis</span>
-                </div>
-                <span className="text-[11px] text-slate-400 mt-1 block">
-                  Tempo médio do pedido até a entrada física no depósito.
-                </span>
+          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <p className="mb-1 font-semibold text-slate-800">Redução por governança de margem</p>
+            <p className="mb-2 text-slate-600">
+              Quando o BI do cliente manda REDUZIR, o corte é proporcional ao quanto a margem
+              que o item entregou ficou abaixo da margem com que ele foi precificado.
+            </p>
+            <dl className="space-y-1 text-slate-600">
+              <div className="flex justify-between">
+                <dt>Meta única da rede</dt>
+                <dd className="font-mono">
+                  {motor.reducaoGovernanca.margemAlvoRede === null
+                    ? "não usa (alvo por item)"
+                    : pct(motor.reducaoGovernanca.margemAlvoRede)}
+                </dd>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Trava de Encalhe (Idade Máxima sem Venda)
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    value={diasTravaEncalhe}
-                    onChange={(e) => setDiasTravaEncalhe(Number(e.target.value))}
-                    className="w-24 rounded border border-slate-300 p-1.5 text-xs font-mono font-bold focus:ring-1 focus:ring-blue-500"
-                  />
-                  <span className="text-xs text-slate-500">dias</span>
-                </div>
-                <span className="text-[11px] text-slate-400 mt-1 block">
-                  Bloqueia sugestão de compra se produto estiver sem giro há mais de X dias.
-                </span>
+              <div className="flex justify-between">
+                <dt>Piso do corte</dt>
+                <dd className="font-mono">{pct(motor.reducaoGovernanca.pisoFator)}</dd>
               </div>
-            </div>
+              <div className="flex justify-between">
+                <dt>Item sem custo lançado</dt>
+                <dd className="font-mono">{pct(motor.reducaoGovernanca.fatorSemMargem)}</dd>
+              </div>
+            </dl>
           </div>
 
-          {/* Grupo 3: Regras Comerciais e Embalagens */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
-            <h2 className="text-sm font-bold text-slate-800 dark:text-white border-b border-slate-100 pb-2 dark:border-slate-800">
-              3. Regras de Travas e Arredondamento Comercial
-            </h2>
-            <div className="space-y-3">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={bloquearCompraSemGiro}
-                  onChange={(e) => setBloquearCompraSemGiro(e.target.checked)}
-                  className="mt-1 h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-xs font-bold text-slate-800 dark:text-white">
-                    Bloqueio Automático de "Marcas Zumbis" e SKUs Obsoletos
-                  </span>
-                  <p className="text-[11px] text-slate-500">
-                    Impede que o sistema sugira compras para itens com estoque parado sem nenhuma venda nos últimos 180 dias.
-                  </p>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={respeitarMultiplosEmbalagem}
-                  onChange={(e) => setRespeitarMultiplosEmbalagem(e.target.checked)}
-                  className="mt-1 h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
-                />
-                <div>
-                  <span className="text-xs font-bold text-slate-800 dark:text-white">
-                    Forçar Arredondamento pelo Múltiplo de Caixa/Embalagem Fechada
-                  </span>
-                  <p className="text-[11px] text-slate-500">
-                    Itens como lâmpadas (caixa com 10), palhetas (pares) ou anéis sincronizadores devem arredondar para cima.
-                  </p>
-                </div>
-              </label>
-            </div>
-          </div>
+          <p className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-blue-900">
+            <GraduationCap className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              As margens não se editam na mão aqui: elas são aprendidas com o que de fato
+              entrou depois de cada pedido. Simule e publique em{" "}
+              <Link href="/aprendizado" className="font-semibold underline">
+                Modelo × Comprador
+              </Link>
+              .
+            </span>
+          </p>
         </div>
       </main>
     </div>

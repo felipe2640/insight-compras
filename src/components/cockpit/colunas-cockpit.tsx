@@ -2,7 +2,7 @@
 
 import React from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { Sparkles, AlertTriangle } from "lucide-react";
+import { Sparkles, AlertTriangle, ArrowLeftRight } from "lucide-react";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,7 @@ import {
 import { DataGridColumnHeader } from "@/components/ui/data-grid";
 import { LinhaCockpitCompras } from "@/tipos/cockpit";
 import { cn } from "@/lib/utils";
-import { TooltipCriterio, TooltipFrequencia, TooltipRuptura } from "@/components/tooltips";
+import { TooltipCriterio, TooltipFrequencia, TooltipRuptura, TooltipTransferencia } from "@/components/tooltips";
 
 export interface OpcoesColunasCockpit {
   nomeLojaFoco?: string;
@@ -877,31 +877,68 @@ export function criarColunasCockpit({
         const item = row.original;
         const podeTransferir = (item.sugestaoTransferencia ?? 0) > 0;
 
+        const origem = item.filialOrigemTransferenciaNome;
+
+        const campo = (
+          <input
+            // Mesma razão da coluna Pedido: sem `key` o slot virtualizado
+            // mantinha o valor da linha anterior (aba Transferir mostrava 0
+            // em itens com transferência sugerida).
+            key={item.codigoSku}
+            type="number"
+            min="0"
+            disabled={!podeTransferir}
+            defaultValue={item.transferenciaCustom ?? item.sugestaoTransferencia}
+            onChange={(e) => {
+              const val = parseInt(e.target.value, 10);
+              if (!isNaN(val) && val >= 0) {
+                onTransferirCommit?.(item.codigoSku, val);
+              }
+            }}
+            className={cn(
+              "h-7 w-16 rounded border text-center font-mono text-xs font-semibold outline-none transition-colors",
+              podeTransferir
+                ? "bg-indigo-50 border-indigo-300 text-indigo-900 focus:ring-1 focus:ring-indigo-500"
+                : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
+            )}
+            aria-label={
+              podeTransferir && origem
+                ? `Transferir ${item.sugestaoTransferencia} un de ${origem} para ${item.filialFocoNome}, SKU ${item.codigoSku}`
+                : `Quantidade de transferência para SKU ${item.codigoSku}`
+            }
+          />
+        );
+
+        // Sem os dois lados na tela, "5" não diz nada: o comprador precisa saber
+        // de onde a peça sai e para onde vai antes de confirmar.
+        if (!podeTransferir || !origem) {
+          return <div className="flex justify-center">{campo}</div>;
+        }
+
+        // Ao LADO do campo, não abaixo: na altura compacta a linha tem 36px e
+        // uma segunda linha seria cortada justamente onde está a informação.
         return (
-          <div className="flex justify-center">
-            <input
-              // Mesma razão da coluna Pedido: sem `key` o slot virtualizado
-              // mantinha o valor da linha anterior (aba Transferir mostrava 0
-              // em itens com transferência sugerida).
-              key={item.codigoSku}
-              type="number"
-              min="0"
-              disabled={!podeTransferir}
-              defaultValue={item.transferenciaCustom ?? item.sugestaoTransferencia}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (!isNaN(val) && val >= 0) {
-                  onTransferirCommit?.(item.codigoSku, val);
-                }
-              }}
-              className={cn(
-                "h-7 w-16 rounded border text-center font-mono text-xs font-semibold outline-none transition-colors",
-                podeTransferir
-                  ? "bg-indigo-50 border-indigo-300 text-indigo-900 focus:ring-1 focus:ring-indigo-500"
-                  : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
-              )}
-              aria-label={`Quantidade de transferência para SKU ${item.codigoSku}`}
-            />
+          <div className="flex items-center justify-center gap-1">
+            {campo}
+            <TooltipTransferencia
+              filialOrigemNome={origem}
+              saldoOrigem={item.saldoOrigemTransferencia}
+              estoqueMinimoOrigem={item.estoqueMinimoOrigemTransferencia}
+              sobraRealOrigem={item.sobraRealOrigemTransferencia}
+              filialDestinoNome={item.filialFocoNome}
+              necessidadeDestino={item.necessidadeDestinoTransferencia}
+              quantidadeTransferirRecomendada={item.sugestaoTransferencia ?? 0}
+              motivo={item.motivoDecisao}
+            >
+              <button
+                type="button"
+                aria-label={`De ${origem} para ${item.filialFocoNome}. Ver detalhes da transferência.`}
+                title={`De ${origem} para ${item.filialFocoNome}`}
+                className="flex h-5 w-5 shrink-0 cursor-help items-center justify-center rounded border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300"
+              >
+                <ArrowLeftRight className="h-3 w-3" />
+              </button>
+            </TooltipTransferencia>
           </div>
         );
       },

@@ -1,136 +1,95 @@
-"use client";
+/**
+ * Lojas & Filiais — leitura do arquivo do tenant, que é a fonte da verdade.
+ *
+ * Antes esta tela tinha uma lista fixa no código, editável na memória do
+ * navegador: mexer aqui não mudava nada e ainda dava a impressão de que mudava.
+ * Enquanto a edição não for gravada de verdade, mostrar o que está valendo e
+ * dizer onde se altera é mais útil do que um formulário que finge.
+ */
 
-import React, { useState } from "react";
+import React from "react";
+import { Building2, MapPin, FileCode2 } from "lucide-react";
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { Building2, CheckCircle2, MapPin, Save } from "lucide-react";
+import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
+import { obterUsuarioAtual, rotuloPapel } from "@/lib/autenticacao/servidor";
 
-interface Filial {
-  id: number;
-  nome: string;
-  cidade: string;
-  uf: string;
-  tipo: "Matriz / Hub" | "Filial";
-  ativa: boolean;
-  leadTimeAbastecimentoDias: number;
-  prioridadeRecepcao: number;
-}
+export const dynamic = "force-dynamic";
 
-const FILIAIS_INICIAIS: Filial[] = [
-  { id: 1, nome: "Pedro II", cidade: "Pedro II", uf: "PI", tipo: "Matriz / Hub", ativa: true, leadTimeAbastecimentoDias: 3, prioridadeRecepcao: 1 },
-  { id: 2, nome: "Poranga", cidade: "Poranga", uf: "CE", tipo: "Filial", ativa: true, leadTimeAbastecimentoDias: 5, prioridadeRecepcao: 2 },
-  { id: 3, nome: "Piripiri", cidade: "Piripiri", uf: "PI", tipo: "Filial", ativa: true, leadTimeAbastecimentoDias: 4, prioridadeRecepcao: 1 },
-  { id: 4, nome: "Campo Maior", cidade: "Campo Maior", uf: "PI", tipo: "Filial", ativa: true, leadTimeAbastecimentoDias: 4, prioridadeRecepcao: 2 },
-  { id: 5, nome: "José de Freitas", cidade: "José de Freitas", uf: "PI", tipo: "Filial", ativa: true, leadTimeAbastecimentoDias: 4, prioridadeRecepcao: 3 },
-];
-
-export default function PaginaLojas() {
-  const [filiais, setFiliais] = useState<Filial[]>(FILIAIS_INICIAIS);
-  const [salvo, setSalvo] = useState(false);
-
-  const toggleAtiva = (id: number) => {
-    setFiliais((prev) =>
-      prev.map((f) => (f.id === id ? { ...f, ativa: !f.ativa } : f))
-    );
-  };
-
-  const handleSalvar = () => {
-    setSalvo(true);
-    setTimeout(() => setSalvo(false), 3000);
-  };
+export default async function PaginaLojas() {
+  const usuario = await obterUsuarioAtual();
+  const tenant = obterTenantAtivo();
+  const filiais = tenant.filiais;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
-      <AppSidebar />
-
+    <div className="flex h-screen overflow-hidden bg-slate-100">
+      <AppSidebar
+        usuario={usuario ? { nome: usuario.nome, papelRotulo: rotuloPapel(usuario.role) } : null}
+      />
       <main className="flex flex-1 flex-col overflow-y-auto">
-        <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-blue-600" />
-                Lojas & Filiais da Rede
-              </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Gerenciamento dos pontos de venda, tempos de trânsito inter-lojas e centros de distribuição.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleSalvar}
-              className="flex items-center gap-1.5 rounded-lg bg-[#0F2B5C] px-4 py-2 text-xs font-bold text-white shadow hover:bg-[#0A1E40] transition-colors"
-            >
-              <Save className="h-4 w-4 text-[#D4AF37]" />
-              Salvar Alterações
-            </button>
-          </div>
+        <header className="sticky top-0 z-30 border-b border-[#D4AF37]/30 bg-[#0F2B5C] px-4 py-2.5 text-white shadow-md">
+          <h1 className="flex items-center gap-2 text-sm font-semibold">
+            <Building2 className="h-4 w-4 text-[#D4AF37]" />
+            Lojas &amp; Filiais
+          </h1>
+          <p className="text-xs text-white/70">
+            {tenant.nome} — {filiais.length} loja(s) na rede.
+          </p>
         </header>
 
-        <div className="p-6 max-w-5xl space-y-6">
-          {salvo && (
-            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-xs font-semibold text-emerald-800">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              Configurações de lojas salvas com sucesso.
-            </div>
-          )}
+        <div className="mx-auto w-full max-w-[1000px] space-y-3 p-4 text-xs">
+          <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-600 shadow-sm">
+            <FileCode2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+            <span>
+              Estas lojas vêm do arquivo de configuração do cliente
+              (<code className="rounded bg-slate-100 px-1">config/tenants/{tenant.id}.ts</code>),
+              que é o que o motor de compra e o balanceamento de transferência realmente usam.
+              Abrir uma loja nova é uma mudança de configuração, não de tela.
+            </span>
+          </p>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <table className="w-full border-collapse text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 border-b border-slate-200 dark:bg-slate-800/60 dark:border-slate-700">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <table className="w-full">
+              <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">ID</th>
-                  <th className="px-4 py-3 font-semibold">Nome da Filial</th>
-                  <th className="px-4 py-3 font-semibold">Cidade / UF</th>
-                  <th className="px-4 py-3 font-semibold">Classificação</th>
-                  <th className="px-4 py-3 font-semibold text-center">Lead Time de Trânsito</th>
-                  <th className="px-4 py-3 font-semibold text-center">Status</th>
-                  <th className="px-4 py-3 font-semibold text-center">Ativa no Cockpit</th>
+                  <th className="px-3 py-1.5 text-left">Cód.</th>
+                  <th className="px-3 py-1.5 text-left">Loja</th>
+                  <th className="px-3 py-1.5 text-left">Tipo</th>
+                  <th className="px-3 py-1.5 text-left">Praça</th>
+                  <th className="px-3 py-1.5 text-left">Situação</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              <tbody>
                 {filiais.map((f) => (
-                  <tr key={f.id} className="hover:bg-slate-50 transition-colors dark:hover:bg-slate-800/50">
-                    <td className="px-4 py-3 font-mono font-bold text-slate-700 dark:text-slate-300">
-                      #{f.id}
-                    </td>
-                    <td className="px-4 py-3 font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 text-blue-600" />
-                      {f.nome}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
-                      {f.cidade} - {f.uf}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300 border">
-                        {f.tipo}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center font-mono font-semibold text-slate-800 dark:text-slate-200">
-                      {f.leadTimeAbastecimentoDias} dias
-                    </td>
-                    <td className="px-4 py-3 text-center">
+                  <tr key={f.filialId} className="border-t border-slate-100">
+                    <td className="px-3 py-1.5 font-mono text-slate-700">{f.filialId}</td>
+                    <td className="px-3 py-1.5 font-semibold text-slate-800">{f.nome}</td>
+                    <td className="px-3 py-1.5">
                       <span
-                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                          f.ativa
-                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
+                        className={
+                          f.tipo === "matriz"
+                            ? "rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-800"
+                            : "rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700"
+                        }
                       >
-                        {f.ativa ? "Operação Ativa" : "Pausada"}
+                        {f.tipo === "matriz" ? "Matriz" : "Filial"}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => toggleAtiva(f.id)}
-                        className={`rounded px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                    <td className="px-3 py-1.5 text-slate-600">
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3 w-3 text-slate-400" />
+                        {f.cidade ? `${f.cidade}${f.uf ? `/${f.uf}` : ""}` : "—"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-1.5">
+                      <span
+                        className={
                           f.ativa
-                            ? "bg-rose-50 text-rose-700 hover:bg-rose-100"
-                            : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                        }`}
+                            ? "text-emerald-700 font-semibold"
+                            : "text-slate-400"
+                        }
                       >
-                        {f.ativa ? "Desativar" : "Ativar"}
-                      </button>
+                        {f.ativa ? "Ativa" : "Inativa"}
+                      </span>
                     </td>
                   </tr>
                 ))}
