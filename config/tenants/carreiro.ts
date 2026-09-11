@@ -18,6 +18,7 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
     "carreiro",
   ],
   customDomain: "compras.carreiro.com.br",
+  fonteDados: "powerbi-carreiro",
   /**
    * Paleta tirada do LOGOTIPO da rede, não inventada.
    *

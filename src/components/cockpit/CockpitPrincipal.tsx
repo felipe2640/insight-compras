@@ -70,6 +70,11 @@ export interface CockpitPrincipalProps {
   gradeInicial?: PayloadGradeTabular;
   /** Contagens do catálogo inteiro, do servidor: os chips não podem mentir na espera. */
   contagensCatalogo?: ContagensStatusGrade;
+  /**
+   * Carteira do usuário da sessão: fornecedores que ele pode ver, ou `null`
+   * para irrestrito (gestor e admin). O servidor valida de novo a cada
+   * requisição — isto aqui é só para a tela dizer a verdade.
+   */
   fornecedoresPermitidosInicial?: readonly number[] | null;
   filialFocoIdInicial?: number;
   /** Sessão resolvida no servidor: evita o rodapé "vazio" enquanto a página hidrata. */
@@ -84,12 +89,6 @@ const CONTAGENS_VAZIAS: ContagensStatusGrade = {
   zumbi: 0,
 };
 
-const CARTEIRAS_DEMO = [
-  { id: "GESTOR", nome: "Gestor Geral (Visão Completa da Rede)", fornecedores: null },
-  { id: "COMPRADOR_SUSPENSAO", nome: "Comprador: Suspensão & Freios", fornecedores: [500, 501, 502, 503, 504] },
-  { id: "COMPRADOR_MOTOR", nome: "Comprador: Motor & Injeção", fornecedores: [505, 506, 507, 508] },
-  { id: "COMPRADOR_ELETRICA", nome: "Comprador: Baterias & Lubrificantes", fornecedores: [509, 510, 511, 512] },
-];
 
 const OPCOES_ORDENACAO = [
   { id: "custo-desc", label: "Maior Custo (R$)", desc: true },
@@ -126,12 +125,25 @@ export function CockpitPrincipal({
   });
   const linhasBase = itensIniciais ?? grade.itens;
 
-  // 1. Estado de Carteira / Comprador Selecionado (RBAC)
-  const [carteiraSelecionada, setCarteiraSelecionada] = useState<string>("GESTOR");
-  const fornecedoresAtivos = useMemo(() => {
-    const c = CARTEIRAS_DEMO.find((item) => item.id === carteiraSelecionada);
-    return c ? c.fornecedores : fornecedoresPermitidosInicial;
-  }, [carteiraSelecionada, fornecedoresPermitidosInicial]);
+  /**
+   * 1. Carteira — a do usuário LOGADO, e mais nenhuma.
+   *
+   * Havia aqui um seletor com quatro carteiras inventadas ("Comprador:
+   * Suspensão & Freios", fornecedores 500 a 504 e seguintes). Nenhuma delas
+   * existe na operação de cliente nenhum: eram números escolhidos a esmo, numa
+   * tela que o comprador usa para decidir compra. O servidor sempre barrou o
+   * que o usuário não podia ver, então nunca foi falha de acesso — era a tela
+   * afirmando uma organização de compras que não é a do cliente.
+   *
+   * Trocar de carteira de verdade — o gestor olhando pela lente de um
+   * comprador — depende do cadastro real, que existe em /api/admin/usuarios e
+   * ainda não foi ligado aqui.
+   */
+  const fornecedoresAtivos = fornecedoresPermitidosInicial;
+  const carteiraIrrestrita = fornecedoresPermitidosInicial === null;
+  const rotuloCarteira = carteiraIrrestrita
+    ? "Rede completa"
+    : `Minha carteira · ${fornecedoresPermitidosInicial?.length ?? 0} fornecedor(es)`;
 
   // 2. Estado de Deltas / Ajustes do Comprador
   const [deltas, setDeltas] = useState<Record<string, ItemDeltaRascunho>>({});
@@ -147,7 +159,7 @@ export function CockpitPrincipal({
     // mesma para todo cliente, e dois clientes na mesma máquina misturavam o
     // que ainda não tinham enviado.
     tenantId: tenantAtivo.id,
-    userId: carteiraSelecionada,
+    userId: usuarioSessao?.nome ?? "anonimo",
     deltas,
   });
 
@@ -454,21 +466,11 @@ export function CockpitPrincipal({
               </span>
             </div>
 
-            {/* Seletor de Carteira RBAC e Ações */}
+            {/* Carteira do usuário da sessão — leitura, não escolha. */}
             <div className="flex items-center flex-wrap gap-2 text-xs">
               <div className="flex items-center bg-white/10 rounded px-2.5 py-1 border border-white/20">
                 <span className="text-slate-300 mr-2 font-medium">Carteira:</span>
-                <select
-                  value={carteiraSelecionada}
-                  onChange={(e) => setCarteiraSelecionada(e.target.value)}
-                  className="bg-transparent text-white font-semibold outline-none cursor-pointer text-xs"
-                >
-                  {CARTEIRAS_DEMO.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-slate-900 text-white">
-                      {c.nome}
-                    </option>
-                  ))}
-                </select>
+                <span className="font-semibold text-white">{rotuloCarteira}</span>
               </div>
 
               {/* Um botão por modelo: o comprador exporta o de sempre num clique. */}

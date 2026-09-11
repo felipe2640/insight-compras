@@ -25,6 +25,9 @@ export const TENANT_DEMONSTRACAO: ConfiguracaoTenant = {
   razaoSocial: "Rede Demonstração Autopeças Ltda",
   subdominioPrincipal: "demo.insightd.com.br",
   subdominiosValidos: ["demo.insightd.com.br", "demo.local", "demo", "demonstracao"],
+  // Sintética SEMPRE. O mostruário existe para mostrar a plataforma a quem não
+  // é cliente; ele não pode, em hipótese alguma, abrir o estoque de quem é.
+  fonteDados: "sintetica",
   cores: {
     primaria: "#1E293B", // Slate 800 — sóbrio, sem remeter a marca de cliente
     primariaHover: "#0F172A",

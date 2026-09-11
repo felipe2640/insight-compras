@@ -8,7 +8,12 @@ import {
   GerenciadorCacheResiliente,
   CircuitBreakerResiliente,
 } from "../harness/mock-ambiente";
-import { TENANT_CARREIRO } from "../harness/contexto-teste";
+// Do CADASTRO de verdade, não do dublê do harness. Este teste importava um
+// TENANT_CARREIRO de mentira e afirmava 2 filiais e os nomes "Trairi" e
+// "Paraipaba" — que não são de cliente nenhum deste projeto. Passava sempre,
+// dissesse o que dissesse o cadastro real, e dava por guardado justamente o
+// que não guardava.
+import { TENANT_CARREIRO } from "@config/tenants";
 
 describe("Tier 1 — Feature 6: Adapters, Resiliência de Cache, Circuit Breaker & White-Label", () => {
   // T1.6.1: Conformidade da interface InventoryAdapter
@@ -111,11 +116,15 @@ describe("Tier 1 — Feature 6: Adapters, Resiliência de Cache, Circuit Breaker
   // T1.6.5: Sistema White-Label Multi-Tenant Carreiro
   it("T1.6.5 — deve validar as variáveis e especificações do tenant Carreiro para deploy isolado na Vercel", () => {
     expect(TENANT_CARREIRO.id).toBe("carreiro");
-    expect(TENANT_CARREIRO.subdominio).toBe("carreiro.insightd.com.br");
-    expect(TENANT_CARREIRO.cores.primaria).toBe("#0F2B5C"); // Azul Carreiro
-    expect(TENANT_CARREIRO.cores.secundaria).toBe("#D4AF37"); // Dourado Carreiro
-    expect(TENANT_CARREIRO.filiais).toHaveLength(2);
-    expect(TENANT_CARREIRO.filiais[0].nome).toContain("Trairi");
-    expect(TENANT_CARREIRO.filiais[1].nome).toContain("Paraipaba");
+    expect(TENANT_CARREIRO.subdominioPrincipal).toBe("carreiro.insightd.com.br");
+    expect(TENANT_CARREIRO.cores.primaria).toBe("#0B39B0"); // Azul do logotipo
+    expect(TENANT_CARREIRO.filiais).toHaveLength(5);
+    expect(TENANT_CARREIRO.filiais.map((f) => f.nome)).toEqual([
+      "Carreiro Pedro II (Matriz)",
+      "Melo / Piripiri",
+      "Carreiro Poranga",
+      "Ceará Auto Peças (Campo Maior)",
+      "Carreiro José de Freitas",
+    ]);
   });
 });

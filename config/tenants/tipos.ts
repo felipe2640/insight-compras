@@ -113,6 +113,18 @@ export interface ConfiguracaoTenant {
   readonly subdominiosValidos: readonly string[];
   /** Domínio customizado opcional do cliente - ex: "compras.carreiro.com.br" */
   readonly customDomain?: string;
+  /**
+   * De onde vêm os dados de estoque e venda DESTE cliente.
+   *
+   * A fábrica de adaptadores escolhia sozinha: havendo credenciais de Power BI
+   * no ambiente, ela devolvia o adaptador da Carreiro — com os GUIDs e os nomes
+   * CADEMP da rede dela — fosse qual fosse o tenant. Duas consequências: o
+   * ambiente de DEMONSTRAÇÃO servia dados reais de cliente sob nomes
+   * sintéticos, e o segundo cliente herdaria o mapeamento do primeiro.
+   *
+   * "sintetica" nunca toca a nuvem de ninguém.
+   */
+  readonly fonteDados: "powerbi-carreiro" | "sintetica";
   /** Paleta de cores institucionais */
   readonly cores: CoresInstitucionaisTenant;
   /** Identidade visual (logos e favicon) */

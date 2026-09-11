@@ -10,6 +10,7 @@ import type { UsuarioAutenticado, PapelUsuario } from "@/lib/rbac/tipos";
 import {
   CredenciaisLogin,
   ErroCredenciaisInvalidas,
+  ErroProvedorIndisponivel,
   ProvedorAutenticacao,
   SessaoAutenticada,
   montarUsuarioAutenticado,
@@ -84,6 +85,25 @@ export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao {
   }
 
   async entrar(credenciais: CredenciaisLogin): Promise<SessaoAutenticada> {
+    /**
+     * Em produção, este provedor NÃO autentica ninguém.
+     *
+     * A seleção de provedor cai em "demo" quando não há banco de autenticação
+     * configurado — e isso acontece por OMISSÃO: basta a variável do Supabase
+     * faltar no ambiente. O deploy de um cliente subia então com contas
+     * internas de senha "demo", uma delas ADMIN, para quem chegasse na URL.
+     *
+     * Falhar aqui torna o erro visível no primeiro login em vez de deixar a
+     * porta encostada. A correção é configurar o provedor de verdade, não
+     * remover esta guarda.
+     */
+    if (process.env.NODE_ENV === "production") {
+      throw new ErroProvedorIndisponivel(
+        "demo",
+        "contas de demonstração não entram em produção; configure SUPABASE_URL e SUPABASE_ANON_KEY."
+      );
+    }
+
     const nome = String(credenciais.usuario ?? "").trim().toLowerCase();
     const usuario = this.usuarios.find((u) => u.usuario === nome);
     if (!usuario || credenciais.senha !== this.senha) {
