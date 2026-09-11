@@ -1,8 +1,15 @@
 "use client";
 
-import React, { useState, useRef, useId, useCallback } from "react";
+import React from "react";
 import { PropsTooltipRuptura, SeveridadeRuptura } from "@/tipos/cockpit";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
 
 const ESTILOS_SEVERIDADE: Record<SeveridadeRuptura, { badge: string; borda: string; texto: string }> = {
   Boa: {
@@ -39,9 +46,6 @@ export function TooltipRuptura({
   delayDuration = 0,
   children,
 }: PropsTooltipRuptura) {
-  const [visivel, setVisivel] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const tooltipId = useId();
 
   // Calcula taxa de ruptura dinamicamente se não informada ou valida integridade
   const taxaCalculada =
@@ -61,51 +65,11 @@ export function TooltipRuptura({
 
   const estilo = ESTILOS_SEVERIDADE[classificacao] ?? ESTILOS_SEVERIDADE["Sem histórico"];
 
-  const abrir = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (delayDuration === 0) {
-      setVisivel(true);
-    } else {
-      timerRef.current = setTimeout(() => setVisivel(true), delayDuration);
-    }
-  }, [delayDuration]);
-
-  const fechar = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setVisivel(false);
-  }, []);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        fechar();
-      }
-    },
-    [fechar]
-  );
-
   return (
-    <div
-      className="relative inline-flex items-center"
-      onMouseEnter={abrir}
-      onMouseLeave={fechar}
-      onFocus={abrir}
-      onBlur={fechar}
-      onKeyDown={handleKeyDown}
-      aria-describedby={visivel ? tooltipId : undefined}
-    >
-      {children}
-
-      {visivel && (
-        <div
-          id={tooltipId}
-          role="tooltip"
-          className={cn(
-            "absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-72 rounded-md border border-slate-200 bg-white p-3 text-xs shadow-xl transition-opacity dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100",
-            estilo.borda,
-            "border-l-4"
-          )}
-        >
+    <TooltipProvider>
+      <Tooltip delayDuration={delayDuration}>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent side="top" className="w-80 p-3 text-xs">
           <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
             <span className="font-semibold text-slate-900 dark:text-white">Diagnóstico de Ruptura</span>
             <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold border", estilo.badge)}>
@@ -150,8 +114,8 @@ export function TooltipRuptura({
           <p className="mt-2 text-[10px] text-slate-400 leading-tight">
             Mede a frequência de dias zerados. Ruptura acima de 10% é considerada grave com perda de faturamento.
           </p>
-        </div>
-      )}
-    </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

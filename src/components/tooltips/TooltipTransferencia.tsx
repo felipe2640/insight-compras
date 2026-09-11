@@ -1,8 +1,15 @@
 "use client";
 
-import React, { useState, useRef, useId, useCallback } from "react";
+import React from "react";
 import { PropsTooltipTransferencia } from "@/tipos/cockpit";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
 
 export function TooltipTransferencia({
   filialOrigemNome,
@@ -16,56 +23,17 @@ export function TooltipTransferencia({
   delayDuration = 0,
   children,
 }: PropsTooltipTransferencia) {
-  const [visivel, setVisivel] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const tooltipId = useId();
 
   // Sobra real estritamente calculada como saldo - minStock > 0
   const sobraRealCalculada = Math.max(0, saldoOrigem - estoqueMinimoOrigem);
   const transferenciaEfetiva = Math.min(necessidadeDestino, sobraRealCalculada);
   const saldoOrigemApos = saldoOrigem - transferenciaEfetiva;
 
-  const abrir = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (delayDuration === 0) {
-      setVisivel(true);
-    } else {
-      timerRef.current = setTimeout(() => setVisivel(true), delayDuration);
-    }
-  }, [delayDuration]);
-
-  const fechar = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setVisivel(false);
-  }, []);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        fechar();
-      }
-    },
-    [fechar]
-  );
-
   return (
-    <div
-      className="relative inline-flex items-center"
-      onMouseEnter={abrir}
-      onMouseLeave={fechar}
-      onFocus={abrir}
-      onBlur={fechar}
-      onKeyDown={handleKeyDown}
-      aria-describedby={visivel ? tooltipId : undefined}
-    >
-      {children}
-
-      {visivel && (
-        <div
-          id={tooltipId}
-          role="tooltip"
-          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-80 rounded-md border border-slate-200 bg-white p-3 text-xs shadow-xl transition-opacity dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-        >
+    <TooltipProvider>
+      <Tooltip delayDuration={delayDuration}>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent side="top" className="w-80 p-3 text-xs">
           <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
             <span className="font-semibold text-slate-900 dark:text-white">Transferência entre Lojas</span>
             <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-800 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-200 dark:border-indigo-800">
@@ -128,8 +96,8 @@ export function TooltipTransferencia({
             <span className="font-bold">Regra de Proteção da Origem:</span> A loja doadora só transfere se mantiver
             saldo estritamente acima do estoque mínimo de segurança (<code className="font-mono">saldo - minStock &gt; 0</code>). Jamais desabastece a origem.
           </div>
-        </div>
-      )}
-    </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
