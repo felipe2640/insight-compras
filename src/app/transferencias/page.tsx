@@ -22,10 +22,13 @@ import {
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { LinhaCockpitMatriz } from "@/tipos/cockpit";
 import { decodificarGradeTabular, PayloadGradeTabular } from "@/lib/cockpit/codificacao-tabular";
-import { NOMES_FILIAIS_CARREIRO } from "@adapters/carreiro/mapeador-dax";
+import { montarNomesFiliais, obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 import { cn } from "@/lib/utils";
 
-const LOJAS = Object.entries(NOMES_FILIAIS_CARREIRO).map(([id, nome]) => ({
+// Do cadastro do TENANT: a tela é a mesma para todo cliente, o que muda é a
+// configuração. Importar constante de adapter aqui amarraria a interface a um
+// cliente específico.
+const LOJAS = Object.entries(montarNomesFiliais(obterTenantAtivo())).map(([id, nome]) => ({
   id: Number(id),
   nome,
 }));

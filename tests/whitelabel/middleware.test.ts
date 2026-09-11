@@ -105,7 +105,9 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
       });
 
       expect(resultado.origemResolucao).toBe("fallback");
-      expect(resultado.tenantId).toBe("carreiro");
+      // Recuar para a DEMONSTRAÇÃO, não para um cliente: host desconhecido ou
+      // hostil nunca pode acabar mostrando a operação de quem confiou os dados.
+      expect(resultado.tenantId).toBe("demonstracao");
     });
 
     it("deve recorrer a fallback seguro se query param contiver payload malicioso", () => {
@@ -115,7 +117,9 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
       });
 
       expect(resultado.origemResolucao).toBe("fallback");
-      expect(resultado.tenantId).toBe("carreiro");
+      // Recuar para a DEMONSTRAÇÃO, não para um cliente: host desconhecido ou
+      // hostil nunca pode acabar mostrando a operação de quem confiou os dados.
+      expect(resultado.tenantId).toBe("demonstracao");
     });
   });
 

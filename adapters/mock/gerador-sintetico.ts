@@ -1,5 +1,5 @@
 /**
- * Gerador Sintético Estocástico e Determinístico da Rede Carreiro (25.000+ SKUs)
+ * Gerador Sintético Estocástico e Determinístico para DEMONSTRAÇÃO (25.000+ SKUs)
  * Camada: Adapters / Mock
  * 100% em Português do Brasil (pt-BR).
  *
@@ -90,8 +90,8 @@ const FORNECEDORES_REDE = [
   { id: 102, nome: "DPaschoal Distribuição" },
   { id: 103, nome: "Compecas Distribuidora de Autopeças" },
   { id: 104, nome: "Fortbras Distribuidora" },
-  { id: 105, nome: "Distribuidora Carreiro Central" },
-  { id: 106, nome: "Auto Peças Padre Cícero Distribuição" },
+  { id: 105, nome: "Distribuidora Central de Autopeças" },
+  { id: 106, nome: "Auto Peças União Distribuição" },
 ] as const;
 
 export interface OpcoesGeradorSintetico {
@@ -100,7 +100,9 @@ export interface OpcoesGeradorSintetico {
 }
 
 /**
- * Gera de forma puramente determinística o catálogo sintético completo da Rede Carreiro.
+ * Gera de forma puramente determinística um catálogo sintético completo.
+ * Nenhum nome aqui pode remeter a cliente real: este dado é o que aparece na
+ * demonstração pública da plataforma.
  */
 export function gerarDatasetSinteticoCarreiro(
   opcoes: OpcoesGeradorSintetico = {}

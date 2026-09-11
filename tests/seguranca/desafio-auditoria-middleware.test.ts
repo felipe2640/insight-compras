@@ -505,12 +505,13 @@ describe("Desafio Adversarial Gate M4 — Criptografia de Auditoria & Edge Middl
           cookies: { "x-tenant-id": "<script>alert(1)</script>" },
         });
 
-        // O parâmetro e cookie maliciosos são anulados pela sanitização.
-        // O sistema recorre confiavelmente ao fallback padrão (Carreiro).
+        // O parâmetro e o cookie maliciosos são anulados pela sanitização, e o
+        // recuo é para a DEMONSTRAÇÃO. Isto é o ponto do teste: host hostil não
+        // pode terminar exibindo a marca nem os dados de um cliente real.
         expect(resultado.origemResolucao).toBe("fallback");
         expect(resultado.tenantId).toBe(TENANT_PADRAO.id);
-        expect(resultado.tenant.cores.primaria).toBe(TENANT_CARREIRO.cores.primaria);
-        expect(resultado.headersDownstream["x-tenant-id"]).toBe("carreiro");
+        expect(resultado.tenant.cores.primaria).toBe(TENANT_PADRAO.cores.primaria);
+        expect(resultado.tenantId).not.toBe(TENANT_CARREIRO.id);
       });
 
       it("Edge Middleware deve enriquecer requisições com headers downstream e cabeçalhos de segurança mesmo sob ataque", async () => {
@@ -533,12 +534,12 @@ describe("Desafio Adversarial Gate M4 — Criptografia de Auditoria & Edge Middl
         // Não deve quebrar o fluxo
         expect(response).toBeDefined();
         expect(response.cookiesToSet.name).toBe("x-tenant-id");
-        expect(response.cookiesToSet.value).toBe("carreiro");
+        expect(response.cookiesToSet.value).toBe("demonstracao");
 
         // Headers downstream do tenant injetados
-        expect(response.request.headers.get("x-tenant-id")).toBe("carreiro");
-        expect(response.request.headers.get("x-tenant-cor-primaria")).toBe("#0F2B5C");
-        expect(response.request.headers.get("x-tenant-cor-secundaria")).toBe("#D4AF37");
+        expect(response.request.headers.get("x-tenant-id")).toBe("demonstracao");
+        expect(response.request.headers.get("x-tenant-cor-primaria")).toBe("#1E293B");
+        expect(response.request.headers.get("x-tenant-cor-secundaria")).toBe("#0EA5E9");
 
         // Todos os cabeçalhos de segurança HTTP devem ser garantidos
         for (const [header, valor] of Object.entries(CABECALHOS_SEGURANCA_HTTP)) {

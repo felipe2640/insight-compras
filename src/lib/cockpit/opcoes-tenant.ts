@@ -8,16 +8,24 @@
  */
 
 import { ConfiguracaoTenant } from "@config/tenants/tipos";
-import { TENANT_CARREIRO } from "@config/tenants/carreiro";
+import { resolverTenantConfigurado } from "@config/tenants";
 import { OpcoesGeracaoMatriz } from "./gerador-linhas-matriz";
 
 /**
- * Resolve o tenant ativo. Hoje há um cliente; quando houver mais, esta função
- * passa a resolver por subdomínio/host — e nada mais no cockpit precisa mudar.
+ * Resolve o tenant ativo.
+ *
+ * `TENANT_ATIVO` é a decisão explícita de qual cliente esta instalação atende.
+ * Sem ela, cai no tenant de DEMONSTRAÇÃO: um deploy sem configuração mostra o
+ * mostruário da plataforma, nunca a operação de um cliente por acidente.
+ *
+ * Nome desconhecido também cai na demonstração, e o aviso vai para o log em vez
+ * de virar exceção: derrubar o cockpit por causa de uma variável digitada
+ * errada seria pior do que abrir em modo mostruário.
  */
 export function obterTenantAtivo(): ConfiguracaoTenant {
-  return TENANT_CARREIRO;
+  return resolverTenantConfigurado();
 }
+
 
 /**
  * Constrói o mapa de nomes de filiais a partir do cadastro do tenant,

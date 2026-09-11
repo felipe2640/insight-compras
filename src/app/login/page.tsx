@@ -1,134 +1,71 @@
-"use client";
+/**
+ * Entrada da plataforma.
+ *
+ * A página é do SERVIDOR porque só ele sabe qual provedor de autenticação está
+ * ativo. Isso importa para uma coisa: quando a instalação sobe sem credenciais
+ * de nuvem, ela roda em modo demonstração com contas internas — e a tela
+ * precisa DIZER quais são. Um mostruário que ninguém consegue abrir não mostra
+ * nada, e adivinhar usuário não é trabalho de quem está avaliando o produto.
+ */
 
-import React, { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { ShieldCheck, Lock, User, Building2 } from "lucide-react";
+import React from "react";
+import { Info } from "lucide-react";
+import { FormularioLogin } from "./formulario-login";
+import { idProvedorConfigurado } from "@/lib/autenticacao";
+import { USUARIOS_DEMO } from "@/lib/autenticacao/provedores/demo";
+import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 
-function FormularioLogin() {
-  const router = useRouter();
-  const parametros = useSearchParams();
-  const [usuario, setUsuario] = useState("");
-  const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState<string | null>(null);
-  const [carregando, setCarregando] = useState(false);
-
-  const proximo = (() => {
-    const n = parametros.get("next");
-    return n && n.startsWith("/") && !n.startsWith("//") ? n : "/compras";
-  })();
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErro(null);
-    setCarregando(true);
-    try {
-      const r = await fetch("/api/auth/entrar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario, senha }),
-      });
-      const corpo = (await r.json().catch(() => ({}))) as { erro?: string };
-      if (!r.ok) {
-        setErro(corpo.erro ?? "Não foi possível entrar.");
-        return;
-      }
-      router.push(proximo);
-      router.refresh();
-    } catch {
-      setErro("Sem conexão com o servidor.");
-    } finally {
-      setCarregando(false);
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
-      <div className="space-y-1">
-        <label className="font-semibold text-slate-700">Organização</label>
-        <div className="flex items-center rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-slate-700">
-          <Building2 className="h-4 w-4 text-slate-400 mr-2" />
-          <span className="font-semibold">Rede Carreiro Autopeças</span>
-        </div>
-      </div>
-
-      <div className="space-y-1">
-        <label htmlFor="usuario" className="font-semibold text-slate-700">Usuário</label>
-        <div className="relative">
-          <User className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            id="usuario"
-            type="text"
-            required
-            autoComplete="username"
-            autoCapitalize="none"
-            spellCheck={false}
-            value={usuario}
-            onChange={(e) => setUsuario(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 py-2 text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            placeholder="seu.usuario"
-          />
-        </div>
-      </div>
-
-      <div className="space-y-1">
-        <label htmlFor="senha" className="font-semibold text-slate-700">Senha</label>
-        <div className="relative">
-          <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            id="senha"
-            type="password"
-            required
-            autoComplete="current-password"
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 py-2 text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-            placeholder="••••••••"
-          />
-        </div>
-      </div>
-
-      {erro && (
-        <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
-          {erro}
-        </p>
-      )}
-
-      <button
-        type="submit"
-        disabled={carregando}
-        className="w-full rounded-lg bg-[#0F2B5C] py-2.5 font-bold text-white shadow hover:bg-[#0A1E40] transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
-      >
-        {carregando ? (
-          <span>Autenticando...</span>
-        ) : (
-          <>
-            <ShieldCheck className="h-4 w-4 text-[#D4AF37]" />
-            <span>Entrar</span>
-          </>
-        )}
-      </button>
-    </form>
-  );
-}
+export const dynamic = "force-dynamic";
 
 export default function PaginaLogin() {
+  const modoDemonstracao = idProvedorConfigurado() === "demo";
+  const senhaDemo = process.env.DEMO_SENHA ?? "demo";
+  const tenant = obterTenantAtivo();
+
   return (
-    <div className="flex min-h-screen bg-slate-100 items-center justify-center p-4">
-      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-        <div className="bg-[#0F2B5C] p-6 text-center text-white border-b border-[#D4AF37]/30">
-          <div className="inline-flex items-center justify-center h-12 w-12 rounded-full bg-[#D4AF37] text-slate-950 font-black text-xl mb-2 shadow-md">
-            RC
-          </div>
-          <h1 className="text-xl font-black tracking-tight">REDE CARREIRO AUTOPEÇAS</h1>
-          <p className="text-xs text-slate-300 mt-1 font-medium">iNSIGHT D — Copiloto de Inteligência & Decisão de Compras</p>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-100 p-4">
+      <FormularioLogin />
+
+      {modoDemonstracao && (
+        <div className="w-full max-w-md rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+          <p className="mb-1.5 flex items-center gap-1.5 font-semibold">
+            <Info className="h-3.5 w-3.5" />
+            Ambiente de demonstração
+          </p>
+          <p className="mb-2 text-[11px] leading-snug">
+            Sem banco de autenticação configurado, a plataforma roda com contas internas e
+            dados sintéticos. Nenhuma informação aqui é de cliente real.
+          </p>
+          <table className="w-full">
+            <thead className="text-[10px] uppercase tracking-wide text-sky-700">
+              <tr>
+                <th className="py-0.5 text-left">Usuário</th>
+                <th className="py-0.5 text-left">Senha</th>
+                <th className="py-0.5 text-left">Enxerga</th>
+              </tr>
+            </thead>
+            <tbody className="font-mono">
+              {USUARIOS_DEMO.map((u) => (
+                <tr key={u.id} className="border-t border-sky-200/70">
+                  <td className="py-0.5 font-bold">{u.usuario}</td>
+                  <td className="py-0.5">{senhaDemo}</td>
+                  <td className="py-0.5 font-sans">
+                    {u.papel === "ADMIN"
+                      ? "tudo, inclusive cadastro de usuários"
+                      : u.papel === "GESTOR"
+                        ? "a rede inteira e a calibração"
+                        : "apenas a carteira dele"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-2 text-[10px] leading-snug text-sky-800">
+            Exibindo <strong>{tenant.nome}</strong>. Para apontar esta instalação a um cliente,
+            defina TENANT_ATIVO e as credenciais dele.
+          </p>
         </div>
-        <Suspense fallback={<div className="p-6 text-xs text-slate-500">Carregando…</div>}>
-          <FormularioLogin />
-        </Suspense>
-        <div className="bg-slate-50 px-6 py-3 border-t border-slate-100 text-[11px] text-slate-500 text-center">
-          Acesso por usuário e senha. O papel e a carteira vêm do cadastro, não da tela.
-        </div>
-      </div>
+      )}
     </div>
   );
 }

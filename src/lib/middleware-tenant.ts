@@ -4,7 +4,7 @@
  * 100% em Português do Brasil (pt-BR). Zero dependências de Node.js (Edge-ready).
  */
 
-import { obterConfiguracaoTenant, TENANT_PADRAO, ConfiguracaoTenant } from "@config/tenants";
+import { obterConfiguracaoTenant, resolverTenantConfigurado, ConfiguracaoTenant } from "@config/tenants";
 
 export interface EntradaResolucaoTenant {
   readonly hostname: string;
@@ -103,8 +103,8 @@ export function processarRequisicaoTenant(entrada: EntradaResolucaoTenant): Resu
     return montarResultado(tenant, "cookie");
   }
 
-  // 5. Ordem 5: Fallback padrão (Carreiro)
-  return montarResultado(TENANT_PADRAO, "fallback");
+  // 5. Ordem 5: Fallback padrão (DEMONSTRAÇÃO, nunca um cliente)
+  return montarResultado(resolverTenantConfigurado(), "fallback");
 }
 
 function montarResultado(

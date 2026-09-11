@@ -20,7 +20,9 @@ export async function POST(request: NextRequest) {
     const registro = await servicoAuditoriaPadrao.registrarDecisao({
       usuario,
       filialId: corpo.filialId ?? 1,
-      filialNome: corpo.filialNome ?? "Carreiro Pedro II",
+      // Sem nome de loja no corpo, usa um rótulo neutro. Um nome de cliente
+      // fixo aqui vazaria para qualquer instalação.
+      filialNome: corpo.filialNome ?? `Loja ${corpo.filialId ?? 1}`,
       produtoId: corpo.produtoId,
       codigoSku: corpo.codigoSku,
       descricaoProduto: corpo.descricaoProduto,

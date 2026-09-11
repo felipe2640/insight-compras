@@ -38,11 +38,17 @@ describe("White-Label — parâmetros de motor por tenant", () => {
   });
 
   describe("injeção das opções no gerador", () => {
-    it("entrega os parâmetros calibrados, não o baseline", () => {
-      const opcoes = montarOpcoesMatriz();
+    it("entrega os parâmetros calibrados do cliente pedido, não o baseline", () => {
+      // O tenant é passado de propósito: o padrão da plataforma é o de
+      // DEMONSTRAÇÃO, sem calibração. Calibração é de quem tem histórico.
+      const opcoes = montarOpcoesMatriz(1, TENANT_CARREIRO);
       expect(opcoes.parametrosMotor?.fatorCalibracao).toBe(0.9);
       expect(opcoes.leadTimePadraoDias).toBe(7);
       expect(opcoes.filialFocoId).toBe(1);
+    });
+
+    it("sem cliente pedido, o padrão NÃO empresta a calibração de ninguém", () => {
+      expect(montarOpcoesMatriz().parametrosMotor?.fatorCalibracao).toBe(1);
     });
 
     it("monta os nomes das 5 filiais a partir do cadastro do tenant", () => {

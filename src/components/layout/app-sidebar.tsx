@@ -19,6 +19,10 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
+
+/** Nome do cliente ativo; em demonstração, o nome genérico do mostruário. */
+const NOME_TENANT = obterTenantAtivo().nome.toUpperCase();
 
 interface ItemNavegacao {
   titulo: string;
@@ -134,7 +138,7 @@ export function AppSidebar({ className, usuario }: { className?: string; usuario
             <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-[#D4AF37] animate-pulse" />
             <div className="flex flex-col truncate">
               <span className="text-xs font-black tracking-tight leading-none text-white">
-                REDE CARREIRO
+                {NOME_TENANT}
               </span>
               <span className="text-[10px] text-slate-300 font-medium tracking-wide">
                 iNSIGHT D Compras

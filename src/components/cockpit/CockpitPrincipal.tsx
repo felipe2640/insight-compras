@@ -29,7 +29,6 @@ import {
 import { LinhaCockpitMatriz, ItemDeltaRascunho, LinhaCockpitCompras } from "@/tipos/cockpit";
 import { useFiltrosCockpit } from "@/hooks/useFiltrosCockpit";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
-import { NOMES_FILIAIS_CARREIRO } from "@adapters/carreiro/mapeador-dax";
 import { AppSidebar, UsuarioSidebar } from "@/components/layout/app-sidebar";
 import { PayloadGradeTabular, PAYLOAD_TABULAR_VAZIO } from "@/lib/cockpit/codificacao-tabular";
 import { funcaoFiltroColuna } from "@/lib/cockpit/filtro-tanstack";
@@ -110,6 +109,11 @@ export function CockpitPrincipal({
   usuarioSessao = null,
 }: CockpitPrincipalProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Identidade e cadastro do cliente ativo. Fica no topo porque a lista de
+  // lojas e a exportação dependem dele.
+  const tenantAtivo = useMemo(() => obterTenantAtivo(), []);
+  const nomesFiliaisTenant = useMemo(() => montarNomesFiliais(tenantAtivo), [tenantAtivo]);
 
   // 0. Grade: acionáveis agora, catálogo completo em segundo plano.
   const grade = useGradeProgressiva({
@@ -285,17 +289,18 @@ export function CockpitPrincipal({
     };
   }, [itensComOverrides, gradeInicial, grade.contagens.total]);
 
-  // 8. Lista de Lojas Formatada
+  // 8. Lista de Lojas — do cadastro do TENANT, nunca de um adapter de cliente.
+  // A interface é a mesma para todo mundo; quem muda é a configuração.
   const listaLojas = useMemo(() => {
-    return Object.entries(NOMES_FILIAIS_CARREIRO).map(([id, nome]) => ({
+    return Object.entries(nomesFiliaisTenant).map(([id, nome]) => ({
       id: parseInt(id, 10),
       nome,
     }));
-  }, []);
+  }, [nomesFiliaisTenant]);
 
   const nomeLojaFoco = useMemo(() => {
-    return NOMES_FILIAIS_CARREIRO[lojaFocoId as keyof typeof NOMES_FILIAIS_CARREIRO] || `Loja ${lojaFocoId}`;
-  }, [lojaFocoId]);
+    return nomesFiliaisTenant[lojaFocoId] ?? `Loja ${lojaFocoId}`;
+  }, [nomesFiliaisTenant, lojaFocoId]);
 
   // 9. Diálogo de Similares
   const [dialogSimilaresAberto, setDialogSimilaresAberto] = useState(false);
@@ -398,8 +403,6 @@ export function CockpitPrincipal({
   const [dialogExportacaoAberto, setDialogExportacaoAberto] = useState(false);
   // Muda a cada modelo salvo, para os botões recarregarem a lista.
   const [versaoModelos, setVersaoModelos] = useState(0);
-  const tenantAtivo = useMemo(() => obterTenantAtivo(), []);
-  const nomesFiliaisTenant = useMemo(() => montarNomesFiliais(tenantAtivo), [tenantAtivo]);
   const contextoExportacao = useMemo<ContextoExportacao>(
     () => ({
       tenantId: tenantAtivo.id,
@@ -434,11 +437,10 @@ export function CockpitPrincipal({
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <span className="inline-block h-3 w-3 rounded-full bg-[#D4AF37] animate-pulse" />
+                {/* Identidade do TENANT. Estava fixa no código e vazava o nome
+                    do cliente para a demonstração pública. */}
                 <span className="text-base font-black tracking-tight text-white">
-                  REDE CARREIRO
-                </span>
-                <span className="text-[10px] bg-[#D4AF37] text-slate-950 font-black px-1.5 py-0.2 rounded shadow-sm">
-                  AUTOPEÇAS
+                  {tenantAtivo.nome.toUpperCase()}
                 </span>
               </div>
               <span className="hidden sm:inline-block text-slate-400 text-xs">|</span>
