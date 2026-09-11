@@ -50,7 +50,7 @@ export function TooltipCriterio({
     <TooltipProvider>
       <Tooltip delayDuration={120}>
         <TooltipTrigger asChild>{children}</TooltipTrigger>
-        <TooltipContent side="top" className="max-w-[300px] p-0 text-xs">
+        <TooltipContent variante="painel" side="top" className="max-w-[300px] p-0 text-xs">
           <div className="border-b border-slate-200 px-3 py-1.5 dark:border-slate-700">
             <p className="font-semibold text-slate-800 dark:text-white">{titulo}</p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">

@@ -33,7 +33,7 @@ export function TooltipTransferencia({
     <TooltipProvider>
       <Tooltip delayDuration={delayDuration}>
         <TooltipTrigger asChild>{children}</TooltipTrigger>
-        <TooltipContent side="top" className="w-80 p-3 text-xs">
+        <TooltipContent variante="painel" side="top" className="w-80 p-3 text-xs">
           <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
             <span className="font-semibold text-slate-900 dark:text-white">Transferência entre Lojas</span>
             <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-800 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-200 dark:border-indigo-800">

@@ -45,7 +45,7 @@ export function TooltipFrequencia({
     <TooltipProvider>
       <Tooltip delayDuration={delayDuration}>
         <TooltipTrigger asChild>{children}</TooltipTrigger>
-        <TooltipContent side="top" className="w-80 p-3 text-xs">
+        <TooltipContent variante="painel" side="top" className="w-80 p-3 text-xs">
           <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
             <span className="font-semibold text-slate-900 dark:text-white">Frequência em 90 Dias</span>
             <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold border", estilo.badge)}>
