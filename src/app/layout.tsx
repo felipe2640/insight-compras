@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
-import { obterConfiguracaoTenant, TENANT_PADRAO } from "@config/tenants";
+import { obterConfiguracaoTenant, resolverTenantConfigurado, TENANT_PADRAO } from "@config/tenants";
 import { gerarStringCssVarsInline } from "@config/tenants/tipos";
 
 export const metadata: Metadata = {
@@ -15,8 +15,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const headersList = headers();
-  const tenantIdHeader = headersList.get("x-tenant-id") || "carreiro";
-  const tenant = obterConfiguracaoTenant(tenantIdHeader) || TENANT_PADRAO;
+  const tenantIdHeader = headersList.get("x-tenant-id");
+  const tenant = tenantIdHeader
+    ? (obterConfiguracaoTenant(tenantIdHeader) || TENANT_PADRAO)
+    : resolverTenantConfigurado();
   const inlineCssVars = gerarStringCssVarsInline(tenant);
 
   return (

@@ -43,6 +43,7 @@ export interface ProvedorAutenticacao {
   validar(token: string, tenantId: string): Promise<UsuarioAutenticado | null>;
   renovar(tokenRenovacao: string, tenantId: string): Promise<SessaoAutenticada | null>;
   sair(token: string): Promise<void>;
+  alterarSenha(usuarioId: string, senhaAtual: string, novaSenha: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,20 +68,31 @@ export interface UsuarioCadastrado {
   readonly tenantId: string;
   readonly fornecedores: readonly number[] | null;
   readonly criadoEm: string;
+  readonly ativo: boolean;
 }
 
 export interface AdministradorUsuarios {
   criarUsuario(novo: NovoUsuario): Promise<UsuarioCadastrado>;
   listarUsuarios(tenantId: string): Promise<UsuarioCadastrado[]>;
+  alterarSenha(usuarioId: string, senhaAtual: string, novaSenha: string): Promise<void>;
+  desativarUsuario(usuarioId: string): Promise<void>;
+  reativarUsuario(usuarioId: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
 // Erros e normalização do perfil (compartilhados por todos os provedores)
 // ---------------------------------------------------------------------------
 
-export class ErroCredenciaisInvalidas extends ErroNaoAutenticado {
+export class ErroUsuarioDesativado extends ErroNaoAutenticado {
   constructor() {
-    super("E-mail ou senha inválidos.");
+    super("Esta conta foi desativada pelo administrador.");
+    this.name = "ErroUsuarioDesativado";
+  }
+}
+
+export class ErroCredenciaisInvalidas extends ErroNaoAutenticado {
+  constructor(mensagem = "Usuário ou senha inválidos.") {
+    super(mensagem);
     this.name = "ErroCredenciaisInvalidas";
   }
 }

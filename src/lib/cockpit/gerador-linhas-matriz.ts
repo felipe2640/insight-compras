@@ -55,7 +55,8 @@ export interface OpcoesGeracaoMatriz {
  * Faixas homologadas no sistema legado (`classifyConsumptionByQuantity`):
  * < 30 => Baixa; >= 100 => Alta; caso contrário Média.
  */
-function classificarConsumoPorQuantidade(qtdVendida90d: number): ClassificacaoFrequencia {
+function classificarConsumoPorQuantidade(qtdVendida90d: number | null): ClassificacaoFrequencia {
+  if (qtdVendida90d === null || qtdVendida90d === undefined) return "Sem histórico";
   if (!Number.isFinite(qtdVendida90d) || qtdVendida90d < 30) return "Baixa";
   if (qtdVendida90d >= 100) return "Alta";
   return "Média";
@@ -68,7 +69,8 @@ function classificarConsumoPorQuantidade(qtdVendida90d: number): ClassificacaoFr
 function obterPeriodoIdealAnalise(classificacao: ClassificacaoFrequencia): string {
   if (classificacao === "Alta") return "30 dias";
   if (classificacao === "Média") return "60 a 90 dias";
-  return "120 a 180 dias";
+  if (classificacao === "Baixa") return "120 a 180 dias";
+  return "—";
 }
 
 /**
@@ -109,11 +111,14 @@ function calcularNecessidadeLoja(
   });
   const perfil = classificarPerfilGiro(
     cmd,
-    hist?.notasFiscaisVenda90dias ?? 0,
+    hist?.notasFiscaisVenda12meses ?? hist?.notasFiscaisVenda90dias ?? 0,
     hist?.mesesAtivos12meses ?? 0,
     parametrosMotor.elegibilidade
   );
   const pedidosMedidos = campoEstoqueDisponivel(est, "quantidadeJaPedida");
+
+  const loteDetectado = hist?.loteDetectadoHistograma ?? 1;
+  const loteMultiplo = p.loteMultiplo > 1 ? p.loteMultiplo : (loteDetectado > 1 ? loteDetectado : 1);
 
   return calcularNecessidadeItem({
     consumoDiario: cmd,
@@ -122,7 +127,7 @@ function calcularNecessidadeLoja(
     estoqueMinimoCadastrado: est?.estoqueMinimoSeguranca ?? 0,
     medianaLinhaVenda: hist?.medianaLinhaVenda ?? 0,
     quantidadeJaPedida: pedidosMedidos ? est?.quantidadeJaPedida ?? 0 : 0,
-    loteMultiplo: p.loteMultiplo > 1 ? p.loteMultiplo : 1,
+    loteMultiplo,
     parametrosMotor,
     leadTimeDias,
     sinalGovernanca: est?.sinalGovernancaCompra ?? null,
@@ -208,58 +213,103 @@ export function converterParaLinhasCockpit(
       }
     }
 
-    // Histórico da Loja Foco
-    const vendas30d = histFoco?.vendasLiquidas30dias ?? 0;
-    const vendas90d = histFoco?.vendasLiquidas90dias ?? 0;
-    const vendas180d = histFoco?.vendasLiquidas180dias ?? 0;
+    // Histórico da Loja Foco: distinguir "medido e igual a zero" de "não medido".
+    // Invariante 1: Zero afirma "não vendeu"; não medido diz "não sabemos" (afeta ~75% das linhas).
+    const temHistoricoFoco = !!histFoco;
+    const vendas30d =
+      temHistoricoFoco && campoHistoricoDisponivel(histFoco, "vendasLiquidas30dias")
+        ? (histFoco?.vendasLiquidas30dias ?? 0)
+        : null;
+    const vendas90d =
+      temHistoricoFoco && campoHistoricoDisponivel(histFoco, "vendasLiquidas90dias")
+        ? (histFoco?.vendasLiquidas90dias ?? 0)
+        : null;
+    const vendas180d =
+      temHistoricoFoco && campoHistoricoDisponivel(histFoco, "vendasLiquidas180dias")
+        ? (histFoco?.vendasLiquidas180dias ?? 0)
+        : null;
     const diasObservados = histFoco?.diasObservados ?? 180;
-    const notasVenda90d = histFoco?.notasFiscaisVenda90dias ?? 0;
-    const notasDevolucao90d = histFoco?.notasFiscaisDevolucao90dias ?? 0;
-    const mesesAtivos = histFoco?.mesesAtivos12meses ?? 0;
+    const notasVenda90d =
+      temHistoricoFoco && campoHistoricoDisponivel(histFoco, "notasFiscaisVenda90dias")
+        ? (histFoco?.notasFiscaisVenda90dias ?? 0)
+        : null;
+    const notasDevolucao90d =
+      temHistoricoFoco && campoHistoricoDisponivel(histFoco, "notasFiscaisDevolucao90dias")
+        ? (histFoco?.notasFiscaisDevolucao90dias ?? 0)
+        : null;
+    const notas12m =
+      temHistoricoFoco &&
+      (campoHistoricoDisponivel(histFoco, "notasFiscaisVenda12meses") ||
+        campoHistoricoDisponivel(histFoco, "notasFiscaisVenda90dias"))
+        ? (histFoco?.notasFiscaisVenda12meses ?? histFoco?.notasFiscaisVenda90dias ?? 0)
+        : null;
+    const mesesAtivos =
+      temHistoricoFoco && campoHistoricoDisponivel(histFoco, "mesesAtivos12meses")
+        ? (histFoco?.mesesAtivos12meses ?? 0)
+        : 0;
     const medianaLinha = histFoco?.medianaLinhaVenda ?? 0;
 
-    // Taxa diária com denominador FIXO de 180 dias (igual ao backtest).
-    const cmdDiario = calcularConsumoDiario({
-      vendasLiquidasJanela: vendas180d,
-      diasJanela: 180,
-    });
+    // Taxa diária com denominador FIXO de 180 dias (para o motor, sempre numérico).
+    const cmdDiarioCalculo = temHistoricoFoco && vendas180d !== null
+      ? calcularConsumoDiario({
+          vendasLiquidasJanela: vendas180d,
+          diasJanela: 180,
+        })
+      : 0;
+    const cmdDiario = temHistoricoFoco ? cmdDiarioCalculo : null;
 
-    // Cada janela usa o SEU próprio denominador. Antes a coluna "90d" recebia a
-    // taxa de 180 dias, o que fazia rótulo e conteúdo discordarem.
-    const cmd30d = vendas30d > 0 ? +(vendas30d / 30).toFixed(4) : 0;
-    const cmd90d = vendas90d > 0 ? +(vendas90d / 90).toFixed(4) : 0;
-    const cmd180d = vendas180d > 0 ? +(vendas180d / 180).toFixed(4) : 0;
+    // Cada janela usa o SEU próprio denominador. Se não medido, null (—).
+    const cmd30d = temHistoricoFoco && vendas30d !== null && vendas30d > 0
+      ? +(vendas30d / 30).toFixed(4)
+      : temHistoricoFoco
+      ? 0
+      : null;
+    const cmd90d = temHistoricoFoco && vendas90d !== null && vendas90d > 0
+      ? +(vendas90d / 90).toFixed(4)
+      : temHistoricoFoco
+      ? 0
+      : null;
+    const cmd180d = temHistoricoFoco && vendas180d !== null && vendas180d > 0
+      ? +(vendas180d / 180).toFixed(4)
+      : temHistoricoFoco
+      ? 0
+      : null;
 
     // Cobertura em dias. Sem consumo não existe cobertura calculável: null, não 999.
-    const cob30d = cmd30d > 0 ? Math.round(saldoFoco / cmd30d) : null;
-    const cob90d = cmd90d > 0 ? Math.round(saldoFoco / cmd90d) : null;
-    const cob180d = cmd180d > 0 ? Math.round(saldoFoco / cmd180d) : null;
+    const cob30d = cmd30d !== null && cmd30d > 0 ? Math.round(saldoFoco / cmd30d) : null;
+    const cob90d = cmd90d !== null && cmd90d > 0 ? Math.round(saldoFoco / cmd90d) : null;
+    const cob180d = cmd180d !== null && cmd180d > 0 ? Math.round(saldoFoco / cmd180d) : null;
 
-    // Perfil de giro pela taxa de 180d + recorrência (notas distintas E meses ativos).
-    const perfilGiro = classificarPerfilGiro(
-      cmdDiario,
-      notasVenda90d,
-      mesesAtivos,
-      parametrosMotor.elegibilidade
-    );
+    // Perfil de giro pela taxa de 180d + recorrência (notas distintas em 12m E meses ativos).
+    const perfilGiro = temHistoricoFoco
+      ? classificarPerfilGiro(
+          cmdDiarioCalculo,
+          notas12m ?? 0,
+          mesesAtivos,
+          parametrosMotor.elegibilidade
+        )
+      : "SEM_HISTORICO_SUFICIENTE";
     const curvaAbc: CurvaABC = mapaCurvaAbc.get(p.id)?.curva ?? "C";
 
-    // Trava de Marca Zumbi (saldo > 0 e zero vendas em 180d)
-    const checagemZumbi = aplicarTravaMarcaZumbi({
-      saldoFisico: saldoFoco,
-      vendasLiquidas180dias: vendas180d,
-      sugestaoOriginal: 0,
-      codigoSku: p.codigoSku,
-    });
+    // Trava de Marca Zumbi (saldo > 0 e zero vendas em 180d COMPROVADAS na loja)
+    // Sem histórico na loja, não afirmamos que vendeu zero: não é zumbi.
+    const checagemZumbi = temHistoricoFoco && vendas180d !== null
+      ? aplicarTravaMarcaZumbi({
+          saldoFisico: saldoFoco,
+          vendasLiquidas180dias: vendas180d,
+          sugestaoOriginal: 0,
+          codigoSku: p.codigoSku,
+        })
+      : { sugestaoAjustada: 0, travado: false, motivo: null };
     const isZumbi = checagemZumbi.travado;
 
     // Tendência de Cobertura
     let tendenciaCobertura: TendenciaCobertura = "ESTAVEL";
     if (isZumbi) {
       tendenciaCobertura = "ZUMBI";
-    } else if (cmd30d > cmd90d * 1.25 && cmd30d > 0.05) {
+    } else if (cmd30d !== null && cmd90d !== null && cmd30d > cmd90d * 1.25 && cmd30d > 0.05) {
       tendenciaCobertura = "ALTA";
-    } else if (cmd30d < cmd90d * 0.75) {
+    } else if (cmd30d !== null && cmd90d !== null && cmd30d < cmd90d * 0.75) {
       tendenciaCobertura = "QUEDA";
     }
 
@@ -288,23 +338,38 @@ export function converterParaLinhasCockpit(
     }
 
     const vendaPerdidaEstimada =
-      diasZerados !== null && diasZerados > 0 && cmd90d > 0
+      diasZerados !== null && diasZerados > 0 && cmd90d !== null && cmd90d > 0
         ? +(diasZerados * cmd90d * p.precoVenda).toFixed(2)
         : 0;
 
     // Frequência por Notas em 90 dias
-    const notasLiquidas90d = Math.max(0, notasVenda90d - notasDevolucao90d);
-    const frequenciaPercentual90d = +((notasLiquidas90d / 90) * 100).toFixed(1);
+    const notasLiquidas90d =
+      temHistoricoFoco && notasVenda90d !== null && notasDevolucao90d !== null
+        ? Math.max(0, notasVenda90d - notasDevolucao90d)
+        : null;
+    const frequenciaPercentual90d =
+      notasLiquidas90d !== null ? +((notasLiquidas90d / 90) * 100).toFixed(1) : null;
 
-    let classificacaoFrequencia: ClassificacaoFrequencia = "Baixa";
-    if (frequenciaPercentual90d > 40) {
-      classificacaoFrequencia = "Alta";
-    } else if (frequenciaPercentual90d >= 15) {
-      classificacaoFrequencia = "Média";
+    let classificacaoFrequencia: ClassificacaoFrequencia = "Sem histórico";
+    if (frequenciaPercentual90d !== null) {
+      if (frequenciaPercentual90d > 40) {
+        classificacaoFrequencia = "Alta";
+      } else if (frequenciaPercentual90d >= 15) {
+        classificacaoFrequencia = "Média";
+      } else {
+        classificacaoFrequencia = "Baixa";
+      }
     }
 
     // Lote/múltiplo: o adapter já resolveu a precedência (ERP > histograma > vocabulário).
-    const loteMultiplo = p.loteMultiplo > 1 ? p.loteMultiplo : 1;
+    // Se o produto tiver lote cadastrado/inferido, usamos ele; se o histórico da loja tiver
+    // detecção estatística dominante, também consideramos.
+    const loteMultiplo =
+      p.loteMultiplo > 1
+        ? p.loteMultiplo
+        : histFoco?.loteDetectadoHistograma && histFoco.loteDetectadoHistograma > 1
+        ? histFoco.loteDetectadoHistograma
+        : 1;
     const embalagemMinima = 1;
 
     // Necessidade de TODAS as lojas da rede para este item, pela mesma régua.
@@ -318,7 +383,7 @@ export function converterParaLinhasCockpit(
     const resultadoNecessidade =
       necessidadesPorLoja.get(filialFocoId) ??
       calcularNecessidadeItem({
-        consumoDiario: cmdDiario,
+        consumoDiario: cmdDiarioCalculo,
         perfilGiro,
         saldoFisico: saldoFoco,
         estoqueMinimoCadastrado: minStockFoco,
@@ -453,7 +518,10 @@ export function converterParaLinhasCockpit(
     }
 
     const entradasHoje = mapaEntradasHoje.get(p.id) ?? [];
-    const similares = carga.similares.get(p.id) ?? [];
+    const similares =
+      carga.similares instanceof Map || typeof (carga.similares as any)?.get === "function"
+        ? (carga.similares.get(p.id) ?? [])
+        : [];
 
     // Cálculo das métricas das 29 colunas fiéis
     const dtUltVenda = p.dataUltimaVenda ?? null;
@@ -470,8 +538,8 @@ export function converterParaLinhasCockpit(
 
     const giroUltimaVenda = classificarGiroPorDiasSemVenda(diasSemVenda);
 
-    const consumoMensal = +(cmdDiario * 30).toFixed(2);
-    const vendaACadaDias = cmdDiario > 0 ? +(1 / cmdDiario).toFixed(1) : null;
+    const consumoMensal = cmdDiario !== null ? +(cmdDiario * 30).toFixed(2) : null;
+    const vendaACadaDias = cmdDiario !== null && cmdDiario > 0 ? +(1 / cmdDiario).toFixed(1) : null;
     const classificacaoConsumo = classificarConsumoPorQuantidade(vendas90d);
     const periodoIdeal = obterPeriodoIdealAnalise(classificacaoFrequencia);
 
@@ -479,14 +547,17 @@ export function converterParaLinhasCockpit(
     // comparação: "vendeu 12 agora contra 30 antes" conta uma história que "12"
     // sozinho não conta. Sai de 180d menos 90d, sem consulta nova.
     //
-    // Já foram preenchidas com `valor * 0,95`, um número inventado; depois
-    // viraram null. Agora são medição de verdade.
-    // Sem registro de histórico na loja, as duas seguem a mesma régua das colunas
-    // irmãs da janela atual, que já assumem zero: misturar zero numa e travessão
-    // na outra faria a mesma linha contar duas histórias.
-    const notas180d = histFoco?.notasFiscaisVenda180dias ?? 0;
-    const histVendas90d: number | null = Math.max(0, vendas180d - vendas90d);
-    const histProdVend90d: number | null = Math.max(0, notas180d - notasVenda90d);
+    // Se não há histórico na loja em foco, o valor é não medido (null/—),
+    // respeitando a Invariante 1 (zero não é o mesmo que não medido).
+    const notas180d = histFoco?.notasFiscaisVenda180dias;
+    const histVendas90d: number | null =
+      temHistoricoFoco && vendas180d !== null && vendas90d !== null
+        ? Math.max(0, vendas180d - vendas90d)
+        : null;
+    const histProdVend90d: number | null =
+      temHistoricoFoco && notas180d !== undefined && notasVenda90d !== null
+        ? Math.max(0, notas180d - notasVenda90d)
+        : null;
 
     const statusMovimentacao =
       statusSugestao === "APROVADO_COMPRA"
@@ -563,7 +634,9 @@ export function converterParaLinhasCockpit(
       fatorCalibracaoAplicado: resultadoNecessidade.fatorCalibracao,
       motivoInelegibilidade:
         perfilGiro === "SEM_HISTORICO_SUFICIENTE"
-          ? `Sem recorrência: ${notasVenda90d} nota(s) e ${mesesAtivos} mês(es) com venda (mínimo ${parametrosMotor.elegibilidade.minimoNotasDistintas} e ${parametrosMotor.elegibilidade.minimoMesesAtivos})`
+          ? temHistoricoFoco
+            ? `Sem recorrência: ${notas12m ?? 0} nota(s) em 12m e ${mesesAtivos} mês(es) com venda (mínimo ${parametrosMotor.elegibilidade.minimoNotasDistintas} e ${parametrosMotor.elegibilidade.minimoMesesAtivos})`
+            : "Sem histórico de vendas registrado na loja em foco"
           : null,
 
       // Ajustes e Múltiplos

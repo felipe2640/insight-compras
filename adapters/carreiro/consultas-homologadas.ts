@@ -346,7 +346,12 @@ export const CAMPOS_INDISPONIVEIS_CARREIRO = {
  *   Observação: 'NOTAS'[Tipo Movimentação] só tem "Venda Direta", "Transferência" e
  *   nulo — não existe categoria de devolução, então a devolução vem da linha do item.
  *
- * - MesesAtivos12m alimenta o segundo critério de elegibilidade (recorrência).
+ * - Notas12m alimenta o critério principal de elegibilidade (3 notas distintas em 12 meses).
+ *
+ * - MesesAtivos12m alimenta o segundo critério de elegibilidade (recorrência: 2 meses ativos em 12m).
+ *
+ * - LoteDetectado detecta estatisticamente a fração dominante de múltiplos de compras
+ *   a partir de NOTAS_ITEMS[NQTDE], respeitando a precedência ERP > Histograma > Vocabulário.
  *
  * - MedianaLinhaVenda alimenta o piso da previsão de demanda.
  *
@@ -354,6 +359,11 @@ export const CAMPOS_INDISPONIVEIS_CARREIRO = {
  *   diário. Antes era enviado como constante 0, o que fazia todo SKU aparecer com
  *   0% de ruptura e classificação "Boa". O adapter declara o campo como
  *   indisponível e o cockpit mostra "—" em vez de um número falso.
+ *
+ * - SALVAGUARDA CONTRA TRUNCAMENTO DE DAX:
+ *   O executeQueries do Power BI trunca a resposta por tamanho de payload em bytes
+ *   sem emitir erro ou aviso. Toda consulta alterada deve preservar contagem
+ *   contra COUNTROWS do mesmo filtro e manter a paginação por cursor.
  */
 export function gerarConsultaDaxHistoricoVendas(filtro?: FiltroCargaInventario): string {
   let filtroFornecedores = "";
@@ -396,6 +406,11 @@ SUMMARIZECOLUMNS(
         [Quantidade de Notas],
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
     ),
+    "Notas12m", CALCULATE(
+        [Quantidade de Notas],
+        KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
+        Periodo365d
+    ),
     "Devolucoes90d", CALCULATE(
         SUM('NOTAS_ITEMS'[QTDE_DEV]),
         ${FILTROS_VENDA_VALIDA}
@@ -428,7 +443,60 @@ SUMMARIZECOLUMNS(
         ${FILTROS_VENDA_VALIDA}
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
     ),
+    "LoteDetectado", CALCULATE(
+        VAR LinhasValidas = FILTER('NOTAS_ITEMS', 'NOTAS_ITEMS'[NQTDE] > 0)
+        VAR TotalLinhas = COUNTROWS(LinhasValidas)
+        RETURN
+        IF(
+            TotalLinhas >= 8,
+            IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 12) = 0)), TotalLinhas) >= 0.7, 12,
+            IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 10) = 0)), TotalLinhas) >= 0.7, 10,
+            IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 8) = 0)), TotalLinhas) >= 0.7, 8,
+            IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 6) = 0)), TotalLinhas) >= 0.7, 6,
+            IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 5) = 0)), TotalLinhas) >= 0.7, 5,
+            IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 4) = 0)), TotalLinhas) >= 0.7, 4,
+            IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 3) = 0)), TotalLinhas) >= 0.7, 3,
+            IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 2) = 0)), TotalLinhas) >= 0.7, 2,
+            1)))))))),
+            1
+        ),
+        ${FILTROS_VENDA_VALIDA}
+        KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
+    ),
     "DiasObservados", 180
+)
+  `.trim();
+}
+
+/**
+ * Consulta DAX de conferência contra truncamento silencioso de payload (COUNTROWS).
+ *
+ * Utilizada para validar que o total de linhas retornado pela consulta de histórico
+ * bate exatamente com o número de linhas existentes na base sob o mesmo filtro,
+ * assegurando que nenhuma linha foi perdida pelo limite de bytes do executeQueries.
+ */
+export function gerarConsultaDaxContagemHistoricoVendas(filtro?: FiltroCargaInventario): string {
+  let filtroFornecedores = "";
+  if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
+    const listaDax = formatarListaNumericaDax(filtro.fornecedoresPermitidos);
+    filtroFornecedores = `KEEPFILTERS('PRODUTOS'[ICODFORN] IN ${listaDax}),`;
+  }
+
+  return `
+EVALUATE
+VAR DataLimite = TODAY()
+VAR Periodo180d = DATESINPERIOD('dCalendario'[Data], DataLimite, -180, DAY)
+RETURN
+ROW(
+    "TotalLinhas",
+    COUNTROWS(
+        SUMMARIZECOLUMNS(
+            'CADEMP'[ACODEMP],
+            'PRODUTOS'[ACODPRODUTO],
+            ${filtroFornecedores}
+            Periodo180d
+        )
+    )
 )
   `.trim();
 }

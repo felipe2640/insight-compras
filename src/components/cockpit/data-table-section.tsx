@@ -12,6 +12,7 @@ export type DataTableSectionProps = {
   totalCount: number;
   rowHeight: "compact" | "default" | "relaxed";
   className?: string;
+  emptyMessage?: string;
 };
 
 export function DataTableSection({
@@ -20,6 +21,7 @@ export function DataTableSection({
   totalCount,
   rowHeight,
   className,
+  emptyMessage,
 }: DataTableSectionProps) {
   return (
     <section className={cn("flex flex-col flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900", className)}>
@@ -39,7 +41,7 @@ export function DataTableSection({
       <DataGrid
         table={table}
         rowHeight={rowHeight}
-        emptyMessage="Nenhum produto corresponde aos filtros selecionados."
+        emptyMessage={emptyMessage ?? "Nenhum produto corresponde aos filtros selecionados."}
         rowClassName={(row) => {
           const item = row.original;
           const temSimilarComSaldo = item.temSimilarComEstoque;

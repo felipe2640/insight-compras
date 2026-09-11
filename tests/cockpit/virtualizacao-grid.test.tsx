@@ -2,10 +2,22 @@
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { GridCockpitVirtualizado } from "@/components/cockpit";
+import { CockpitPrincipal, criarColunasCockpit } from "@/components/cockpit";
 import { LinhaCockpitMatriz } from "@/tipos/cockpit";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+  }),
+  usePathname: () => "/",
+  useSearchParams: () => new URLSearchParams(),
+}));
+
 beforeEach(() => {
+  localStorage.clear();
   Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, value: 600 });
   Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 600 });
 });
@@ -13,21 +25,46 @@ beforeEach(() => {
 function gerarLinhasTeste(quantidade: number): LinhaCockpitMatriz[] {
   const resultado: LinhaCockpitMatriz[] = [];
   for (let i = 1; i <= quantidade; i++) {
+    const sku = `SKU-${String(i).padStart(4, "0")}`;
     resultado.push({
       produtoId: i,
-      codigoSku: `SKU-${String(i).padStart(4, "0")}`,
+      codigo: sku,
+      codigoSku: sku,
       descricao: `AMORTECEDOR TESTE NÚMERO ${i}`,
       marca: i % 2 === 0 ? "MONROE" : "COFAP",
       fabricante: "FABRICANTE PADRAO",
       referenciaFabricante: `REF-${i}`,
+      aplicacao: "APLICACAO VEICULAR COMPLETA",
       aplicacaoVeicular: "APLICACAO VEICULAR COMPLETA",
       secaoId: 1,
       secaoNome: "Suspensão",
-      subgrupo: null,
+      subgrupo: "Amortecedores",
       precoCusto: 100.0,
+      custo: 100.0,
       precoVenda: 160.0,
       curvaAbc: i <= 5 ? "A" : i <= 15 ? "B" : "C",
+      curvaAbcSistema: i <= 5 ? "A" : i <= 15 ? "B" : "C",
       perfilGiro: "MEDIO_GIRO",
+      consumoDiario: 0.44,
+      consumoMedioDiario90d: 0.44,
+      consumoMensal: 13.2,
+      vendaACadaDias: 2.3,
+      consumoUltimos30DiasQtd: 14,
+      produtosVend90d: 40,
+      notasLiquidas90d: 20,
+      giroUltimaVenda: "Alta",
+      frequencia: "Média",
+      classificacaoConsumo: "Média",
+      ruptura: "Boa",
+      periodoIdeal: "15 dias",
+      histVendas90d: 38,
+      histProdVend90d: 19,
+      diasSemVenda: 2,
+      statusMovimentacao: "Comprar",
+      sugestaoCompra: 4,
+      sugestaoTransferencia: 0,
+      temSimilarComEstoque: i === 1,
+      exigeMultiploEmbalagem: false,
       rupturaDiasAnalisados: 90,
       rupturaDiasZerados: 0,
       rupturaPercentual: 0,
@@ -36,7 +73,6 @@ function gerarLinhasTeste(quantidade: number): LinhaCockpitMatriz[] {
       vendaPerdidaEstimadaReais: 0,
       notasVenda90d: 20,
       notasDevolucao90d: 0,
-      notasLiquidas90d: 20,
       frequenciaPercentual90d: 22.2,
       classificacaoFrequencia: "Média",
       totalPecasVendidas90d: 40,
@@ -45,7 +81,6 @@ function gerarLinhasTeste(quantidade: number): LinhaCockpitMatriz[] {
       consumoMedioDiario30d: 0.46,
       diasCobertura30d: 21.7,
       vendasLiquidas90d: 40,
-      consumoMedioDiario90d: 0.44,
       diasCobertura90d: 22.5,
       vendasLiquidas180d: 80,
       consumoMedioDiario180d: 0.44,
@@ -58,16 +93,17 @@ function gerarLinhasTeste(quantidade: number): LinhaCockpitMatriz[] {
       estoqueMinimoLojaFoco: 5,
       quantidadeJaPedidaFoco: 0,
       estoqueOutrasLojasRede: 12,
+      estoqueRede: 12,
       sugestaoFinalCompra: 4,
-      previsaoBrutaModelo: 0,
-      horizonteDiasAplicado: 0,
-      margemSegurancaAplicada: 0,
+      previsaoBrutaModelo: 4,
+      horizonteDiasAplicado: 30,
+      margemSegurancaAplicada: 1.2,
       fatorCalibracaoAplicado: 1,
       motivoInelegibilidade: null,
       statusSugestao: "APROVADO_COMPRA",
       motivoDecisao: "Giro ativo com necessidade calculada",
-      loteMultiplo: 2,
-      embalagemMinima: 2,
+      loteMultiplo: 1,
+      embalagemMinima: 1,
       pedidoCustom: 4,
       transferenciaCustom: 0,
       filialOrigemTransferenciaId: null,
@@ -103,42 +139,66 @@ function gerarLinhasTeste(quantidade: number): LinhaCockpitMatriz[] {
   return resultado;
 }
 
-describe("Cockpit — GridCockpitVirtualizado (TanStack Table v8 + TanStack Virtual)", () => {
-  it("deve renderizar cabeçalhos da tabela com colunas baseColumns", () => {
+describe("Cockpit — Virtualização da Grade Viva (CockpitPrincipal & colunas-cockpit)", () => {
+  it("deve exportar e configurar corretamente as colunas da árvore viva", () => {
+    const colunas = criarColunasCockpit({
+      nomeLojaFoco: "Trairi",
+      nomeOutrasLojas: "Rede",
+    });
+
+    const ids = colunas.map((c) => c.id);
+    expect(ids).toContain("select");
+    expect(ids).toContain("codigo");
+    expect(ids).toContain("descricao");
+    expect(ids).toContain("marca");
+    expect(ids).toContain("subgrupo");
+    expect(ids).toContain("curvaAbcSistema");
+    expect(ids).toContain("consumoDiario");
+    expect(ids).toContain("ruptura");
+    expect(ids).toContain("frequencia");
+    expect(ids).toContain("cobertura");
+    expect(ids).toContain("estoqueLojaFoco");
+    expect(ids).toContain("estoqueRede");
+    expect(ids).toContain("pedido");
+    expect(ids).toContain("transferencia");
+  });
+
+  it("deve renderizar cabeçalhos e dados na grade viva CockpitPrincipal", () => {
     const dados = gerarLinhasTeste(5);
 
     render(
-      <GridCockpitVirtualizado
-        dados={dados}
-        alturaContainer={500}
+      <CockpitPrincipal
+        itensIniciais={dados}
       />
     );
 
-    expect(screen.getByText("Código SKU")).toBeTruthy();
-    expect(screen.getByText("Descrição do Item")).toBeTruthy();
-    expect(screen.getByText("Marca / Curva")).toBeTruthy();
-    expect(screen.getByText("Giro Diário (CMD)")).toBeTruthy();
-    expect(screen.getByText("Ruptura")).toBeTruthy();
-    expect(screen.getByText("Freq. 90d (Notas)")).toBeTruthy();
-    expect(screen.getByText("Cobertura (dias)")).toBeTruthy();
-    expect(screen.getByText("Estoque Foco / Rede")).toBeTruthy();
-    expect(screen.getByText("Sugestão Motor")).toBeTruthy();
-    expect(screen.getByText("Pedido Compra")).toBeTruthy();
-    expect(screen.getByText("Transferir")).toBeTruthy();
+    expect(screen.getAllByText("Código").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Descrição").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Marca").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Sub-grupo").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Curva ABC").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Consumo Diário").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Ruptura").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Frequência").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Cobertura (dias)").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Pedido").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Transferência").length).toBeGreaterThanOrEqual(1);
+
+    expect(screen.getByText("SKU-0001")).toBeTruthy();
+    expect(screen.getByText("AMORTECEDOR TESTE NÚMERO 1")).toBeTruthy();
   });
 
-  it("deve abrir diálogo de similares ao clicar no badge Sparkles", () => {
+  it("deve abrir diálogo de similares ao clicar no badge Sparkles no CockpitPrincipal", () => {
     const dados = gerarLinhasTeste(3);
 
     render(
-      <GridCockpitVirtualizado
-        dados={dados}
-        alturaContainer={500}
+      <CockpitPrincipal
+        itensIniciais={dados}
       />
     );
 
     // O primeiro item tem similares configurados
-    const botaoSimilares = screen.getByLabelText("Abrir diálogo de similares para SKU SKU-0001");
+    const botaoSimilares = screen.getByRole("button", { name: /similares com estoque/i });
     fireEvent.click(botaoSimilares);
 
     expect(screen.getByRole("dialog")).toBeTruthy();
@@ -147,40 +207,34 @@ describe("Cockpit — GridCockpitVirtualizado (TanStack Table v8 + TanStack Virt
     expect(screen.getByText("AMORTECEDOR SIMILAR NAKATA")).toBeTruthy();
   });
 
-  it("deve disparar callbacks onCommitPedido e onCommitTransferencia ao editar células", () => {
-    const onCommitPedido = vi.fn();
-    const onCommitTransferencia = vi.fn();
+  it("deve exibir alerta de NF-e do Dia com TooltipNfeDoDia e abrir tooltip ao focar", () => {
     const dados = gerarLinhasTeste(2);
 
     render(
-      <GridCockpitVirtualizado
-        dados={dados}
-        onCommitPedido={onCommitPedido}
-        onCommitTransferencia={onCommitTransferencia}
-        alturaContainer={500}
+      <CockpitPrincipal
+        itensIniciais={dados}
       />
     );
 
-    const inputs = screen.getAllByRole("textbox") as HTMLInputElement[];
-    expect(inputs.length).toBeGreaterThanOrEqual(2);
+    const alertaNfe = screen.getByLabelText("Chegou hoje no estoque");
+    expect(alertaNfe).toBeTruthy();
 
-    // Altera o primeiro input (pedido de compra)
-    fireEvent.change(inputs[0], { target: { value: "8" } });
-    fireEvent.blur(inputs[0]);
-
-    expect(onCommitPedido).toHaveBeenCalledWith(1, 8, null);
+    fireEvent.focus(alertaNfe);
+    expect(screen.getByRole("tooltip")).toBeTruthy();
+    expect(screen.getByText("Entrada de NF-e no Dia")).toBeTruthy();
+    expect(screen.getByText("NF #049100")).toBeTruthy();
+    expect(screen.getAllByText("+10 un").length).toBeGreaterThanOrEqual(1);
   });
 
   it("deve exibir mensagem de estado vazio quando a lista de dados for vazia", () => {
     render(
-      <GridCockpitVirtualizado
-        dados={[]}
-        alturaContainer={500}
+      <CockpitPrincipal
+        itensIniciais={[]}
       />
     );
 
     expect(
-      screen.getByText("Nenhum produto encontrado para os filtros selecionados.")
+      screen.getByText("Nenhum produto corresponde aos filtros selecionados.")
     ).toBeTruthy();
   });
 });

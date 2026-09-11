@@ -1,11 +1,11 @@
-export { GridCockpitVirtualizado } from "./GridCockpitVirtualizado";
-export type { GridCockpitVirtualizadoProps } from "./GridCockpitVirtualizado";
+export { CockpitPrincipal } from "./CockpitPrincipal";
+export type { CockpitPrincipalProps } from "./CockpitPrincipal";
 
-export { VirtualRow, areVirtualRowPropsEqual } from "./VirtualRow";
-export type { VirtualRowProps } from "./VirtualRow";
+export { criarColunasCockpit } from "./colunas-cockpit";
+export type { OpcoesColunasCockpit } from "./colunas-cockpit";
 
-export { criarBaseColumns } from "./baseColumns";
-export type { CriarColunasMatrizOpcoes } from "./baseColumns";
+export { DataTableSection } from "./data-table-section";
+export type { DataTableSectionProps } from "./data-table-section";
 
 export { EditableCell } from "./EditableCell";
 export type { EditableCellProps } from "@/tipos/cockpit";
@@ -15,3 +15,6 @@ export type { BannerRascunhoProps } from "./BannerRascunho";
 
 export { BarraFiltrosCockpit } from "./BarraFiltrosCockpit";
 export type { BarraFiltrosCockpitProps } from "./BarraFiltrosCockpit";
+
+export { VirtualRow, areVirtualRowPropsEqual } from "./VirtualRow";
+export type { VirtualRowProps } from "./VirtualRow";

@@ -1,13 +1,21 @@
 import React from "react";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { servicoAuditoriaPadrao } from "@/lib/auditoria";
 import { validarCadeiaAuditoria } from "@/lib/auditoria/repositorio-auditoria";
+import { obterConfiguracaoTenant, resolverTenantConfigurado, TENANT_PADRAO } from "@config/tenants";
 
 export const dynamic = "force-dynamic";
 
 export default async function PaginaAuditoriaGestor() {
-  const tenantId = "carreiro";
+  const headersList = headers();
+  const tenantIdHeader = headersList.get("x-tenant-id");
+  const tenant = tenantIdHeader
+    ? (obterConfiguracaoTenant(tenantIdHeader) || TENANT_PADRAO)
+    : resolverTenantConfigurado();
+  const tenantId = tenant.id;
+
   const [trilha, kpis] = await Promise.all([
     servicoAuditoriaPadrao.consultarTrilha({ tenantId }),
     servicoAuditoriaPadrao.calcularKpisGerenciais(tenantId),
@@ -21,7 +29,10 @@ export default async function PaginaAuditoriaGestor() {
 
       <div className="flex flex-1 flex-col overflow-y-auto">
       {/* Header Institucional */}
-      <header className="bg-[#0F2B5C] text-white shadow-md border-b border-[#D4AF37]/30">
+      <header
+        className="text-white shadow-md border-b bg-[var(--cor-primaria)] border-[var(--cor-secundaria)]/30"
+        style={{ backgroundColor: "var(--cor-primaria)", borderBottomColor: "rgba(var(--cor-secundaria-rgb), 0.3)" }}
+      >
         <div className="max-w-[1920px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link
@@ -30,8 +41,11 @@ export default async function PaginaAuditoriaGestor() {
             >
               ← Voltar ao Cockpit
             </Link>
-            <span className="text-sm font-black text-[#D4AF37]">
-              REDE CARREIRO AUTOPEÇAS
+            <span
+              className="text-sm font-black text-[var(--cor-secundaria)]"
+              style={{ color: "var(--cor-secundaria)" }}
+            >
+              {tenant.nome.toUpperCase()}
             </span>
             <span className="text-slate-400 text-xs">|</span>
             <span className="text-xs text-slate-200">
@@ -48,8 +62,11 @@ export default async function PaginaAuditoriaGestor() {
                   : "Alerta de Adulteração na Cadeia!"}
               </span>
             </div>
-            <span className="text-xs text-[#D4AF37] font-semibold">
-              Powered by iNSIGHT D
+            <span
+              className="text-xs text-[var(--cor-secundaria)] font-semibold"
+              style={{ color: "var(--cor-secundaria)" }}
+            >
+              {tenant.assinatura?.texto || "Powered by iNSIGHT D"}
             </span>
           </div>
         </div>

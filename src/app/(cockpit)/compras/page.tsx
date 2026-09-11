@@ -1,5 +1,5 @@
 import React from "react";
-import { obterAdaptadorInventario } from "@adapters/index";
+import { obterAdaptadorInventario, RespostaCargaInventario } from "@adapters/index";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
 import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { CockpitPrincipal } from "@/components/cockpit/CockpitPrincipal";
@@ -13,13 +13,45 @@ export const dynamic = "force-dynamic";
 async function CarregarDadosCockpit() {
   const usuario = await obterUsuarioAtual();
   const adaptador = obterAdaptadorInventario();
-  const carga = await adaptador.carregarInventarioCompleto({
-    fornecedoresPermitidos: null,
-    filialId: 1,
-    // O comprador decide sobre o que tem saldo ou saiu recentemente. Trazer o
-    // catálogo inteiro enche a grade de item morto e atrasa a carga.
-    apenasComEstoqueOuVenda: true,
-  });
+
+  // Falha fechada: Comprador sem carteira enxerga ZERO fornecedores (grade vazia).
+  // Gestor e admin continuam irrestritos (null).
+  const ehComprador = usuario?.role === "COMPRADOR";
+  const fornecedoresRaw = ehComprador
+    ? (usuario.allowedSupplierIds ?? [])
+    : (usuario?.allowedSupplierIds ?? null);
+
+  const fornecedoresPermitidos: readonly number[] | null = !fornecedoresRaw
+    ? null
+    : Array.isArray(fornecedoresRaw)
+    ? fornecedoresRaw
+    : Array.from(fornecedoresRaw);
+
+  const ehCompradorSemCarteira = ehComprador && (!fornecedoresPermitidos || fornecedoresPermitidos.length === 0);
+
+  const carga: RespostaCargaInventario = ehCompradorSemCarteira
+    ? {
+        produtos: [],
+        estoques: new Map(),
+        historicos: new Map(),
+        entradasHoje: [],
+        similares: new Map(),
+        metadados: {
+          provedor: "MOCK_SINTETICO",
+          totalSkusCarregados: 0,
+          timestampCarga: new Date().toISOString(),
+          emModoDegradado: false,
+          latenciaMs: 0,
+        },
+      }
+    : await adaptador.carregarInventarioCompleto({
+        fornecedoresPermitidos,
+        filialId: 1,
+        // O comprador decide sobre o que tem saldo ou saiu recentemente. Trazer o
+        // catálogo inteiro enche a grade de item morto e atrasa a carga.
+        apenasComEstoqueOuVenda: true,
+      });
+
   // Parâmetros calibrados do tenant (Carreiro: fator 0,90 do backtest).
   const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(1));
 
@@ -33,7 +65,19 @@ async function CarregarDadosCockpit() {
       gradeInicial={codificarGradeTabular(acionaveis)}
       contagensCatalogo={contarStatusGrade(linhas)}
       filialFocoIdInicial={1}
-      usuarioSessao={usuario ? { nome: usuario.nome, papelRotulo: rotuloPapel(usuario.role) } : null}
+      fornecedoresPermitidosInicial={fornecedoresPermitidos}
+      usuarioSessao={
+        usuario
+          ? {
+              id: usuario.id,
+              nome: usuario.nome,
+              usuario: usuario.email,
+              papel: usuario.role,
+              papelRotulo: rotuloPapel(usuario.role),
+              allowedSupplierIds: fornecedoresPermitidos,
+            }
+          : null
+      }
     />
   );
 }

@@ -40,6 +40,7 @@ interface UsuarioGoTrue {
   id: string;
   email?: string;
   created_at?: string;
+  banned_until?: string;
   app_metadata?: Record<string, unknown>;
   user_metadata?: Record<string, unknown>;
 }
@@ -65,6 +66,7 @@ export function supabaseAuthConfigurado(): boolean {
 
 function mapearUsuario(u: UsuarioGoTrue, tenantId: string): UsuarioAutenticado | null {
   const meta = u.app_metadata ?? {};
+  if (meta.desativado === true || u.banned_until) return null;
   return montarUsuarioAutenticado(
     {
       id: u.id,
@@ -209,6 +211,7 @@ export class ProvedorAutenticacaoSupabase implements ProvedorAutenticacao, Admin
     const meta = u.app_metadata ?? {};
     const papel = normalizarPapel(meta.papel);
     if (!papel || typeof meta.tenant_id !== "string") return null;
+    const ativo = meta.desativado !== true && !u.banned_until;
     return {
       id: u.id,
       usuario: String(meta.usuario ?? (u.email ?? "").split("@")[0] ?? ""),
@@ -217,6 +220,7 @@ export class ProvedorAutenticacaoSupabase implements ProvedorAutenticacao, Admin
       tenantId: meta.tenant_id,
       fornecedores: normalizarFornecedores(meta.fornecedores),
       criadoEm: u.created_at ?? "",
+      ativo,
     };
   }
 
@@ -255,11 +259,163 @@ export class ProvedorAutenticacaoSupabase implements ProvedorAutenticacao, Admin
     return cadastrado;
   }
 
+  async alterarSenha(usuarioId: string, senhaAtual: string, novaSenha: string): Promise<void> {
+    if (!novaSenha || novaSenha.length < 8) {
+      throw new Error("A nova senha deve conter no mínimo 8 caracteres.");
+    }
+
+    // 1. Obter usuário pelo admin para descobrir o email interno
+    const userRes = await this.auth(`admin/users/${usuarioId}`, { method: "GET" }, this.chaveServico());
+    if (!userRes.ok) {
+      throw new ErroProvedorIndisponivel("supabase", `obter usuário: ${userRes.status}`);
+    }
+    const user = (await userRes.json()) as UsuarioGoTrue;
+    const email = user.email ?? emailInternoDoUsuario(
+      String(user.app_metadata?.usuario ?? ""),
+      String(user.app_metadata?.tenant_id ?? "")
+    );
+
+    // 2. Validar senha atual com a chave pública
+    let tokenRes: Response;
+    try {
+      tokenRes = await this.auth(
+        "token?grant_type=password",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            email,
+            password: senhaAtual,
+          }),
+        },
+        this.cfg.chavePublica
+      );
+    } catch (erro) {
+      throw new ErroProvedorIndisponivel("supabase", erro instanceof Error ? erro.message : String(erro));
+    }
+    if (tokenRes.status === 400 || tokenRes.status === 401 || tokenRes.status === 403) {
+      throw new ErroCredenciaisInvalidas("Senha atual incorreta.");
+    }
+    if (!tokenRes.ok) {
+      throw new ErroProvedorIndisponivel("supabase", `verificar senha: ${tokenRes.status}`);
+    }
+
+    // 3. Atualizar para a nova senha via chave privilegiada
+    const updateRes = await this.auth(
+      `admin/users/${usuarioId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          password: novaSenha,
+        }),
+      },
+      this.chaveServico()
+    );
+    if (!updateRes.ok) {
+      throw new ErroProvedorIndisponivel("supabase", `atualizar senha: ${updateRes.status} ${await updateRes.text()}`);
+    }
+  }
+
+  async desativarUsuario(usuarioId: string): Promise<void> {
+    const userRes = await this.auth(`admin/users/${usuarioId}`, { method: "GET" }, this.chaveServico());
+    if (!userRes.ok) {
+      throw new ErroProvedorIndisponivel("supabase", `obter usuário: ${userRes.status}`);
+    }
+    const user = (await userRes.json()) as UsuarioGoTrue;
+    const metaAtual = user.app_metadata ?? {};
+
+    const res = await this.auth(
+      `admin/users/${usuarioId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          ban_duration: "876600h",
+          app_metadata: {
+            ...metaAtual,
+            desativado: true,
+          },
+        }),
+      },
+      this.chaveServico()
+    );
+    if (!res.ok) {
+      throw new ErroProvedorIndisponivel("supabase", `desativar usuário: ${res.status} ${await res.text()}`);
+    }
+
+    // Invalida cache de sessões ativas deste usuário
+    for (const chave of Array.from(cacheValidacao.keys())) {
+      const item = cacheValidacao.get(chave);
+      if (item?.usuario?.id === usuarioId) {
+        cacheValidacao.delete(chave);
+      }
+    }
+  }
+
+  async reativarUsuario(usuarioId: string): Promise<void> {
+    const userRes = await this.auth(`admin/users/${usuarioId}`, { method: "GET" }, this.chaveServico());
+    if (!userRes.ok) {
+      throw new ErroProvedorIndisponivel("supabase", `obter usuário: ${userRes.status}`);
+    }
+    const user = (await userRes.json()) as UsuarioGoTrue;
+    const metaAtual = { ...(user.app_metadata ?? {}) };
+    delete metaAtual.desativado;
+
+    const res = await this.auth(
+      `admin/users/${usuarioId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          ban_duration: "none",
+          app_metadata: metaAtual,
+        }),
+      },
+      this.chaveServico()
+    );
+    if (!res.ok) {
+      throw new ErroProvedorIndisponivel("supabase", `reativar usuário: ${res.status} ${await res.text()}`);
+    }
+  }
+
+  /**
+   * Remove ou migra contas órfãs antigas que usavam o formato legado (ex: gestor.demo).
+   */
+  async expurgarContaOrfaGestorDemo(): Promise<{ removidos: number }> {
+    const res = await this.auth("admin/users?page=1&per_page=1000", { method: "GET" }, this.chaveServico());
+    if (!res.ok) return { removidos: 0 };
+    const corpo = (await res.json()) as { users?: UsuarioGoTrue[] };
+    let removidos = 0;
+    for (const u of corpo.users ?? []) {
+      const usuarioStr = String(u.app_metadata?.usuario ?? (u.email ?? "").split("@")[0] ?? "");
+      if (usuarioStr === "gestor.demo" || u.email?.startsWith("gestor.demo")) {
+        await this.auth(`admin/users/${u.id}`, { method: "DELETE" }, this.chaveServico());
+        removidos++;
+      }
+    }
+    return { removidos };
+  }
+
   async listarUsuarios(tenantId: string): Promise<UsuarioCadastrado[]> {
     const res = await this.auth("admin/users?page=1&per_page=1000", { method: "GET" }, this.chaveServico());
     if (!res.ok) throw new ErroProvedorIndisponivel("supabase", `listar usuários: ${res.status} ${await res.text()}`);
     const corpo = (await res.json()) as { users?: UsuarioGoTrue[] };
-    return (corpo.users ?? [])
+    const usuariosBrutos = corpo.users ?? [];
+
+    // Limpeza automática da conta órfã gestor.demo se encontrada
+    for (const u of usuariosBrutos) {
+      const usuarioStr = String(u.app_metadata?.usuario ?? (u.email ?? "").split("@")[0] ?? "");
+      if (usuarioStr === "gestor.demo" || u.email?.startsWith("gestor.demo")) {
+        try {
+          await this.auth(`admin/users/${u.id}`, { method: "DELETE" }, this.chaveServico());
+        } catch {
+          // Melhor esforço
+        }
+      }
+    }
+
+    return usuariosBrutos
+      .filter((u) => {
+        const usuarioStr = String(u.app_metadata?.usuario ?? (u.email ?? "").split("@")[0] ?? "");
+        return usuarioStr !== "gestor.demo" && !u.email?.startsWith("gestor.demo");
+      })
       .map((u) => this.mapearCadastrado(u))
       .filter((u): u is UsuarioCadastrado => u !== null && u.tenantId === tenantId);
   }

@@ -27,7 +27,7 @@ export function montarItensSnapshot(itens: readonly LinhaCockpitMatriz[]): ItemS
     qtdModelo: i.perfilGiro === "SEM_HISTORICO_SUFICIENTE" ? null : i.sugestaoFinalCompra,
     qtdTransferenciaModelo: i.quantidadeTransferenciaSugerida,
     perfil: i.perfilGiro,
-    consumoDiario: i.consumoDiario ?? i.consumoMedioDiario180d,
+    consumoDiario: i.consumoDiario ?? i.consumoMedioDiario180d ?? 0,
     horizonteDias: i.horizonteDiasAplicado,
     margemAplicada: i.margemSegurancaAplicada,
     fatorCalibracao: i.fatorCalibracaoAplicado > 0 ? i.fatorCalibracaoAplicado : 1,

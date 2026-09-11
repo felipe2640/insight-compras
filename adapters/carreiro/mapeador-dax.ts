@@ -13,7 +13,8 @@ import {
   HistoricoVendasFilial,
   SinalGovernancaCompra,
 } from "@core/dominio";
-import { inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
+import { resolverLoteAutopecas, inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
+import { detectarLotePorHistograma } from "@core/travas/lote-multiplo";
 import { agruparMovimentosPorDia, calcularDiasEmRuptura } from "@core/calculo/ruptura";
 import { DIAS_JANELA_RUPTURA } from "./consultas-homologadas";
 import {
@@ -134,8 +135,13 @@ function mesclarDatasProduto(a: Produto, b: Produto): Produto {
   };
 }
 
+export interface OpcoesMapeamentoProdutos {
+  readonly lotesPorProdutoId?: ReadonlyMap<number, number>;
+}
+
 export function mapearProdutosDax(
-  linhasDax: readonly Record<string, unknown>[]
+  linhasDax: readonly Record<string, unknown>[],
+  opcoes?: OpcoesMapeamentoProdutos
 ): readonly Produto[] {
   const produtosPorId = new Map<number, Produto>();
 
@@ -199,7 +205,32 @@ export function mapearProdutosDax(
     const dataUltimaVenda = normalizarDataIso(ultVendaBruta);
     const dataUltimaCompra = normalizarDataIso(ultCompraBruta);
 
-    const loteMultiplo = inferirLotePadraoPorCategoria(descricao);
+    // Precedência estrita: ERP > Histograma > Vocabulário
+    const loteCadastradoErp = Number(
+      linha.LoteMultiplo ??
+      linha.NLOTEMULTIPLO ??
+      linha.Lote ??
+      linha.LoteCadastrado ??
+      linha.MultiploCompra ??
+      0
+    );
+
+    let loteDetectadoHistograma = Number(
+      opcoes?.lotesPorProdutoId?.get(id) ??
+      linha.LoteHistograma ??
+      linha.LoteDetectado ??
+      0
+    );
+
+    if (loteDetectadoHistograma <= 1 && Array.isArray(linha.quantidadesPorLinha)) {
+      loteDetectadoHistograma = detectarLotePorHistograma(linha.quantidadesPorLinha as number[]);
+    }
+
+    const { lote: loteMultiplo } = resolverLoteAutopecas({
+      loteCadastradoErp,
+      loteDetectadoHistograma,
+      descricao,
+    });
 
     const produto: Produto = {
       id,
@@ -386,12 +417,20 @@ export function mapearHistoricoVendasDax(
       0,
       Number(linha.NotasVenda90d ?? linha.QuantidadeNotas90d ?? 0)
     );
+    const notasFiscaisVenda12meses = Math.max(
+      notasFiscaisVenda90dias,
+      Number(linha.Notas12m ?? linha.NotasVenda12m ?? linha.NotasVenda12meses ?? 0)
+    );
     const notasFiscaisDevolucao90dias = Math.max(
       0,
       Number(linha.NotasDevolucao90d ?? 0)
     );
     const mesesAtivos12meses = Math.max(0, Number(linha.MesesAtivos12m ?? 0));
     const medianaLinhaVenda = Math.max(0, Number(linha.MedianaLinhaVenda ?? 0));
+    const loteDetectadoHistograma = Math.max(
+      1,
+      Number(linha.LoteDetectado ?? linha.LoteHistograma ?? 1)
+    );
     const diasObservados = Math.max(1, Number(linha.DiasObservados ?? 180));
 
     const primVenda = linha.DataPrimeiraVenda ?? linha.dataPrimeiraVendaRegistrada;
@@ -409,9 +448,11 @@ export function mapearHistoricoVendasDax(
         notasFiscaisVenda90dias,
         Number(linha.NotasVenda180d ?? 0) || 0
       ),
+      notasFiscaisVenda12meses,
       notasFiscaisDevolucao90dias,
       mesesAtivos12meses,
       medianaLinhaVenda,
+      loteDetectadoHistograma,
       // O modelo não tem histórico de saldo diário: ruptura NÃO é medida.
       // Zero aqui significaria "nunca faltou", que é uma afirmação falsa.
       diasRuptura90dias: 0,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { servicoAuditoriaPadrao } from "@/lib/auditoria";
 import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
+import { resolverTenantConfigurado } from "@config/tenants";
 
 export const dynamic = "force-dynamic";
 
@@ -57,7 +58,10 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const tenantId = searchParams.get("tenantId") ?? "carreiro";
+    const tenantId =
+      searchParams.get("tenantId") ||
+      request.headers.get("x-tenant-id") ||
+      resolverTenantConfigurado().id;
     const filialId = searchParams.get("filialId");
     const compradorId = searchParams.get("compradorId");
 

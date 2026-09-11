@@ -142,7 +142,7 @@ describe("Gate M3 — Desafio Adversarial: EditableCell, Lotes e useSessionDraft
       expect(onCommit).toHaveBeenCalledWith(
         "SKU-DECIMAL",
         4,
-        expect.stringContaining("par (múltiplo de 2 un)")
+        expect.stringMatching(/múltiplo de embalagem fechada \(2 un\)|par \(múltiplo de 2 un\)/)
       );
 
       onCommit.mockClear();
@@ -154,7 +154,7 @@ describe("Gate M3 — Desafio Adversarial: EditableCell, Lotes e useSessionDraft
       expect(onCommit).toHaveBeenCalledWith(
         "SKU-DECIMAL",
         6,
-        expect.stringContaining("par (múltiplo de 2 un)")
+        expect.stringMatching(/múltiplo de embalagem fechada \(2 un\)|par \(múltiplo de 2 un\)/)
       );
     });
 
@@ -358,7 +358,7 @@ describe("Gate M3 — Desafio Adversarial: EditableCell, Lotes e useSessionDraft
         });
         expect(res.quantidadeAjustada).toBe(c.esperado);
         if (c.temMotivo) {
-          expect(res.motivoAjuste).toContain("par (múltiplo de 2 un)");
+          expect(res.motivoAjuste).toMatch(/múltiplo de embalagem fechada \(2 un\)|par \(múltiplo de 2 un\)/);
         } else {
           expect(res.motivoAjuste).toBeNull();
         }

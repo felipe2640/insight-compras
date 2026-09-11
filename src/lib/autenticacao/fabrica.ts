@@ -41,9 +41,6 @@ export function obterProvedorAutenticacao(id: IdProvedorAutenticacao = idProvedo
 
 export function obterAdministradorUsuarios(): AdministradorUsuarios {
   const provedor = obterProvedorAutenticacao();
-  if (provedor.id !== "supabase") {
-    throw new ErroProvedorIndisponivel(provedor.id, "este provedor não administra usuários.");
-  }
   return provedor as unknown as AdministradorUsuarios;
 }
 

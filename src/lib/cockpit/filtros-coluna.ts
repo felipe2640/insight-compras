@@ -170,7 +170,7 @@ export function filtroEstaCompleto(filtro: FiltroColuna | null | undefined): boo
   return !valorEstaVazio(filtro.valor);
 }
 
-function compararNumerico(
+export function compararNumerico(
   valorCelula: unknown,
   filtro: FiltroColuna,
   ler: (v: unknown) => number | null

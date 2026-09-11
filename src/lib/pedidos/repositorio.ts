@@ -1,121 +1,118 @@
-/**
- * Histórico de pedidos exportados.
- * Camada: Aplicação (src/lib/pedidos) — server-only.
- *
- * POR QUE LÊ DAS TABELAS DO APRENDIZADO
- * Toda exportação já grava o que o comprador decidiu, item a item, com loja,
- * usuário, data e custo — é exatamente o registro de um pedido. Criar uma
- * segunda tabela para a mesma coisa daria dois números para a mesma pergunta e
- * a garantia de que um dia eles discordariam.
- *
- * Sem Supabase configurado devolve vazio, e a tela diz que o histórico não está
- * ligado, em vez de mostrar exemplo inventado.
+﻿/**
+ * Repositório e Fachada de Acesso ao Histórico e Ciclo de Vida de Pedidos
+ * Camada: Aplicação / Pedidos (src/lib/pedidos/repositorio.ts) — server-only.
+ * 100% em Português do Brasil (pt-BR).
  */
 
-import { sbSelecionar, supabaseConfigurado } from "@/lib/aprendizado/supabase";
+import { supabaseConfigurado } from "@/lib/aprendizado/supabase";
+import {
+  FiltrosListagemPedidos,
+  IdProvedorPedidos,
+  ParametrosTransicaoPedido,
+  RepositorioPedidos,
+} from "./porta-repositorio";
+import { ItemPedido, Pedido, StatusPedido, TransicaoPedido } from "./tipos";
+import { RepositorioPedidosMemoria } from "./provedores/memoria";
+import { RepositorioPedidosSupabase } from "./provedores/supabase";
 
-export interface PedidoExportado {
-  readonly id: number;
-  readonly exportadoEm: string;
-  readonly usuario: string | null;
-  readonly filialId: number | null;
-  readonly modeloId: string;
-  readonly formato: string;
-  readonly totalItens: number;
+export type {
+  Pedido,
+  ItemPedido,
+  StatusPedido,
+  TransicaoPedido,
+  PedidoExportado,
+  ItemPedidoExportado,
+} from "./tipos";
+
+export type {
+  FiltrosListagemPedidos,
+  ParametrosTransicaoPedido,
+  RepositorioPedidos,
+  IdProvedorPedidos,
+} from "./porta-repositorio";
+
+export { RepositorioPedidosMemoria } from "./provedores/memoria";
+export { RepositorioPedidosSupabase } from "./provedores/supabase";
+
+export function idProvedorPedidos(): IdProvedorPedidos {
+  const forcado = process.env.PEDIDOS_PROVIDER?.trim().toLowerCase();
+  if (forcado === "memoria") return "memoria";
+  if (forcado === "supabase") return "supabase";
+  return supabaseConfigurado() ? "supabase" : "memoria";
 }
 
-export interface ItemPedidoExportado {
-  readonly id: number;
-  readonly sku: string | null;
-  readonly descricao: string | null;
-  readonly qtdComprador: number;
-  readonly qtdTransferencia: number;
-  readonly qtdModelo: number | null;
-  readonly custo: number | null;
-  readonly valorTotal: number;
+let repositorioPersonalizado: RepositorioPedidos | null = null;
+let instanciaMemoria: RepositorioPedidosMemoria | null = null;
+let instanciaSupabase: RepositorioPedidosSupabase | null = null;
+
+export function obterRepositorioPedidos(): RepositorioPedidos {
+  if (repositorioPersonalizado) {
+    return repositorioPersonalizado;
+  }
+
+  const id = idProvedorPedidos();
+  if (id === "supabase") {
+    return (instanciaSupabase ??= new RepositorioPedidosSupabase());
+  }
+
+  return (instanciaMemoria ??= new RepositorioPedidosMemoria(true));
 }
 
+export function definirRepositorioPedidos(repo: RepositorioPedidos | null): void {
+  repositorioPersonalizado = repo;
+}
+
+export function reiniciarRepositorioPedidos(): void {
+  repositorioPersonalizado = null;
+  instanciaMemoria = null;
+  instanciaSupabase = null;
+}
+
+/**
+ * Indica se o histórico de pedidos está disponível para consulta e atualização.
+ * Sempre disponível: em produção conecta ao Supabase; em demonstração/desenvolvimento
+ * utiliza o provedor em memória como fallback gracioso.
+ */
 export function historicoDisponivel(): boolean {
-  return supabaseConfigurado();
+  return true;
+}
+
+export function modoHistorico(): IdProvedorPedidos {
+  return idProvedorPedidos();
 }
 
 export async function listarPedidosExportados(parametros: {
   tenantId: string;
   dias: number;
   filialId?: number;
+  status?: StatusPedido;
   limite?: number;
-}): Promise<PedidoExportado[]> {
-  if (!supabaseConfigurado()) return [];
-  const desde = new Date(Date.now() - parametros.dias * 86_400_000).toISOString();
-  const filtroFilial = parametros.filialId ? `&filial_id=eq.${parametros.filialId}` : "";
-  const limite = Math.min(200, Math.max(1, parametros.limite ?? 60));
-
-  try {
-    const linhas = await sbSelecionar<{
-      id: number;
-      exportado_em: string;
-      usuario: string | null;
-      filial_id: number | null;
-      layout_id: string;
-      formato: string;
-      n_itens: number;
-    }>(
-      "aprendizado_snapshot",
-      `select=id,exportado_em,usuario,filial_id,layout_id,formato,n_itens` +
-        `&tenant_id=eq.${encodeURIComponent(parametros.tenantId)}` +
-        `&exportado_em=gte.${desde}${filtroFilial}` +
-        `&order=exportado_em.desc&limit=${limite}`
-    );
-
-    return linhas.map((l) => ({
-      id: l.id,
-      exportadoEm: l.exportado_em,
-      usuario: l.usuario,
-      filialId: l.filial_id,
-      modeloId: l.layout_id,
-      formato: l.formato,
-      totalItens: Number(l.n_itens) || 0,
-    }));
-  } catch (erro) {
-    console.warn("[pedidos] falha ao listar histórico:", erro);
-    return [];
-  }
+}): Promise<Pedido[]> {
+  const repo = obterRepositorioPedidos();
+  const resultados = await repo.listarPedidos(parametros);
+  return [...resultados];
 }
 
-/** Itens de UM pedido. Só é buscado quando a pessoa abre a linha. */
+export async function obterPedidoPorId(
+  tenantId: string,
+  pedidoId: number
+): Promise<Pedido | null> {
+  const repo = obterRepositorioPedidos();
+  return repo.obterPedidoPorId(tenantId, pedidoId);
+}
+
 export async function listarItensDoPedido(
   tenantId: string,
   pedidoId: number
-): Promise<ItemPedidoExportado[]> {
-  if (!supabaseConfigurado()) return [];
+): Promise<ItemPedido[]> {
+  const repo = obterRepositorioPedidos();
+  const resultados = await repo.listarItensDoPedido(tenantId, pedidoId);
+  return [...resultados];
+}
 
-  const linhas = await sbSelecionar<{
-    id: number;
-    sku: string | null;
-    descricao: string | null;
-    qtd_comprador: number;
-    qtd_transferencia_comprador: number | null;
-    qtd_modelo: number | null;
-    custo: number | null;
-  }>(
-    "aprendizado_item",
-    `select=id,sku,descricao,qtd_comprador,qtd_transferencia_comprador,qtd_modelo,custo` +
-      `&tenant_id=eq.${encodeURIComponent(tenantId)}&snapshot_id=eq.${pedidoId}` +
-      `&order=sku.asc&limit=5000`
-  );
-
-  return linhas.map((l) => {
-    const qtd = Number(l.qtd_comprador) || 0;
-    const custo = l.custo === null ? null : Number(l.custo);
-    return {
-      id: l.id,
-      sku: l.sku,
-      descricao: l.descricao,
-      qtdComprador: qtd,
-      qtdTransferencia: Number(l.qtd_transferencia_comprador) || 0,
-      qtdModelo: l.qtd_modelo === null ? null : Number(l.qtd_modelo),
-      custo,
-      valorTotal: custo === null ? 0 : +(qtd * custo).toFixed(2),
-    };
-  });
+export async function atualizarStatusPedido(
+  parametros: ParametrosTransicaoPedido
+): Promise<Pedido> {
+  const repo = obterRepositorioPedidos();
+  return repo.atualizarStatusPedido(parametros);
 }
