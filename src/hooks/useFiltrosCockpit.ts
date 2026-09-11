@@ -7,6 +7,7 @@ import {
   StatusFilterOption,
 } from "@/tipos/cockpit";
 import { CurvaABC } from "@core/dominio";
+import { ContagensStatusGrade } from "@/lib/cockpit/escopo-grade";
 
 const REGEX_DIACRITICOS = /[\u0300-\u036f]/g;
 
@@ -146,15 +147,21 @@ export function filtrarLinhasCockpit(
 }
 
 export interface UseFiltrosCockpitParams {
+  /** Contagens calculadas no servidor sobre o catálogo inteiro (carga progressiva). */
+  contagensCatalogo?: ContagensStatusGrade;
   itens: readonly LinhaCockpitMatriz[];
   fornecedoresPermitidos?: readonly number[] | null;
   lojaFocoIdInicial?: number;
+  /** Aba aberta ao entrar no cockpit. Padrão: "PEDIR" (o trabalho do dia). */
+  statusInicial?: StatusFilterOption;
 }
 
 export function useFiltrosCockpit({
   itens,
   fornecedoresPermitidos = null,
   lojaFocoIdInicial = 1,
+  statusInicial = "PEDIR",
+  contagensCatalogo,
 }: UseFiltrosCockpitParams) {
   // Input imediato para feedback a 60fps sem lag
   const [rawQuery, setRawQuery] = useState("");
@@ -166,7 +173,10 @@ export function useFiltrosCockpit({
   const [marcasDeselecionadas, setMarcasDeselecionadas] = useState<Set<string>>(new Set());
   const [secoesDeselecionadas, setSecoesDeselecionadas] = useState<Set<number>>(new Set());
   const [curvasDeselecionadas, setCurvasDeselecionadas] = useState<Set<CurvaABC>>(new Set());
-  const [statusFiltro, setStatusFiltro] = useState<StatusFilterOption>("ALL");
+  // Abre no que EXIGE AÇÃO, não no catálogo inteiro.
+  // O comprador entra na ferramenta para saber o que comprar; abrir em 19 mil
+  // linhas onde a maioria não pede nada esconde justamente o trabalho do dia.
+  const [statusFiltro, setStatusFiltro] = useState<StatusFilterOption>(statusInicial);
   const [lojaFocoId, setLojaFocoId] = useState<number>(lojaFocoIdInicial);
 
   const fornecedoresSet = useMemo(() => {
@@ -243,7 +253,10 @@ export function useFiltrosCockpit({
       marcas: marcasMap,
       secoes: secoesMap,
       curvas: curvasMap,
-      contagensStatus: {
+      // As contagens do servidor, quando existem, valem sobre as locais: enquanto
+      // o catálogo completo não chegou, contar só o que está em memória faria os
+      // chips mentirem sobre o tamanho do catálogo.
+      contagensStatus: contagensCatalogo ?? {
         total: itens.length,
         pedir: totalPedir,
         transferir: totalTransferir,
@@ -251,7 +264,7 @@ export function useFiltrosCockpit({
         zumbi: totalZumbi,
       },
     };
-  }, [itens]);
+  }, [itens, contagensCatalogo]);
 
   const toggleMarca = useCallback((marca: string) => {
     startTransition(() => {

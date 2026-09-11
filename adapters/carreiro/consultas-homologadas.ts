@@ -8,6 +8,7 @@
  */
 
 import { FiltroCargaInventario } from "../AdaptadorInventario";
+import { escaparLiteralTextoDax } from "@/lib/seguranca/sanitizador-dax";
 
 /**
  * Sanitiza e formata uma lista de IDs numéricos para cláusula IN segura no DAX.
@@ -24,6 +25,35 @@ export function formatarListaNumericaDax(numeros: readonly number[]): string {
 
   return `{ ${numerosValidados.join(", ")} }`;
 }
+
+/**
+ * CADEIA DE FILTROS DE "VENDA VÁLIDA AO CONSUMIDOR" DA REDE CARREIRO.
+ *
+ * Extraída das medidas do próprio modelo do cliente (arquivo .pbix, 07/09/2026):
+ * `Quantidade Vendida Produto`, `Quantidade de Notas` e `Estoque Venda Media Dia 90D`
+ * aplicam exatamente estes filtros. Toda agregação nova que a plataforma escrever
+ * sobre NOTAS/NOTAS_ITEMS precisa repeti-los, senão conta o que o cliente já
+ * decidiu que não é venda:
+ *
+ * - TIPOS_NOTA[ATIPO] = "01"        -> documento de venda (02 = compra)
+ * - NOTAS[ASTATUS] = "E"            -> nota efetivada (exclui cancelada/pendente)
+ * - NOTAS_ITEMS[ASTATUS] = "E"      -> item efetivado
+ * - Cliente <> "FURO BATERIA"       -> troca/garantia de bateria não é venda
+ *
+ * ATENÇÃO: as medidas prontas do modelo já embutem esta cadeia. Um DISTINCTCOUNT
+ * ou SUM escrito direto sobre a tabela NÃO embute — foi assim que a primeira
+ * versão desta consulta acabou contando nota cancelada e furo de bateria.
+ */
+const FILTROS_VENDA_VALIDA = `
+        KEEPFILTERS('TIPOS_NOTA'[ATIPO] = "01"),
+        KEEPFILTERS('NOTAS'[ASTATUS] = "E"),
+        KEEPFILTERS('NOTAS_ITEMS'[ASTATUS] = "E"),
+        KEEPFILTERS(
+            FILTER(
+                VALUES('NOTAS'[Cliente Exibicao]),
+                UPPER(TRIM('NOTAS'[Cliente Exibicao])) <> "FURO BATERIA"
+            )
+        ),`;
 
 /**
  * 1. Snapshot de Frescor e Integridade dos Dados (freshness.dax)
@@ -80,7 +110,23 @@ ORDER BY 'CADEMP'[ANOMEFANTASIA]
  * 4. Posição Atual de Produtos, Estoque e Custo ERP (current_product.dax)
  * Suporta injeção de filtro seguro por fornecedores e seção.
  */
-export function gerarConsultaDaxProdutosEstoque(filtro?: FiltroCargaInventario): string {
+/**
+ * Tamanho de página do catálogo.
+ *
+ * O executeQueries corta a resposta por TAMANHO, não por número de linhas.
+ * Medido ao vivo em 09/09/2026 sobre 126.280 linhas de PRODUTOS: com 2 colunas
+ * vieram 100.000 linhas; com 5 (incluindo APLICACAO, que é texto longo) só
+ * 59.473; com o conjunto real de atributos, 26.362. E o corte é SILENCIOSO — a
+ * API não avisa. Sem paginar, o catálogo chegava com um terço a menos de itens,
+ * e sempre os mesmos (a ordenação faz a perda cair na cauda dos códigos).
+ */
+export const TAMANHO_PAGINA_PRODUTOS = 12000;
+
+export function gerarConsultaDaxProdutosEstoque(
+  filtro?: FiltroCargaInventario,
+  /** Último ACODPRODUTO da página anterior. null = primeira página. */
+  cursor?: string | null
+): string {
   let clausulaFiltro = "";
 
   if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
@@ -96,12 +142,34 @@ export function gerarConsultaDaxProdutosEstoque(filtro?: FiltroCargaInventario):
     clausulaFiltro += ` && (COALESCE('PRODUTOS'[NESTOQATUAL], 0) <> 0 || NOT ISBLANK('PRODUTOS'[DULTIMAVENDA]))`;
   }
 
+  // Converte a cláusula de FILTER (sintaxe de linha) em filtros de SUMMARIZECOLUMNS.
+  const filtroTabela = clausulaFiltro
+    ? `FILTER(PRODUTOS, NOT ISBLANK('PRODUTOS'[ACODPRODUTO])${clausulaFiltro}),`
+    : "";
+
+  // Paginação por cursor (keyset): a página seguinte começa depois do último
+  // código da anterior. Ordenar e cortar por ACODPRODUTO dá ordem total, porque
+  // o código já embute a empresa ("031576|<guid>").
+  const clausulaCursor = cursor
+    ? ` && 'PRODUTOS'[ACODPRODUTO] > ${escaparLiteralTextoDax(cursor)}`
+    : "";
+
+  // Somente ATRIBUTOS de cadastro — sem medidas.
+  // As medidas de estoque vivem em `gerarConsultaDaxPosicaoEstoque`: misturar as duas
+  // coisas quebra o resultado. Verificado ao vivo em 07/09/2026: agrupando por 14
+  // colunas de PRODUTOS (incluindo as colunas de data DULTIMAVENDA/DULTIMACOMPRA, que
+  // carregam contexto sobre 'dCalendario'), as medidas [Estoque Qtd Atual (Base)] e
+  // [Estoque Venda Media Dia 90D] voltam em branco nas 22.473 linhas, enquanto
+  // [Estoque Mínimo ERP] e [Estoque Dias sem Venda] continuam corretas — uma
+  // inconsistência silenciosa que não gera erro algum.
   return `
 EVALUATE
-SELECTCOLUMNS(
+TOPN(
+  ${TAMANHO_PAGINA_PRODUTOS},
+  SELECTCOLUMNS(
     FILTER(
         PRODUTOS,
-        NOT ISBLANK('PRODUTOS'[ACODPRODUTO])${clausulaFiltro}
+        NOT ISBLANK('PRODUTOS'[ACODPRODUTO])${clausulaFiltro}${clausulaCursor}
     ),
     "Empresa", 'PRODUTOS'[ACODEMPRESA],
     "Produto", 'PRODUTOS'[ACODPRODUTO],
@@ -111,21 +179,181 @@ SELECTCOLUMNS(
     "RefFabricante", 'PRODUTOS'[AREFERENCIA],
     "Aplicacao", 'PRODUTOS'[APLICACAO],
     "Secao", 'PRODUTOS'[ACLASSE],
+    // O ERP guarda classe e subclasse como CÓDIGO; o nome legível está em
+    // CLASSES/SUBCLASSES. Sem esta junção a "Seção" chegava como 2000000000005.
+    // O SUB-GRUPO é o tipo da peça (BIELETA, PIVO, BOMBA COMBUSTIVEL) e é o
+    // agrupamento que o comprador realmente usa. O GRUPO é menos confiável:
+    // algumas lojas cadastraram marca como classe ("PERFECT - PEÇAS AUTOMOTIVAS").
+    "NomeSecao", LOOKUPVALUE(CLASSES[ADESCRICAO], CLASSES[ACODCLASSE], 'PRODUTOS'[ACLASSE]),
+    "Subgrupo", 'PRODUTOS'[ASUBCLASSE],
+    "NomeSubgrupo", LOOKUPVALUE(SUBCLASSES[ADESCRICAO], SUBCLASSES[ACODSUBCLASSE], 'PRODUTOS'[ASUBCLASSE]),
     "Fornecedor", 'PRODUTOS'[ICODFORN],
     "NomeFornecedor", 'PRODUTOS'[Nome Fornecedor],
-    "EstoqueQtd", 'PRODUTOS'[NESTOQATUAL],
-    "EstoqueMinimo", 'PRODUTOS'[NESTOQUEMIN],
     "PrecoCompraERP", 'PRODUTOS'[NPRECOCOMPRA],
     "PrecoVenda", 'PRODUTOS'[NPRECOVENDA],
     "UltimaVenda", 'PRODUTOS'[DULTIMAVENDA],
     "UltimaCompra", 'PRODUTOS'[DULTIMACOMPRA]
+  ),
+  [Produto], ASC
 )
-ORDER BY [Empresa], [Produto]
+ORDER BY [Produto]
   `.trim();
 }
 
 /**
- * 5. Histórico Agregado de Vendas Recentes e Rupturas (30d, 90d, 180d)
+ * 4b. Posição de Estoque por Filial (medidas do modelo semântico).
+ *
+ * Consulta separada e com agrupamento MÍNIMO de propósito: as medidas de estoque
+ * só resolvem corretamente com a filial vindo de 'CADEMP' e sem colunas de data de
+ * PRODUTOS no agrupamento (ver comentário em `gerarConsultaDaxProdutosEstoque`).
+ *
+ * Traz os campos que antes o motor recebia como zero fixo:
+ * - EstoqueMinimo      -> era 0 em 100% dos itens (7.304 tinham valor real no modelo)
+ * - ConsumoMedioDiario -> insumo primário da fórmula homologada
+ * - DiasSemVenda       -> classificação de giro
+ * - MargemRealizada    -> margem que o item ENTREGOU nos 12 meses fechados
+ * - MargemAlvo         -> margem que o item foi PRECIFICADO para entregar
+ *
+ * As duas margens são calculadas POR ITEM, nunca supostas:
+ *
+ * - Realizada: (Valor Vendido - CMV) / Valor Vendido na janela. Escrita a partir
+ *   dos componentes e não via [% Margem Produto] porque a medida devolve 100%
+ *   quando o custo não resolve — 9% dos itens, que apareceriam como margem
+ *   perfeita em vez de "não apurada".
+ *
+ * - Alvo: (preço de venda - custo) / preço de venda, do cadastro do item. É a
+ *   margem que o cliente PRETENDE naquele item. Uma meta única para a rede não
+ *   serve: medido ao vivo em Pedro II, a margem pretendida vai de 35,3% (p10) a
+ *   53,9% (p90), com mediana 42,1%. Contra um alvo fixo de 30% quase todo item
+ *   pareceria saudável, e o corte do REDUZIR nunca dispararia.
+ *
+ * A janela é EXPLÍCITA (12 meses fechados via EOMONTH(TODAY(),-1)): a medida
+ * pronta `Margem Produto Historica 12M %` depende de EOMONTH(MAX(dCalendario)) e
+ * volta nula sem contexto de data — 0 de 5.664 linhas preenchidas ao vivo.
+ */
+export function gerarConsultaDaxPosicaoEstoque(
+  nomeFilial: string,
+  filtro?: FiltroCargaInventario
+): string {
+  // Sanitiza o nome da filial: só aceita o que veio do mapeamento oficial do tenant.
+  const filialSegura = nomeFilial.replace(/["\\]/g, "").trim();
+  if (!filialSegura) {
+    throw new Error("Nome de filial obrigatório para a consulta de posição de estoque.");
+  }
+
+  let filtroFornecedores = "";
+  if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
+    const listaDax = formatarListaNumericaDax(filtro.fornecedoresPermitidos);
+    // FILTER(ALL(...)) e NÃO KEEPFILTERS(coluna IN {...}): a segunda forma é rejeitada
+    // pelo motor ("A single value for column 'ICODFORN' cannot be determined").
+    filtroFornecedores = `FILTER(ALL('PRODUTOS'[ICODFORN]), 'PRODUTOS'[ICODFORN] IN ${listaDax}),`;
+  }
+
+  return `
+EVALUATE
+FILTER(
+    SUMMARIZECOLUMNS(
+        'PRODUTOS'[ACODPRODUTO],
+        FILTER(ALL('CADEMP'[ANOMEFANTASIA]), 'CADEMP'[ANOMEFANTASIA] = "${filialSegura}"),
+        ${filtroFornecedores}
+        "EstoqueQtd", [Estoque Qtd Atual (Base)],
+        "EstoqueMinimo", [Estoque Mínimo ERP],
+        "ConsumoMedioDiario", [Estoque Venda Media Dia 90D],
+        "DiasSemVenda", [Estoque Dias sem Venda],
+        "DecisaoCompra", [Decisao Compra Mercadoria],
+        "UsoLimiteCompra", [% Uso Limite Compra Mercadoria],
+        "MargemRealizada", 
+            VAR JanelaMargem = DATESINPERIOD('dCalendario'[Data], EOMONTH(TODAY(), -1), -12, MONTH)
+            VAR VendidoJanela = CALCULATE([Valor Vendido Produto], REMOVEFILTERS('dCalendario'), JanelaMargem)
+            VAR CustoJanela = CALCULATE([CMV], REMOVEFILTERS('dCalendario'), JanelaMargem)
+            RETURN IF(VendidoJanela > 0 && CustoJanela > 0, DIVIDE(VendidoJanela - CustoJanela, VendidoJanela)),
+        "MargemAlvo",
+            VAR PrecoVendaItem = MAX('PRODUTOS'[NPRECOVENDA])
+            VAR CustoItem = COALESCE(
+                [Estoque Ultimo Custo Unitario Compra (Nota)],
+                MAX('PRODUTOS'[NPRECOCOMPRA])
+            )
+            RETURN IF(
+                PrecoVendaItem > 0 && CustoItem > 0 && CustoItem < PrecoVendaItem,
+                DIVIDE(PrecoVendaItem - CustoItem, PrecoVendaItem)
+            )
+    ),
+    [EstoqueQtd] <> 0 || [ConsumoMedioDiario] > 0
+)
+  `.trim();
+}
+
+/**
+ * Campos que o modelo semântico da Carreiro NÃO consegue fornecer hoje.
+ *
+ * Declarar é obrigatório: devolver 0 silenciosamente faz o motor tratar
+ * "não medido" como "medido e igual a zero", que são coisas diferentes.
+ *
+ * - quantidadeJaPedida: a tabela 'ITEMSPEDIDO' chegou ao modelo com merge quebrado —
+ *   as 185.028 linhas que têm QTDE preenchida estão com TIPO nulo, e as linhas com
+ *   TIPO ("C" de compra) estão com QTDE nula. Não há como isolar pedido de compra em
+ *   aberto com confiança. IMPACTO: o motor não desconta o que já vem a caminho.
+ *   Resolver com o time de BI do cliente antes de liberar a emissão de pedidos.
+ *
+ * - diasRuptura90dias: não há histórico de saldo diário no modelo.
+ *
+ * Confirmado varrendo as 353 medidas do .pbix do cliente (07/09/2026): nenhuma
+ * mede ruptura, dias zerados ou pedido de compra em aberto. Não é questão de
+ * escrever a consulta certa — a informação não existe no modelo semântico.
+ *
+ * TENTATIVA DE RECONSTRUÇÃO VIA MOVESTOQ — DESCARTADA (08/09/2026).
+ * A ideia era derivar o saldo diário do razão de movimentos. Não é viável com
+ * os dados atuais, e as evidências ficam registradas para não se repetir a
+ * investigação:
+ *
+ * 1. 'MOVESTOQ'[ESTOQUEATUAL] existe e seria o caminho direto (saldo resultante
+ *    gravado em cada movimento), mas está ZERADO em 100% das linhas: nos 379.882
+ *    movimentos dos últimos 90 dias, mínimo 0 e máximo 0.
+ *
+ * 2. Sobraria reconstruir por 'MOVESTOQ'[NQTDEMOV] (S negativo, E positivo), mas
+ *    84% do razão (320.198 de 379.882 linhas) é do tipo "I" com quantidade
+ *    praticamente nula — somam 577 unidades no total. O razão é dominado por
+ *    lançamentos que não movimentam saldo.
+ *
+ * 3. Há outlier de ±1.020.420 unidades em um único movimento no período.
+ *
+ * 4. MOVESTOQ não tem relacionamento utilizável com as medidas de estoque, então
+ *    não foi possível nem validar a reconstrução contra o saldo atual por produto.
+ *
+ * Reconstruir ruptura sobre esse razão produziria um número preciso na aparência
+ * e errado na prática — o mesmo defeito que a constante 0 tinha. Enquanto o time
+ * de BI do cliente não popular ESTOQUEATUAL (ou expor um snapshot diário de
+ * saldo), a coluna continua honestamente vazia no cockpit.
+ */
+export const CAMPOS_INDISPONIVEIS_CARREIRO = {
+  estoque: ["quantidadeJaPedida"],
+  historico: ["diasRuptura90dias"],
+} as const;
+
+/**
+ * 5. Histórico Agregado de Vendas por Produto e Filial (30d, 90d, 180d, 12m)
+ *
+ * CORREÇÕES HOMOLOGADAS CONTRA O MODELO VIVO (07/09/2026):
+ *
+ * - NotasVenda90d agora conta em 'NOTAS_ITEMS'[NOTA_ID], não em 'NOTAS'[DOCUMENTO].
+ *   'NOTAS' é a tabela de CABEÇALHO: DISTINCTCOUNT ali não é filtrado por produto e
+ *   devolvia o total de notas da LOJA, idêntico para todo SKU (Pedro II: 5.254 em
+ *   todos os itens). Medido ao vivo, a inflação mediana era de 1.184x e 100% dos
+ *   itens caíam em "Frequência Alta". Com a correção, 0,5% caem em "Alta".
+ *
+ * - Devolucoes90d agora soma 'NOTAS_ITEMS'[QTDE_DEV] (4.233 unidades reais no modelo).
+ *   Antes chamava [Quantidade Comprada Produto], que é COMPRA, não devolução.
+ *   Observação: 'NOTAS'[Tipo Movimentação] só tem "Venda Direta", "Transferência" e
+ *   nulo — não existe categoria de devolução, então a devolução vem da linha do item.
+ *
+ * - MesesAtivos12m alimenta o segundo critério de elegibilidade (recorrência).
+ *
+ * - MedianaLinhaVenda alimenta o piso da previsão de demanda.
+ *
+ * - DiasRuptura90d NÃO é emitido: o modelo semântico não expõe histórico de saldo
+ *   diário. Antes era enviado como constante 0, o que fazia todo SKU aparecer com
+ *   0% de ruptura e classificação "Boa". O adapter declara o campo como
+ *   indisponível e o cockpit mostra "—" em vez de um número falso.
  */
 export function gerarConsultaDaxHistoricoVendas(filtro?: FiltroCargaInventario): string {
   let filtroFornecedores = "";
@@ -138,6 +366,9 @@ export function gerarConsultaDaxHistoricoVendas(filtro?: FiltroCargaInventario):
 EVALUATE
 VAR DataLimite = TODAY()
 VAR Periodo180d = DATESINPERIOD('dCalendario'[Data], DataLimite, -180, DAY)
+VAR Periodo90d = DATESINPERIOD('dCalendario'[Data], DataLimite, -90, DAY)
+VAR Periodo30d = DATESINPERIOD('dCalendario'[Data], DataLimite, -30, DAY)
+VAR Periodo365d = DATESINPERIOD('dCalendario'[Data], DataLimite, -365, DAY)
 RETURN
 SUMMARIZECOLUMNS(
     'CADEMP'[ACODEMP],
@@ -149,24 +380,54 @@ SUMMARIZECOLUMNS(
     "VendasQtd90d", CALCULATE(
         [Quantidade Vendida Produto],
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
-        DATESINPERIOD('dCalendario'[Data], DataLimite, -90, DAY)
+        Periodo90d
     ),
     "VendasQtd30d", CALCULATE(
         [Quantidade Vendida Produto],
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
-        DATESINPERIOD('dCalendario'[Data], DataLimite, -30, DAY)
+        Periodo30d
     ),
     "NotasVenda90d", CALCULATE(
-        DISTINCTCOUNT('NOTAS'[DOCUMENTO]),
+        [Quantidade de Notas],
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
-        DATESINPERIOD('dCalendario'[Data], DataLimite, -90, DAY)
+        Periodo90d
+    ),
+    "NotasVenda180d", CALCULATE(
+        [Quantidade de Notas],
+        KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
     ),
     "Devolucoes90d", CALCULATE(
-        [Quantidade Comprada Produto],
-        DATESINPERIOD('dCalendario'[Data], DataLimite, -90, DAY)
+        SUM('NOTAS_ITEMS'[QTDE_DEV]),
+        ${FILTROS_VENDA_VALIDA}
+        KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
+        Periodo90d
     ),
-    "NotasDevolucao90d", 0,
-    "DiasRuptura90d", 0,
+    "NotasDevolucao90d", CALCULATE(
+        DISTINCTCOUNT('NOTAS_ITEMS'[NOTA_ID]),
+        ${FILTROS_VENDA_VALIDA}
+        KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
+        KEEPFILTERS('NOTAS_ITEMS'[QTDE_DEV] > 0),
+        Periodo90d
+    ),
+    "MesesAtivos12m", CALCULATE(
+        SUMX(
+            VALUES('dCalendario'[Mês]),
+            IF(
+                CALCULATE(
+                    [Quantidade Vendida Produto],
+                    KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
+                ) > 0,
+                1,
+                0
+            )
+        ),
+        Periodo365d
+    ),
+    "MedianaLinhaVenda", CALCULATE(
+        MEDIANX(FILTER('NOTAS_ITEMS', 'NOTAS_ITEMS'[NQTDE] > 0), 'NOTAS_ITEMS'[NQTDE]),
+        ${FILTROS_VENDA_VALIDA}
+        KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
+    ),
     "DiasObservados", 180
 )
   `.trim();
@@ -197,12 +458,118 @@ FILTER(
 /**
  * 7. Consulta de Peças Similares Intercambiáveis (TMP_AUDIT_PRODUTOS_SEMELHANTES_20260819)
  */
-export const CONSULTA_DAX_SIMILARES = `
+/**
+ * Página da tabela de intercambiáveis.
+ *
+ * PRODUTOS_SEMELHANTES tem 135.334 linhas e a resposta da API para no teto de
+ * 100.000 — medido ao vivo em 09/09/2026, sem erro nenhum. Paginar por ID é o
+ * que garante que o par que falta não seja justamente o que o comprador
+ * precisava ver antes de comprar uma peça que já existe na rede com outra marca.
+ */
+export const TAMANHO_PAGINA_SIMILARES = 40000;
+
+export function gerarConsultaDaxSimilares(cursor?: number | null): string {
+  const clausulaCursor =
+    typeof cursor === "number" && Number.isFinite(cursor)
+      ? ` && 'PRODUTOS_SEMELHANTES'[ID] > ${Math.floor(cursor)}`
+      : "";
+
+  return `
+EVALUATE
+TOPN(
+  ${TAMANHO_PAGINA_SIMILARES},
+  SELECTCOLUMNS(
+    FILTER(
+        PRODUTOS_SEMELHANTES,
+        NOT ISBLANK('PRODUTOS_SEMELHANTES'[ACODPRODUTO])
+          && NOT ISBLANK('PRODUTOS_SEMELHANTES'[ACODPRODUTO_SEMELHANTE])${clausulaCursor}
+    ),
+    "Id", 'PRODUTOS_SEMELHANTES'[ID],
+    "ProdutoOrigem", 'PRODUTOS_SEMELHANTES'[ACODPRODUTO],
+    "ProdutoSimilar", 'PRODUTOS_SEMELHANTES'[ACODPRODUTO_SEMELHANTE],
+    "TipoSimilaridade", 'PRODUTOS_SEMELHANTES'[TIPO]
+  ),
+  [Id], ASC
+)
+ORDER BY [Id]
+`.trim();
+}
+
+/**
+ * Movimentos de estoque da janela de ruptura, por loja.
+ *
+ * O ERP guarda o saldo ATUAL, não o histórico: a coluna `ESTOQUEATUAL` de
+ * MOVESTOQ está inteiramente vazia (verificado ao vivo em 09/09/2026, nenhuma
+ * linha com valor). O que existe são os movimentos com data e quantidade — e
+ * com o saldo de hoje eles bastam para reconstruir o passado de trás para
+ * frente. Ver `core/calculo/ruptura`.
+ *
+ * `NQTDEMOV` já vem com sinal: saída é negativa. Por isso o delta é a própria
+ * quantidade, sem depender de interpretar `ATIPOMOV`.
+ *
+ * Uma loja de 90 dias dá cerca de 12 mil linhas de 4 colunas — folga larga
+ * contra o corte de resposta da API.
+ */
+export const DIAS_JANELA_RUPTURA = 90;
+
+export const DIAS_BLOCO_MOVIMENTOS = 30;
+
+/**
+ * Um bloco de dias da janela. `inicioAtras`/`fimAtras` são recuos em dias a
+ * partir de hoje (30, 0 = últimos 30 dias).
+ *
+ * Sem filtro de loja: a tentativa de filtrar por `RELATED('CADEMP'...)` devolveu
+ * 21 linhas onde havia milhares — o relacionamento não resolve nesse sentido. A
+ * empresa vem em cada linha e o mapeamento para filial é feito no adapter, com a
+ * mesma função das outras consultas.
+ */
+export function gerarConsultaDaxMovimentosEstoque(
+  inicioAtras: number,
+  fimAtras: number
+): string {
+  const de = Math.max(0, Math.floor(inicioAtras));
+  const ate = Math.max(0, Math.floor(fimAtras));
+  if (de <= ate) {
+    throw new Error("Bloco de movimentos inválido: o início tem que ser mais antigo que o fim.");
+  }
+
+  return `
 EVALUATE
 SELECTCOLUMNS(
-    TMP_AUDIT_PRODUTOS_SEMELHANTES_20260819,
-    "ProdutoOrigem", TMP_AUDIT_PRODUTOS_SEMELHANTES_20260819[ACODPRODUTO],
-    "ProdutoSimilar", TMP_AUDIT_PRODUTOS_SEMELHANTES_20260819[ACODPRODUTO_SEMELHANTE],
-    "TipoSimilaridade", TMP_AUDIT_PRODUTOS_SEMELHANTES_20260819[TIPO]
+    FILTER(
+        MOVESTOQ,
+        MOVESTOQ[DATA_HORA] >= TODAY() - ${de}
+          && MOVESTOQ[DATA_HORA] < TODAY() - ${ate} + 1
+          && COALESCE(MOVESTOQ[NQTDEMOV], 0) <> 0
+    ),
+    "Produto", MOVESTOQ[ACODPRODUTO],
+    "Empresa", MOVESTOQ[ACODEMPRESA],
+    "Data", MOVESTOQ[DATA_HORA],
+    "Delta", MOVESTOQ[NQTDEMOV]
+)
+ORDER BY [Produto], [Data]
+`.trim();
+}
+
+/**
+ * Data do último PEDIDO (solicitação de compra) por produto.
+ *
+ * Fonte: TBL_SOLICITACOES_COMPRAS_HIST, publicada pelo cliente. Cobre 15.219
+ * produtos, de set/2024 até hoje.
+ *
+ * NÍVEL DE PRODUTO, NÃO DE LOJA: todas as 88.277 solicitações têm ACODEMPRESA
+ * igual a "1" — a tabela não distingue a loja que pediu. Rotular por loja seria
+ * inventar precisão que o dado não tem.
+ *
+ * A QUANTIDADE em aberto NÃO é usada como "já pedido" no motor: das 100
+ * solicitações abertas e aprovadas, nenhuma tem PEDIDO_COMPRA_ID, ou seja, nenhuma
+ * virou pedido ao fornecedor. Tratar pedido interno como mercadoria a caminho
+ * faria o motor comprar menos do que precisa.
+ */
+export const CONSULTA_DAX_ULTIMO_PEDIDO = `
+EVALUATE
+SUMMARIZECOLUMNS(
+    TBL_SOLICITACOES_COMPRAS_HIST[CODIGO_PRODUTO],
+    "UltimoPedido", MAX(TBL_SOLICITACOES_COMPRAS_HIST[DH_CRIACAO])
 )
 `.trim();

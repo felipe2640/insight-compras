@@ -201,7 +201,8 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
           VendasQtd90d: 45,
           VendasQtd180d: 90,
           NotasVenda90d: 18,
-          DiasRuptura90d: 5,
+          MesesAtivos12m: 9,
+          MedianaLinhaVenda: 3,
         },
       ];
 
@@ -213,7 +214,35 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
       expect(hist?.vendasLiquidas90dias).toBe(45);
       expect(hist?.vendasLiquidas180dias).toBe(90);
       expect(hist?.notasFiscaisVenda90dias).toBe(18);
-      expect(hist?.diasRuptura90dias).toBe(5);
+      expect(hist?.mesesAtivos12meses).toBe(9);
+      expect(hist?.medianaLinhaVenda).toBe(3);
+    });
+
+    it("subtrai as devoluções para obter a saída líquida", () => {
+      const historicos = mapearHistoricoVendasDax([
+        {
+          "PRODUTOS[ACODPRODUTO]": 2002,
+          "CADEMP[ACODEMP]": 1,
+          VendasQtd30d: 20,
+          VendasQtd90d: 50,
+          VendasQtd180d: 100,
+          Devolucoes90d: 10,
+          NotasVenda90d: 12,
+        },
+      ]);
+      const hist = historicos.get("2002:1");
+      expect(hist?.vendasLiquidas90dias).toBe(40);
+      expect(hist?.vendasLiquidas180dias).toBe(90);
+      expect(hist?.devolucoes90dias).toBe(10);
+    });
+
+    it("declara a ruptura como NÃO MEDIDA em vez de devolver zero silencioso", () => {
+      const historicos = mapearHistoricoVendasDax([
+        { "PRODUTOS[ACODPRODUTO]": 2003, "CADEMP[ACODEMP]": 1, VendasQtd90d: 10 },
+      ]);
+      const hist = historicos.get("2003:1");
+      // Zero aqui significaria "nunca faltou", que seria uma afirmação falsa.
+      expect(hist?.camposIndisponiveis).toContain("diasRuptura90dias");
     });
   });
 

@@ -46,10 +46,16 @@ function VirtualRowImpl({
             key={cell.id}
             style={{
               width: cell.column.getSize(),
+              // `width` numa <td> é apenas sugestão: sem maxWidth o conteúdo
+              // transborda e escreve por cima da coluna vizinha (Aplicação
+              // invadindo Ref. Fabricante e Marca). Fixar o teto e cortar aqui
+              // conserta todas as colunas de uma vez, em vez de remendar célula
+              // por célula com `truncate`.
+              maxWidth: cell.column.getSize(),
               left: isPinned === "left" ? `${startLeft}px` : undefined,
             }}
             className={cn(
-              "px-3 py-1.5 text-xs align-middle",
+              "px-3 py-1.5 text-xs align-middle overflow-hidden whitespace-nowrap text-ellipsis",
               isPinned === "left" && [
                 "sticky z-10",
                 isSelected

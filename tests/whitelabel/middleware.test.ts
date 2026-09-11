@@ -105,7 +105,9 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
       });
 
       expect(resultado.origemResolucao).toBe("fallback");
-      expect(resultado.tenantId).toBe("carreiro");
+      // Recuar para a DEMONSTRAÇÃO, não para um cliente: host desconhecido ou
+      // hostil nunca pode acabar mostrando a operação de quem confiou os dados.
+      expect(resultado.tenantId).toBe("demonstracao");
     });
 
     it("deve recorrer a fallback seguro se query param contiver payload malicioso", () => {
@@ -115,7 +117,9 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
       });
 
       expect(resultado.origemResolucao).toBe("fallback");
-      expect(resultado.tenantId).toBe("carreiro");
+      // Recuar para a DEMONSTRAÇÃO, não para um cliente: host desconhecido ou
+      // hostil nunca pode acabar mostrando a operação de quem confiou os dados.
+      expect(resultado.tenantId).toBe("demonstracao");
     });
   });
 
@@ -134,7 +138,7 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
       expect(resultado.headersDownstream["x-tenant-cor-fundo"]).toBe("#F8FAFC");
     });
 
-    it("middleware deve enriquecer a requisição e configurar cookie x-tenant-id e cabeçalhos de segurança", () => {
+    it("middleware deve enriquecer a requisição e configurar cookie x-tenant-id e cabeçalhos de segurança", async () => {
       const mockRequest: NextRequestLike = {
         headers: new Headers({
           host: "carreiro.insightd.com.br",
@@ -148,7 +152,7 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
         },
       };
 
-      const response = middleware(mockRequest);
+      const response = await middleware(mockRequest);
 
       expect(response.request.headers.get("x-tenant-id")).toBe("carreiro");
       expect(response.request.headers.get("x-tenant-cor-primaria")).toBe("#0F2B5C");

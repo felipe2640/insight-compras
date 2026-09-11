@@ -53,9 +53,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { FiltroColunaPopover } from "@/components/ui/filtro-coluna-popover";
 
 export type ColumnMeta = {
   label?: string;
+  /** Tipo do dado da coluna. Só colunas com variante ganham filtro no cabeçalho. */
+  variante?: "texto" | "numero" | "selecao" | "data";
   align?: "left" | "center" | "right";
   width?: number | string;
   pinned?: "left" | "right" | false;
@@ -111,7 +114,12 @@ function VirtualRowImpl<TData>({
           <TableCell
             key={cell.id}
             className={cn(
-              "border-r border-slate-200 px-2.5 text-xs text-slate-800 dark:border-slate-800 dark:text-slate-200",
+              // `overflow-hidden` aqui é o que impede uma coluna de escrever por
+              // cima da vizinha. A célula já tinha maxWidth, mas o conteúdo usa
+              // `truncate` num <span> INLINE, e truncate só recorta em elemento
+              // de bloco — o texto de Aplicação vazava sobre Ref. Fabricante e
+              // Marca. Cortar no container resolve todas as colunas de uma vez.
+              "overflow-hidden border-r border-slate-200 px-2.5 text-xs text-slate-800 dark:border-slate-800 dark:text-slate-200",
               rowPadding,
               align === "center" && "text-center",
               align === "left" && "text-left",
@@ -323,6 +331,9 @@ export function DataGrid<TData>({
                           <ColumnMenuTrigger header={header} align={align} label={renderedHeader} />
                         ) : (
                           renderedHeader ?? <ColumnMenuTrigger header={header} align={align} />
+                        )}
+                        {meta?.variante && header.column.getCanFilter() && (
+                          <FiltroColunaPopover header={header} />
                         )}
                         <div
                           onMouseDown={header.getResizeHandler()}

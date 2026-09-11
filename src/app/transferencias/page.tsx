@@ -1,249 +1,230 @@
 "use client";
 
-import React, { useState } from "react";
+/**
+ * Plano de transferência — o que cada loja precisa MANDAR.
+ *
+ * Mesma conta do cockpit: a loja em foco é o DESTINO, e o balanceamento escolhe
+ * a doadora com maior sobra real. Aqui a leitura é invertida de propósito: em
+ * vez de "o que falta aqui", mostra "o que sai de cada loja", que é a ordem de
+ * serviço de quem vai separar a mercadoria.
+ *
+ * Antes esta tela tinha três linhas fixas no código. Agora vem do mesmo motor.
+ */
+
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeftRight,
+  Loader2,
+  AlertTriangle,
+  PackageCheck,
+  Store,
+} from "lucide-react";
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { ArrowLeftRight, Download, CheckCircle2, AlertTriangle, ShieldCheck } from "lucide-react";
+import { LinhaCockpitMatriz } from "@/tipos/cockpit";
+import { decodificarGradeTabular, PayloadGradeTabular } from "@/lib/cockpit/codificacao-tabular";
+import { montarNomesFiliais, obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
+import { cn } from "@/lib/utils";
 
-interface ItemTransferencia {
-  id: string;
-  sku: string;
-  descricao: string;
-  lojaOrigem: string;
-  lojaDestino: string;
-  qtdSugerida: number;
-  custoUnitario: number;
-  diasSemVendaOrigem: number;
-  motivo: string;
-  status: "Sugerida" | "Aprovada" | "Emitida";
-}
-
-const TRANSFERENCIAS_INICIAIS: ItemTransferencia[] = [
-  {
-    id: "TRF-001",
-    sku: "SKU-PNEU-17",
-    descricao: "Pneu Lanvigator Aro 17 Catchfors A/T",
-    lojaOrigem: "José de Freitas",
-    lojaDestino: "Pedro II (Matriz)",
-    qtdSugerida: 4,
-    custoUnitario: 598.0,
-    diasSemVendaOrigem: 180,
-    motivo: "Estoque parado há 180d em JF; ruptura iminente em Pedro II",
-    status: "Sugerida",
-  },
-  {
-    id: "TRF-002",
-    sku: "SKU-OLEO-5W30",
-    descricao: "Óleo Lubrificante 5W30 Sintético Selènia",
-    lojaOrigem: "Poranga",
-    lojaDestino: "Piripiri",
-    qtdSugerida: 120,
-    custoUnitario: 36.8,
-    diasSemVendaOrigem: 95,
-    motivo: "Superávit de 453 un em Poranga; cobrindo pico de safra em Piripiri",
-    status: "Sugerida",
-  },
-  {
-    id: "TRF-003",
-    sku: "SKU-BAT-MOURA-60",
-    descricao: "Bateria Moura 60Ah M60GD Selada",
-    lojaOrigem: "Campo Maior",
-    lojaDestino: "Poranga",
-    qtdSugerida: 6,
-    custoUnitario: 419.4,
-    diasSemVendaOrigem: 110,
-    motivo: "Excesso na filial Campo Maior; abastecendo demanda de baterias em Poranga",
-    status: "Aprovada",
-  },
-  {
-    id: "TRF-004",
-    sku: "SKU-AMORT-COFAP",
-    descricao: "Amortecedor Dianteiro Turbogás Gol G5/G6",
-    lojaOrigem: "José de Freitas",
-    lojaDestino: "Piripiri",
-    qtdSugerida: 8,
-    custoUnitario: 185.5,
-    diasSemVendaOrigem: 140,
-    motivo: "Rebalanceamento de suspensão regional sem necessidade de compra externa",
-    status: "Sugerida",
-  },
-];
+// Do cadastro do TENANT: a tela é a mesma para todo cliente, o que muda é a
+// configuração. Importar constante de adapter aqui amarraria a interface a um
+// cliente específico.
+const LOJAS = Object.entries(montarNomesFiliais(obterTenantAtivo())).map(([id, nome]) => ({
+  id: Number(id),
+  nome,
+}));
 
 export default function PaginaTransferencias() {
-  const [lista, setLista] = useState<ItemTransferencia[]>(TRANSFERENCIAS_INICIAIS);
+  const [destino, setDestino] = useState(1);
+  const [linhas, setLinhas] = useState<LinhaCockpitMatriz[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
 
-  const totalValor = lista.reduce((acc, t) => acc + t.qtdSugerida * t.custoUnitario, 0);
-  const totalPecas = lista.reduce((acc, t) => acc + t.qtdSugerida, 0);
+  const carregar = useCallback(async () => {
+    setCarregando(true);
+    setErro(null);
+    try {
+      const r = await fetch(`/api/compras?filialId=${destino}&formato=tabular&escopo=todos`);
+      if (!r.ok) {
+        setErro(r.status === 401 ? "Sessão expirada." : `Servidor respondeu ${r.status}.`);
+        setLinhas([]);
+        return;
+      }
+      const corpo = (await r.json()) as { grade?: PayloadGradeTabular };
+      if (!corpo.grade) {
+        setErro("Resposta sem a grade.");
+        return;
+      }
+      setLinhas(decodificarGradeTabular<LinhaCockpitMatriz>(corpo.grade));
+    } catch {
+      setErro("Sem conexão com o servidor.");
+    } finally {
+      setCarregando(false);
+    }
+  }, [destino]);
 
-  const handleAprovar = (id: string) => {
-    setLista((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, status: "Aprovada" } : item))
-    );
-  };
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
 
-  const handleAprovarTodas = () => {
-    setLista((prev) => prev.map((item) => ({ ...item, status: "Aprovada" })));
-    alert("Todas as transferências sugeridas foram aprovadas com sucesso!");
-  };
+  const porOrigem = useMemo(() => {
+    const grupos = new Map<
+      string,
+      { origemNome: string; itens: LinhaCockpitMatriz[]; unidades: number; valor: number }
+    >();
+    for (const l of linhas) {
+      const qtd = l.quantidadeTransferenciaSugerida ?? 0;
+      const origem = l.filialOrigemTransferenciaNome;
+      if (qtd <= 0 || !origem) continue;
+      const g = grupos.get(origem) ?? { origemNome: origem, itens: [], unidades: 0, valor: 0 };
+      g.itens.push(l);
+      g.unidades += qtd;
+      g.valor += qtd * (l.precoCusto ?? 0);
+      grupos.set(origem, g);
+    }
+    return Array.from(grupos.values()).sort((a, b) => b.unidades - a.unidades);
+  }, [linhas]);
+
+  const totalUnidades = porOrigem.reduce((s, g) => s + g.unidades, 0);
+  const nomeDestino = LOJAS.find((l) => l.id === destino)?.nome ?? `Loja ${destino}`;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
+    <div className="flex h-screen overflow-hidden bg-slate-100">
       <AppSidebar />
-
       <main className="flex flex-1 flex-col overflow-y-auto">
-        {/* Top Header */}
-        <header className="border-b border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h1 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <ArrowLeftRight className="h-5 w-5 text-indigo-600" />
-                Transferências Inteligentes Inter-Lojas
-              </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Rebalanceamento de capital: transfira peças paradas entre filiais antes de comprar novo estoque do fornecedor.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleAprovarTodas}
-                className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white shadow hover:bg-indigo-700 transition-colors"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Aprovar Todas as Sugestões
-              </button>
-              <button
-                type="button"
-                onClick={() => alert("Romaneio de transferência gerado para expedição!")}
-                className="flex items-center gap-1.5 rounded-lg bg-[#0F2B5C] px-3.5 py-2 text-xs font-bold text-white shadow hover:bg-[#0A1E40] transition-colors"
-              >
-                <Download className="h-4 w-4 text-[#D4AF37]" />
-                Emitir Romaneio
-              </button>
-            </div>
-          </div>
+        <header className="sticky top-0 z-30 border-b border-[#D4AF37]/30 bg-[#0F2B5C] px-4 py-2.5 text-white shadow-md">
+          <h1 className="flex items-center gap-2 text-sm font-semibold">
+            <ArrowLeftRight className="h-4 w-4 text-[#D4AF37]" />
+            Transferências
+          </h1>
+          <p className="text-xs text-white/70">
+            O que cada loja precisa mandar para <strong>{nomeDestino}</strong>. A doadora só
+            entra se mantiver o próprio giro coberto.
+          </p>
         </header>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 shadow-sm dark:border-indigo-900 dark:bg-indigo-950/20">
-              <span className="text-[11px] font-bold uppercase text-indigo-700 dark:text-indigo-400">
-                Transferências Sugeridas
-              </span>
-              <p className="mt-1 text-2xl font-black text-indigo-700 dark:text-indigo-300">
-                {lista.length} rotas
-              </p>
-              <span className="text-[11px] text-indigo-600">Reaproveitamento de rede</span>
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <span className="text-[11px] font-bold uppercase text-slate-400">Total de Peças Deslocadas</span>
-              <p className="mt-1 text-2xl font-black text-slate-900 dark:text-white">
-                {totalPecas} un
-              </p>
-              <span className="text-[11px] text-slate-500">Sem gerar desembolso de caixa</span>
-            </div>
-
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/20">
-              <span className="text-[11px] font-bold uppercase text-emerald-700 dark:text-emerald-400">
-                Capital Preservado (Economia de Compra)
-              </span>
-              <p className="mt-1 text-2xl font-black text-emerald-700 dark:text-emerald-300">
-                {totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-              </p>
-              <span className="text-[11px] text-emerald-600">Evitou compra externa desnecessária</span>
-            </div>
-          </div>
-
-          {/* Tabela de Transferências */}
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="border-b border-slate-200 px-4 py-3 bg-slate-50/50 dark:border-slate-800 dark:bg-slate-800/40 flex items-center justify-between">
-              <span className="text-xs font-bold uppercase text-slate-700 dark:text-slate-200">
-                Rotas de Movimentação Recomendadas
-              </span>
-              <span className="text-xs text-slate-400 font-medium">Prioridade: Peças paradas há mais de 90 dias</span>
-            </div>
-
-            <table className="w-full border-collapse text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 border-b border-slate-200 dark:bg-slate-800/60 dark:border-slate-700">
-                <tr>
-                  <th className="px-4 py-2.5 font-semibold">Código</th>
-                  <th className="px-4 py-2.5 font-semibold">SKU / Descrição</th>
-                  <th className="px-4 py-2.5 font-semibold">Origem (Sobra)</th>
-                  <th className="px-4 py-2.5 font-semibold">Destino (Falta)</th>
-                  <th className="px-4 py-2.5 font-semibold text-center">Qtd.</th>
-                  <th className="px-4 py-2.5 font-semibold text-right">Valor Total</th>
-                  <th className="px-4 py-2.5 font-semibold">Motivo do Rebalanceamento</th>
-                  <th className="px-4 py-2.5 font-semibold text-center">Status</th>
-                  <th className="px-4 py-2.5 font-semibold text-center">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {lista.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50 transition-colors dark:hover:bg-slate-800/50">
-                    <td className="px-4 py-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
-                      {item.id}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono font-semibold text-slate-900 dark:text-white block">
-                        {item.sku}
-                      </span>
-                      <span className="text-slate-500 truncate block max-w-xs">{item.descricao}</span>
-                    </td>
-                    <td className="px-4 py-3 font-medium text-amber-700 dark:text-amber-400">
-                      {item.lojaOrigem}
-                      <span className="block text-[10px] text-slate-400 font-normal">
-                        Sem venda há {item.diasSemVendaOrigem}d
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-medium text-blue-700 dark:text-blue-400">
-                      {item.lojaDestino}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-center font-bold text-slate-900 dark:text-white">
-                      {item.qtdSugerida} un
-                    </td>
-                    <td className="px-4 py-3 font-mono text-right font-bold text-slate-900 dark:text-white">
-                      {(item.qtdSugerida * item.custoUnitario).toLocaleString("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      })}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300 max-w-xs">
-                      {item.motivo}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                          item.status === "Aprovada"
-                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                            : "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300"
-                        }`}
-                      >
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {item.status === "Sugerida" ? (
-                        <button
-                          type="button"
-                          onClick={() => handleAprovar(item.id)}
-                          className="rounded bg-indigo-50 px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-300 transition-colors"
-                        >
-                          Aprovar
-                        </button>
-                      ) : (
-                        <span className="text-[11px] text-emerald-600 font-medium flex items-center justify-center gap-1">
-                          <CheckCircle2 className="h-3.5 w-3.5" /> OK
-                        </span>
-                      )}
-                    </td>
-                  </tr>
+        <div className="mx-auto w-full max-w-[1200px] space-y-3 p-4 text-xs">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+            <label className="flex items-center gap-1.5">
+              <span className="font-semibold text-slate-600">Loja que recebe</span>
+              <select
+                value={destino}
+                onChange={(e) => setDestino(Number(e.target.value))}
+                className="rounded border border-slate-300 px-2 py-1 font-semibold outline-none focus:border-blue-500"
+              >
+                {LOJAS.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.nome}
+                  </option>
                 ))}
-              </tbody>
-            </table>
+              </select>
+            </label>
+            <span className="ml-auto text-slate-500">
+              {carregando
+                ? "calculando..."
+                : `${porOrigem.length} loja(s) doadora(s) • ${totalUnidades.toLocaleString("pt-BR")} un`}
+            </span>
           </div>
+
+          {erro && (
+            <p role="alert" className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-800">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {erro}
+            </p>
+          )}
+
+          {carregando ? (
+            <p className="py-10 text-center text-slate-400">
+              <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+            </p>
+          ) : porOrigem.length === 0 ? (
+            <p className="rounded-xl border border-slate-200 bg-white py-10 text-center text-slate-400 shadow-sm">
+              Nenhuma transferência sugerida para {nomeDestino}. Toda necessidade vira compra,
+              ou nenhuma outra loja tem sobra depois de cobrir o próprio giro.
+            </p>
+          ) : (
+            porOrigem.map((grupo) => (
+              <div
+                key={grupo.origemNome}
+                className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-indigo-50/60 px-3 py-2">
+                  <span className="flex items-center gap-2 font-semibold text-indigo-900">
+                    <Store className="h-4 w-4" />
+                    {grupo.origemNome}
+                    <ArrowLeftRight className="h-3.5 w-3.5 text-indigo-400" />
+                    <span className="text-slate-700">{nomeDestino}</span>
+                  </span>
+                  <span className="flex items-center gap-3 font-mono text-indigo-900">
+                    <span>{grupo.itens.length} item(ns)</span>
+                    <span className="font-bold">{grupo.unidades} un</span>
+                    <span>
+                      {grupo.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </span>
+                  </span>
+                </div>
+
+                <div className="max-h-80 overflow-y-auto">
+                  <table className="w-full">
+                    <thead className="sticky top-0 bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-2 py-1 text-left">SKU</th>
+                        <th className="px-2 py-1 text-left">Descrição</th>
+                        <th className="px-2 py-1 text-left">Marca</th>
+                        <th className="px-2 py-1 text-right">Enviar</th>
+                        <th className="px-2 py-1 text-right">Saldo origem</th>
+                        <th className="px-2 py-1 text-right">Sobra após</th>
+                        <th className="px-2 py-1 text-right">Falta no destino</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {grupo.itens.map((i) => {
+                        const enviar = i.quantidadeTransferenciaSugerida ?? 0;
+                        const sobraApos = (i.sobraRealOrigemTransferencia ?? 0) - enviar;
+                        return (
+                          <tr key={i.codigoSku} className="border-t border-slate-100">
+                            <td className="px-2 py-1 font-mono text-slate-700">{i.codigoSku}</td>
+                            <td className="px-2 py-1 text-slate-600">
+                              <span className="block max-w-[300px] truncate" title={i.descricao}>
+                                {i.descricao}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1 text-slate-600">{i.marca || "—"}</td>
+                            <td className="px-2 py-1 text-right font-mono font-bold text-indigo-800">
+                              {enviar}
+                            </td>
+                            <td className="px-2 py-1 text-right font-mono text-slate-600">
+                              {i.saldoOrigemTransferencia}
+                            </td>
+                            <td
+                              className={cn(
+                                "px-2 py-1 text-right font-mono",
+                                sobraApos < 0 ? "font-bold text-rose-700" : "text-slate-600"
+                              )}
+                              title="Sobra da doadora depois de enviar, já descontado o giro dela"
+                            >
+                              {sobraApos}
+                            </td>
+                            <td className="px-2 py-1 text-right font-mono text-slate-600">
+                              {i.necessidadeDestinoTransferencia}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))
+          )}
+
+          <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-600 shadow-sm">
+            <PackageCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+            <span>
+              Transferência vem antes de compra: mover o que já está na rede não gasta caixa. A
+              doadora só cede o que sobra depois de garantir a própria cobertura, e por isso
+              &quot;Sobra após&quot; nunca deveria ficar negativa.
+            </span>
+          </p>
         </div>
       </main>
     </div>

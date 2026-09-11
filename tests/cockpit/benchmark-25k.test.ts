@@ -64,6 +64,7 @@ function gerar25kLinhasCockpit(): LinhaCockpitMatriz[] {
       aplicacaoVeicular: veiculo,
       secaoId: secao.id,
       secaoNome: secao.nome,
+      subgrupo: null,
       fornecedorId,
       nomeFornecedor: `DISTRIBUIDORA ${marca}`,
       precoCusto: 50.0 + (i % 300),
@@ -101,6 +102,11 @@ function gerar25kLinhasCockpit(): LinhaCockpitMatriz[] {
       quantidadeJaPedidaFoco: 0,
       estoqueOutrasLojasRede: 20,
       sugestaoFinalCompra: temCompra ? 8 : 0,
+      previsaoBrutaModelo: 0,
+      horizonteDiasAplicado: 0,
+      margemSegurancaAplicada: 0,
+      fatorCalibracaoAplicado: 1,
+      motivoInelegibilidade: null,
       statusSugestao: isZumbi
         ? "TRAVADO_MARCA_ZUMBI"
         : temCompra

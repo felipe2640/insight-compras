@@ -11,8 +11,11 @@ import {
   Produto,
   EstoqueFilial,
   HistoricoVendasFilial,
+  SinalGovernancaCompra,
 } from "@core/dominio";
-import { inferirLotePadraoPorCategoria } from "@core/travas";
+import { inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
+import { agruparMovimentosPorDia, calcularDiasEmRuptura } from "@core/calculo/ruptura";
+import { DIAS_JANELA_RUPTURA } from "./consultas-homologadas";
 import {
   EntradaNFeDoDia,
   ItemSimilarIntercambiavel,
@@ -28,6 +31,21 @@ export const NOMES_FILIAIS_CARREIRO: Readonly<Record<number, string>> = {
   3: "Carreiro Poranga",
   4: "Ceará Auto Peças (Campo Maior)",
   5: "Carreiro José de Freitas",
+};
+
+/**
+ * Nome EXATO de cada filial na tabela CADEMP do modelo semântico.
+ *
+ * Difere do rótulo de exibição em `NOMES_FILIAIS_CARREIRO`: as consultas que
+ * filtram por loja precisam do valor literal de 'CADEMP'[ANOMEFANTASIA],
+ * conferido ao vivo em 07/09/2026.
+ */
+export const NOMES_CADEMP_CARREIRO: Readonly<Record<number, string>> = {
+  1: "CARREIRO PEDRO II",
+  2: "MELO DISTRIBUIDORA",
+  3: "CARREIRO PORANGA",
+  4: "CEARA AUTO PECAS CAMPO MAIOR",
+  5: "CARREIRO JOSE DE FREITAS",
 };
 
 /**
@@ -90,6 +108,32 @@ export function extrairIdProduto(valor: unknown): number {
  * Converte linhas tabulares de produtos retornadas pelo DAX para a entidade Produto.
  * Deduplica produtos que aparecem com registros em múltiplas lojas.
  */
+
+/** Data do DAX (ISO ou Date) em ISO curta. Vazio e sentinelas viram null. */
+function normalizarDataIso(valor: unknown): string | null {
+  if (valor === null || valor === undefined || valor === "") return null;
+  const texto = String(valor).trim();
+  if (!texto) return null;
+  const t = Date.parse(texto);
+  if (Number.isNaN(t)) return null;
+  // O ERP usa 1900-01-01 como "nunca". Uma data assim na grade seria pior do
+  // que campo vazio: parece medição.
+  const ano = new Date(t).getUTCFullYear();
+  if (ano < 1990) return null;
+  return new Date(t).toISOString().slice(0, 10);
+}
+
+/** Fica com a data mais recente entre as lojas. */
+function mesclarDatasProduto(a: Produto, b: Produto): Produto {
+  const maior = (x: string | null | undefined, y: string | null | undefined) =>
+    !x ? (y ?? null) : !y ? x : x >= y ? x : y;
+  return {
+    ...b,
+    dataUltimaVenda: maior(a.dataUltimaVenda, b.dataUltimaVenda),
+    dataUltimaCompra: maior(a.dataUltimaCompra, b.dataUltimaCompra),
+  };
+}
+
 export function mapearProdutosDax(
   linhasDax: readonly Record<string, unknown>[]
 ): readonly Produto[] {
@@ -118,6 +162,16 @@ export function mapearProdutosDax(
     const secaoId = secaoVal !== undefined && secaoVal !== null ? Number(secaoVal) : null;
     const nomeSecao = linha.NomeSecao ?? linha.nomeSecao ? String(linha.NomeSecao ?? linha.nomeSecao).trim() : null;
 
+    // Sub-grupo: tipo da peça. Ausente em ~12% do catálogo da Carreiro — fica
+    // null e o cockpit mostra "—", nunca um rótulo inventado.
+    const subVal = linha.Subgrupo ?? linha.subgrupoId;
+    const subgrupoId = subVal !== undefined && subVal !== null ? Number(subVal) : null;
+    const subgrupoBruto = linha.NomeSubgrupo ?? linha.subgrupoNome;
+    const subgrupoNome =
+      subgrupoBruto !== undefined && subgrupoBruto !== null && String(subgrupoBruto).trim() !== ""
+        ? String(subgrupoBruto).trim()
+        : null;
+
     const fornecedorVal = linha.Fornecedor ?? linha.ACODFORNECEDOR ?? linha.fornecedorId ?? 1;
     const fornecedorId = Number(fornecedorVal) || 1;
     const nomeFornecedor = String(
@@ -136,6 +190,15 @@ export function mapearProdutosDax(
     const aplicacao = linha.Aplicacao ?? linha.aplicacaoVeicular ? String(linha.Aplicacao ?? linha.aplicacaoVeicular).trim() : null;
     const familia = linha.FamiliaId ?? linha.familiaId ? String(linha.FamiliaId ?? linha.familiaId).trim() : null;
 
+    // Datas de última venda/compra. Vinham na consulta de ATRIBUTOS e eram
+    // descartadas aqui; quem tentava lê-las era o mapeador de estoque, e a
+    // consulta de posição não traz essas colunas. Resultado: as duas colunas da
+    // grade ficavam vazias em 100% dos itens.
+    const ultVendaBruta = linha.UltimaVenda ?? linha.DULTIMAVENDA ?? linha.dataUltimaVenda;
+    const ultCompraBruta = linha.UltimaCompra ?? linha.DULTIMACOMPRA ?? linha.dataUltimaCompra;
+    const dataUltimaVenda = normalizarDataIso(ultVendaBruta);
+    const dataUltimaCompra = normalizarDataIso(ultCompraBruta);
+
     const loteMultiplo = inferirLotePadraoPorCategoria(descricao);
 
     const produto: Produto = {
@@ -149,17 +212,49 @@ export function mapearProdutosDax(
       familiaId: familia && familia.length > 0 ? familia : null,
       secaoId,
       nomeSecao,
+      subgrupoId: Number.isFinite(subgrupoId as number) ? subgrupoId : null,
+      subgrupoNome,
       fornecedorId,
       nomeFornecedor,
       precoCusto,
       precoVenda,
       loteMultiplo,
+      dataUltimaVenda,
+      dataUltimaCompra,
     };
 
-    produtosPorId.set(id, produto);
+    // O produto aparece uma vez por empresa. Para a rede, a data que interessa é
+    // a MAIS RECENTE de qualquer loja: "vendeu na semana passada em Poranga" é
+    // informação, "nunca vendeu na Matriz" sozinha induz a engano.
+    const jaVisto = produtosPorId.get(id);
+    produtosPorId.set(id, jaVisto ? mesclarDatasProduto(jaVisto, produto) : produto);
   }
 
   return Array.from(produtosPorId.values());
+}
+
+/**
+ * Traduz o vocabulário da medida `Decisao Compra Mercadoria` do modelo da Carreiro
+ * para o sinal canônico da plataforma.
+ *
+ * A régua (margem alvo, uso do limite de compra, histórico de margem) é do cliente
+ * e vive no Power BI dele. Aqui só normalizamos o rótulo; o motor reage ao enum.
+ */
+function numeroOuNulo(valor: unknown): number | null {
+  if (valor === null || valor === undefined || valor === "") return null;
+  const n = Number(valor);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function normalizarDecisaoCompraCarreiro(valor: unknown): SinalGovernancaCompra | null {
+  const texto = String(valor ?? "").trim().toUpperCase();
+  if (!texto) return null;
+  if (texto.startsWith("PAUSAR")) return "PAUSAR";
+  if (texto.startsWith("REDUZIR")) return "REDUZIR";
+  if (texto.startsWith("MANTER")) return "MANTER";
+  // "ATENCAO - ..." são avisos, não bloqueios: seguem como MANTER.
+  if (texto.startsWith("ATENCAO")) return "MANTER";
+  return null;
 }
 
 /**
@@ -167,7 +262,8 @@ export function mapearProdutosDax(
  * Chave do Map: `${produtoId}:${filialId}`
  */
 export function mapearEstoquesDax(
-  linhasDax: readonly Record<string, unknown>[]
+  linhasDax: readonly Record<string, unknown>[],
+  contexto?: { filialId?: number; nomeFilial?: string }
 ): Map<string, EstoqueFilial> {
   const mapaEstoques = new Map<string, EstoqueFilial>();
 
@@ -177,25 +273,40 @@ export function mapearEstoquesDax(
     const produtoId = extrairIdProduto(linha.Produto ?? linha.ACODPRODUTO ?? linha.id ?? 0);
     if (!produtoId || produtoId <= 0) continue;
 
-    const { filialId, nomeFilial } = mapearFilialCarreiro(
-      linha.Empresa ?? linha.ACODEMPRESA ?? linha.filialId ?? 1
-    );
+    // A consulta de posição é paginada POR LOJA e não repete a coluna da filial em
+    // cada linha, então o contexto da página é a fonte primária da filial.
+    const filial =
+      contexto?.filialId !== undefined
+        ? {
+            filialId: contexto.filialId,
+            nomeFilial: contexto.nomeFilial ?? NOMES_FILIAIS_CARREIRO[contexto.filialId],
+          }
+        : mapearFilialCarreiro(
+            linha.Empresa ?? linha.ACODEMP ?? linha.ACODEMPRESA ?? linha.ANOMEFANTASIA ?? linha.filialId ?? 1
+          );
 
-    const chave = `${produtoId}:${filialId}`;
+    const chave = `${produtoId}:${filial.filialId}`;
 
     const saldoFisico = Number(linha.EstoqueQtd ?? linha.NESTOQATUAL ?? linha.AESTOQUE_ATUAL ?? 0);
     const estoqueMinimoSeguranca = Math.max(
       0,
       Number(linha.EstoqueMinimo ?? linha.AESTOQUE_MINIMO ?? 0)
     );
-    const quantidadeJaPedida = Math.max(
-      0,
-      Number(linha.QuantidadePedida ?? linha.AQUANTIDADE_PEDIDA ?? 0)
-    );
     const consumoMedioDiarioErp = Math.max(
       0,
       Number(linha.ConsumoMedioDiario ?? linha.ACONSUMO_MEDIO_DIARIO ?? 0)
     );
+
+    // [Estoque Dias sem Venda] do modelo do cliente termina em COALESCE(..., 365),
+    // e [Estoque Data Referencia Idade] usa TODAY()-365 como data de fallback.
+    // Ou seja: 365 é o sentinela de "não há data de referência", não uma medição.
+    // Tratar como null evita classificar item sem histórico como giro "Baixa".
+    const diasSemVendaBruto = linha.DiasSemVenda;
+    const diasSemVendaNumero =
+      diasSemVendaBruto === null || diasSemVendaBruto === undefined
+        ? null
+        : Math.max(0, Number(diasSemVendaBruto));
+    const diasSemVenda = diasSemVendaNumero === 365 ? null : diasSemVendaNumero;
 
     const ultVenda = linha.UltimaVenda ?? linha.DULTIMAVENDA ?? linha.dataUltimaVenda;
     const dataUltimaVenda = ultVenda ? String(ultVenda).trim() : null;
@@ -204,15 +315,28 @@ export function mapearEstoquesDax(
     const dataUltimaCompra = ultCompra ? String(ultCompra).trim() : null;
 
     const estoque: EstoqueFilial = {
-      filialId,
-      nomeFilial,
+      filialId: filial.filialId,
+      nomeFilial: filial.nomeFilial,
       produtoId,
       saldoFisico,
       estoqueMinimoSeguranca,
-      quantidadeJaPedida,
+      // O modelo semântico da Carreiro não expõe pedido de compra em aberto de forma
+      // confiável (ITEMSPEDIDO veio com merge quebrado). Zero aqui NÃO significa
+      // "não há pedidos", significa "não medido" — por isso o campo é declarado
+      // indisponível abaixo e o cockpit mostra "—" em vez de 0.
+      quantidadeJaPedida: 0,
       consumoMedioDiarioErp,
+      diasSemVenda: Number.isFinite(diasSemVenda as number) ? diasSemVenda : null,
+      sinalGovernancaCompra: normalizarDecisaoCompraCarreiro(linha.DecisaoCompra),
+      usoLimiteCompra:
+        linha.UsoLimiteCompra === null || linha.UsoLimiteCompra === undefined
+          ? null
+          : Number(linha.UsoLimiteCompra),
+      margemRealizada: numeroOuNulo(linha.MargemRealizada),
+      margemAlvo: numeroOuNulo(linha.MargemAlvo),
       dataUltimaVenda,
       dataUltimaCompra,
+      camposIndisponiveis: ["quantidadeJaPedida"],
     };
 
     mapaEstoques.set(chave, estoque);
@@ -242,20 +366,22 @@ export function mapearHistoricoVendasDax(
 
     const chave = `${produtoId}:${filialId}`;
 
-    const vendasLiquidas30dias = Math.max(
-      0,
-      Number(linha.VendasQtd30d ?? linha.QtdVenda30d ?? 0)
-    );
-    const vendasLiquidas90dias = Math.max(
-      vendasLiquidas30dias,
-      Number(linha.VendasQtd90d ?? linha.QtdVenda90d ?? 0)
-    );
-    const vendasLiquidas180dias = Math.max(
-      vendasLiquidas90dias,
-      Number(linha.VendasQtd180d ?? linha.QtdVenda180d ?? 0)
-    );
-
+    // Devoluções vêm da linha da nota (QTDE_DEV) e são subtraídas para obter a
+    // saída LÍQUIDA, que é o insumo do motor. Antes as vendas brutas eram usadas
+    // direto e a "devolução" na verdade trazia quantidade COMPRADA.
     const devolucoes90dias = Math.max(0, Number(linha.Devolucoes90d ?? 0));
+
+    const brutas30 = Math.max(0, Number(linha.VendasQtd30d ?? linha.QtdVenda30d ?? 0));
+    const brutas90 = Math.max(0, Number(linha.VendasQtd90d ?? linha.QtdVenda90d ?? 0));
+    const brutas180 = Math.max(0, Number(linha.VendasQtd180d ?? linha.QtdVenda180d ?? 0));
+
+    const vendasLiquidas90dias = Math.max(0, brutas90 - devolucoes90dias);
+    // A janela de 30 dias não pode exceder a de 90 já líquida.
+    const vendasLiquidas30dias = Math.min(brutas30, vendasLiquidas90dias);
+    // A devolução medida é a de 90 dias; para 180 subtraímos o mesmo montante como
+    // aproximação conservadora (nunca inflar a demanda).
+    const vendasLiquidas180dias = Math.max(vendasLiquidas90dias, brutas180 - devolucoes90dias);
+
     const notasFiscaisVenda90dias = Math.max(
       0,
       Number(linha.NotasVenda90d ?? linha.QuantidadeNotas90d ?? 0)
@@ -264,7 +390,8 @@ export function mapearHistoricoVendasDax(
       0,
       Number(linha.NotasDevolucao90d ?? 0)
     );
-    const diasRuptura90dias = Math.max(0, Number(linha.DiasRuptura90d ?? 0));
+    const mesesAtivos12meses = Math.max(0, Number(linha.MesesAtivos12m ?? 0));
+    const medianaLinhaVenda = Math.max(0, Number(linha.MedianaLinhaVenda ?? 0));
     const diasObservados = Math.max(1, Number(linha.DiasObservados ?? 180));
 
     const primVenda = linha.DataPrimeiraVenda ?? linha.dataPrimeiraVendaRegistrada;
@@ -278,10 +405,19 @@ export function mapearHistoricoVendasDax(
       vendasLiquidas180dias,
       devolucoes90dias,
       notasFiscaisVenda90dias,
+      notasFiscaisVenda180dias: Math.max(
+        notasFiscaisVenda90dias,
+        Number(linha.NotasVenda180d ?? 0) || 0
+      ),
       notasFiscaisDevolucao90dias,
-      diasRuptura90dias,
+      mesesAtivos12meses,
+      medianaLinhaVenda,
+      // O modelo não tem histórico de saldo diário: ruptura NÃO é medida.
+      // Zero aqui significaria "nunca faltou", que é uma afirmação falsa.
+      diasRuptura90dias: 0,
       diasObservados,
       dataPrimeiraVendaRegistrada,
+      camposIndisponiveis: ["diasRuptura90dias"],
     };
 
     mapaHistoricos.set(chave, historico);
@@ -361,10 +497,103 @@ export function mapearSimilaresDax(
       saldoFisicoDisponivelRede: saldoDisponivel,
     };
 
+    // O mesmo par aparece repetido em PRODUTOS_SEMELHANTES (uma vez por empresa).
+    // Sem deduplicar, o diálogo de intercambiáveis lista a mesma peça cinco
+    // vezes e o comprador acha que tem cinco alternativas onde só existe uma.
     const existentes = mapaSimilares.get(idOrigem) ?? [];
-    existentes.push(itemSimilar);
-    mapaSimilares.set(idOrigem, existentes);
+    if (!existentes.some((e) => e.produtoIdSimilar === idSimilar)) {
+      existentes.push(itemSimilar);
+      mapaSimilares.set(idOrigem, existentes);
+    }
   }
 
   return mapaSimilares;
+}
+
+/**
+ * Preenche a ruptura dos históricos reconstruindo o saldo dia a dia.
+ *
+ * O ERP da Carreiro guarda o saldo ATUAL e não o histórico — a coluna
+ * `ESTOQUEATUAL` de MOVESTOQ está inteiramente vazia. O que sobra são os
+ * movimentos: com o saldo de hoje e eles, o passado é aritmética. A conta em si
+ * mora em `core/calculo/ruptura`, sem saber de Power BI.
+ *
+ * Sem movimentos, NADA é preenchido: `diasRuptura90dias` continua marcado como
+ * indisponível e o cockpit segue mostrando "não medido". Preencher com zero
+ * afirmaria que nenhuma peça faltou no balcão, que é diferente de não saber.
+ */
+export function aplicarRupturaReconstruida(
+  historicos: Map<string, HistoricoVendasFilial>,
+  estoques: ReadonlyMap<string, EstoqueFilial>,
+  linhasMovimentos: readonly Record<string, unknown>[],
+  hoje: Date = new Date()
+): void {
+  if (linhasMovimentos.length === 0) return;
+
+  const movimentosPorChave = new Map<string, Array<{ data: string; delta: number }>>();
+  for (const linhaBruta of linhasMovimentos) {
+    const linha = normalizarLinhaDax(linhaBruta);
+    const produtoId = extrairIdProduto(linha.Produto ?? linha.ACODPRODUTO);
+    if (!produtoId) continue;
+
+    const delta = Number(linha.Delta ?? linha.NQTDEMOV ?? 0);
+    if (!Number.isFinite(delta) || delta === 0) continue;
+
+    const data = linha.Data ?? linha.DATA_HORA;
+    if (data === null || data === undefined || data === "") continue;
+
+    const { filialId } = mapearFilialCarreiro(linha.Empresa ?? linha.ACODEMPRESA);
+    const chave = `${produtoId}:${filialId}`;
+    const lista = movimentosPorChave.get(chave);
+    if (lista) lista.push({ data: String(data), delta });
+    else movimentosPorChave.set(chave, [{ data: String(data), delta }]);
+  }
+
+  for (const [chave, historico] of historicos) {
+    const estoque = estoques.get(chave);
+    // Sem posição não há de onde partir a caminhada para trás.
+    if (!estoque) continue;
+
+    const resultado = calcularDiasEmRuptura({
+      saldoAtual: estoque.saldoFisico,
+      movimentos: agruparMovimentosPorDia(movimentosPorChave.get(chave) ?? []),
+      diasJanela: DIAS_JANELA_RUPTURA,
+      hoje,
+    });
+
+    historicos.set(chave, {
+      ...historico,
+      diasRuptura90dias: resultado.diasZerados,
+      diasObservados: resultado.diasAnalisados,
+      dataUltimoZeramento: resultado.dataUltimoZeramento,
+      rupturaConfiavel: resultado.confiavel,
+      camposIndisponiveis: (historico.camposIndisponiveis ?? []).filter(
+        (campo: string) => campo !== "diasRuptura90dias"
+      ),
+    });
+  }
+}
+
+/** Junta a data do último pedido aos produtos já mapeados. */
+export function aplicarUltimoPedido(
+  produtos: readonly Produto[],
+  linhasPedidos: readonly Record<string, unknown>[]
+): Produto[] {
+  if (linhasPedidos.length === 0) return [...produtos];
+
+  const porProduto = new Map<number, string>();
+  for (const linhaBruta of linhasPedidos) {
+    const linha = normalizarLinhaDax(linhaBruta);
+    const id = extrairIdProduto(linha.CODIGO_PRODUTO ?? linha.Produto ?? linha.codigoProduto);
+    if (!id) continue;
+    const data = normalizarDataIso(linha.UltimoPedido ?? linha.DH_CRIACAO);
+    if (!data) continue;
+    const atual = porProduto.get(id);
+    if (!atual || data > atual) porProduto.set(id, data);
+  }
+
+  return produtos.map((p) => {
+    const data = porProduto.get(p.id);
+    return data ? { ...p, dataUltimoPedido: data } : p;
+  });
 }

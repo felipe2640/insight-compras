@@ -3,11 +3,11 @@
  * Requisitos: ORIGINAL_REQUEST R2 & PROJECT.md
  */
 
+import { inferirLotePadraoPorCategoria } from "@adapters/comum/lote-autopecas";
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   arredondarParaMultiplo,
   ajustarQuantidadePorLote,
-  inferirLotePadraoPorCategoria,
 } from "@core/travas/lote-multiplo";
 import {
   executarAjusteHumanoPedido,
@@ -50,7 +50,7 @@ describe("Tier 1 — Feature 4: Ajuste Humano com Múltiplos e Persistência de 
     });
 
     expect(ajustePar.quantidadeAjustada).toBe(4);
-    expect(ajustePar.motivoAjuste).toContain("Ajustado para par (múltiplo de 2 un)");
+    expect(ajustePar.motivoAjuste).toContain("múltiplo de embalagem fechada (2 un)");
   });
 
   // T1.4.3: Sanitização de célula editável de entrada humana

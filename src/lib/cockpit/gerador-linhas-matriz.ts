@@ -9,7 +9,6 @@ import {
   EntradaNFeDoDia,
   ItemSimilarIntercambiavel,
 } from "@adapters/AdaptadorInventario";
-import { NOMES_FILIAIS_CARREIRO } from "@adapters/carreiro/mapeador-dax";
 import {
   LinhaCockpitMatriz,
   SeveridadeRuptura,
@@ -17,18 +16,119 @@ import {
   TendenciaCobertura,
 } from "@/tipos/cockpit";
 import {
-  inferirLotePadraoPorCategoria,
   ajustarQuantidadePorLote,
   aplicarTravaMarcaZumbi,
 } from "@core/travas";
-import { calcularNecessidadeItem } from "@core/calculo/necessidade";
+import {
+  calcularNecessidadeItem,
+  aplicarGovernancaCompra,
+  PARAMETROS_MOTOR_PADRAO,
+  ParametrosMotorCompra,
+  ResultadoCalculoNecessidade,
+} from "@core/calculo/necessidade";
+import {
+  calcularBalanceamentoRede,
+  SaldoFilialParaTransferencia,
+} from "@core/transferencia/balanceamento";
+import { Produto } from "@core/dominio";
 import { calcularConsumoDiario, classificarPerfilGiro } from "@core/calculo/demanda-diaria";
 import { calcularCurvaAbc } from "@core/calculo/curva-abc";
-import { StatusSugestao, CurvaABC } from "@core/dominio";
+import { StatusSugestao, CurvaABC, campoHistoricoDisponivel, campoEstoqueDisponivel } from "@core/dominio";
 
 export interface OpcoesGeracaoMatriz {
   readonly filialFocoId?: number;
   readonly leadTimePadraoDias?: number;
+  /**
+   * Parâmetros calibrados do tenant. A LÓGICA é a mesma para todo cliente;
+   * só estes VALORES mudam. Sem isso, cai no baseline não calibrado.
+   */
+  readonly parametrosMotor?: ParametrosMotorCompra;
+  /**
+   * Nomes das filiais do tenant. Injetado pelo chamador para que esta camada
+   * não dependa de nenhum adapter de cliente específico.
+   */
+  readonly nomesFiliais?: Readonly<Record<number, string>>;
+}
+
+/**
+ * Classificação de consumo por quantidade vendida na janela de 90 dias.
+ * Faixas homologadas no sistema legado (`classifyConsumptionByQuantity`):
+ * < 30 => Baixa; >= 100 => Alta; caso contrário Média.
+ */
+function classificarConsumoPorQuantidade(qtdVendida90d: number): ClassificacaoFrequencia {
+  if (!Number.isFinite(qtdVendida90d) || qtdVendida90d < 30) return "Baixa";
+  if (qtdVendida90d >= 100) return "Alta";
+  return "Média";
+}
+
+/**
+ * Período ideal de análise, derivado da CLASSIFICAÇÃO DE FREQUÊNCIA
+ * (não da curva ABC). Rótulos homologados em `getIdealAnalysisPeriod`.
+ */
+function obterPeriodoIdealAnalise(classificacao: ClassificacaoFrequencia): string {
+  if (classificacao === "Alta") return "30 dias";
+  if (classificacao === "Média") return "60 a 90 dias";
+  return "120 a 180 dias";
+}
+
+/**
+ * Giro por dias sem venda. Sem data de última venda a resposta é
+ * "Sem histórico" — nunca um número inventado.
+ */
+function classificarGiroPorDiasSemVenda(
+  diasSemVenda: number | null
+): "Alta" | "Média" | "Baixa" | "Sem histórico" {
+  if (diasSemVenda === null) return "Sem histórico";
+  if (diasSemVenda <= 30) return "Alta";
+  if (diasSemVenda <= 90) return "Média";
+  return "Baixa";
+}
+
+/**
+ * Calcula a necessidade de um produto em UMA loja qualquer, com a mesma régua
+ * usada para a loja em foco. Serve ao balanceamento de rede: para decidir quem
+ * doa e quem recebe, todas as lojas precisam ser avaliadas pela mesma lógica.
+ *
+ * Devolve null quando a loja não tem posição nem histórico para o item.
+ */
+function calcularNecessidadeLoja(
+  p: Produto,
+  filialId: number,
+  carga: RespostaCargaInventario,
+  parametrosMotor: ParametrosMotorCompra,
+  leadTimeDias: number
+): ResultadoCalculoNecessidade | null {
+  const chave = `${p.id}:${filialId}`;
+  const est = carga.estoques.get(chave);
+  const hist = carga.historicos.get(chave);
+  if (!est && !hist) return null;
+
+  const cmd = calcularConsumoDiario({
+    vendasLiquidasJanela: hist?.vendasLiquidas180dias ?? 0,
+    diasJanela: 180,
+  });
+  const perfil = classificarPerfilGiro(
+    cmd,
+    hist?.notasFiscaisVenda90dias ?? 0,
+    hist?.mesesAtivos12meses ?? 0,
+    parametrosMotor.elegibilidade
+  );
+  const pedidosMedidos = campoEstoqueDisponivel(est, "quantidadeJaPedida");
+
+  return calcularNecessidadeItem({
+    consumoDiario: cmd,
+    perfilGiro: perfil,
+    saldoFisico: est?.saldoFisico ?? 0,
+    estoqueMinimoCadastrado: est?.estoqueMinimoSeguranca ?? 0,
+    medianaLinhaVenda: hist?.medianaLinhaVenda ?? 0,
+    quantidadeJaPedida: pedidosMedidos ? est?.quantidadeJaPedida ?? 0 : 0,
+    loteMultiplo: p.loteMultiplo > 1 ? p.loteMultiplo : 1,
+    parametrosMotor,
+    leadTimeDias,
+    sinalGovernanca: est?.sinalGovernancaCompra ?? null,
+    margemRealizada: est?.margemRealizada ?? null,
+    margemAlvo: est?.margemAlvo ?? null,
+  });
 }
 
 /**
@@ -41,7 +141,9 @@ export function converterParaLinhasCockpit(
 ): LinhaCockpitMatriz[] {
   const filialFocoId = opcoes.filialFocoId ?? 1;
   const leadTimeDias = opcoes.leadTimePadraoDias ?? 7;
-  const nomeFilialFoco = NOMES_FILIAIS_CARREIRO[filialFocoId] ?? `Loja ${filialFocoId}`;
+  const parametrosMotor = opcoes.parametrosMotor ?? PARAMETROS_MOTOR_PADRAO;
+  const nomesFiliais = opcoes.nomesFiliais ?? {};
+  const nomeFilialFoco = nomesFiliais[filialFocoId] ?? `Loja ${filialFocoId}`;
 
   // 1. Agrupamento de estoques por produto para transferências entre filiais
   const estoquesPorProduto = new Map<number, Array<{ filialId: number; saldo: number; minStock: number }>>();
@@ -75,6 +177,11 @@ export function converterParaLinhasCockpit(
   });
   const mapaCurvaAbc = calcularCurvaAbc(itensParaCurva);
 
+  // Todas as filiais conhecidas na carga (para o balanceamento de rede).
+  const todasAsFiliais = new Set<number>();
+  for (const est of carga.estoques.values()) todasAsFiliais.add(est.filialId);
+  for (const h of carga.historicos.values()) todasAsFiliais.add(h.filialId);
+
   // 4. Transformação de cada Produto na Linha da Matriz de Decisão
   const linhas: LinhaCockpitMatriz[] = [];
 
@@ -85,7 +192,12 @@ export function converterParaLinhasCockpit(
 
     const saldoFoco = estFoco?.saldoFisico ?? 0;
     const minStockFoco = estFoco?.estoqueMinimoSeguranca ?? 0;
-    const pedidosFoco = estFoco?.quantidadeJaPedida ?? 0;
+
+    // Pedidos em aberto: distinguir "medido e igual a zero" de "não medido".
+    // Quando a fonte não expõe, o cockpit mostra "—" e o motor não desconta nada
+    // (comportamento conservador: pode sobrecomprar, mas nunca deixa de repor).
+    const pedidosMedidos = campoEstoqueDisponivel(estFoco, "quantidadeJaPedida");
+    const pedidosFoco = pedidosMedidos ? estFoco?.quantidadeJaPedida ?? 0 : null;
 
     // Saldo em outras lojas da rede
     let saldoOutrasLojas = 0;
@@ -100,26 +212,36 @@ export function converterParaLinhasCockpit(
     const vendas30d = histFoco?.vendasLiquidas30dias ?? 0;
     const vendas90d = histFoco?.vendasLiquidas90dias ?? 0;
     const vendas180d = histFoco?.vendasLiquidas180dias ?? 0;
-    const diasObservados = histFoco?.diasObservados ?? 90;
+    const diasObservados = histFoco?.diasObservados ?? 180;
     const notasVenda90d = histFoco?.notasFiscaisVenda90dias ?? 0;
     const notasDevolucao90d = histFoco?.notasFiscaisDevolucao90dias ?? 0;
+    const mesesAtivos = histFoco?.mesesAtivos12meses ?? 0;
+    const medianaLinha = histFoco?.medianaLinhaVenda ?? 0;
 
+    // Taxa diária com denominador FIXO de 180 dias (igual ao backtest).
     const cmdDiario = calcularConsumoDiario({
-      vendasLiquidas180d: vendas180d,
-      notasFiscais90d: notasVenda90d,
-      diasObservados,
+      vendasLiquidasJanela: vendas180d,
+      diasJanela: 180,
     });
 
+    // Cada janela usa o SEU próprio denominador. Antes a coluna "90d" recebia a
+    // taxa de 180 dias, o que fazia rótulo e conteúdo discordarem.
     const cmd30d = vendas30d > 0 ? +(vendas30d / 30).toFixed(4) : 0;
-    const cmd90d = cmdDiario > 0 ? cmdDiario : (vendas90d > 0 ? +(vendas90d / 90).toFixed(4) : 0);
+    const cmd90d = vendas90d > 0 ? +(vendas90d / 90).toFixed(4) : 0;
     const cmd180d = vendas180d > 0 ? +(vendas180d / 180).toFixed(4) : 0;
 
-    const cob30d = cmd30d > 0 ? Math.round(saldoFoco / cmd30d) : saldoFoco > 0 ? 999 : 0;
-    const cob90d = cmd90d > 0 ? Math.round(saldoFoco / cmd90d) : saldoFoco > 0 ? 999 : 0;
-    const cob180d = cmd180d > 0 ? Math.round(saldoFoco / cmd180d) : saldoFoco > 0 ? 999 : 0;
+    // Cobertura em dias. Sem consumo não existe cobertura calculável: null, não 999.
+    const cob30d = cmd30d > 0 ? Math.round(saldoFoco / cmd30d) : null;
+    const cob90d = cmd90d > 0 ? Math.round(saldoFoco / cmd90d) : null;
+    const cob180d = cmd180d > 0 ? Math.round(saldoFoco / cmd180d) : null;
 
-    // Perfil de Giro & Curva ABC
-    const perfilGiro = classificarPerfilGiro(cmd90d, notasVenda90d, diasObservados);
+    // Perfil de giro pela taxa de 180d + recorrência (notas distintas E meses ativos).
+    const perfilGiro = classificarPerfilGiro(
+      cmdDiario,
+      notasVenda90d,
+      mesesAtivos,
+      parametrosMotor.elegibilidade
+    );
     const curvaAbc: CurvaABC = mapaCurvaAbc.get(p.id)?.curva ?? "C";
 
     // Trava de Marca Zumbi (saldo > 0 e zero vendas em 180d)
@@ -141,10 +263,18 @@ export function converterParaLinhasCockpit(
       tendenciaCobertura = "QUEDA";
     }
 
-    // Diagnóstico de Ruptura
-    const diasAnalisados = diasObservados;
-    const diasZerados = histFoco?.diasRuptura90dias ?? (saldoFoco <= 0 && vendas90d > 0 ? 15 : 0);
-    const rupturaPercentual = diasAnalisados > 0 ? +((diasZerados / diasAnalisados) * 100).toFixed(1) : null;
+    // Diagnóstico de Ruptura.
+    // Só é calculado se a fonte REALMENTE mediu os dias de saldo zerado.
+    // Não medido => null e "Sem histórico". Preencher com 0 aqui faria todo SKU
+    // aparecer com 0% de ruptura e classificação "Boa", que é uma afirmação falsa.
+    const rupturaMedida = campoHistoricoDisponivel(histFoco, "diasRuptura90dias");
+    const diasAnalisados = rupturaMedida ? diasObservados : null;
+    const diasZerados = rupturaMedida ? histFoco?.diasRuptura90dias ?? 0 : null;
+
+    const rupturaPercentual =
+      rupturaMedida && diasAnalisados && diasAnalisados > 0 && diasZerados !== null
+        ? +((diasZerados / diasAnalisados) * 100).toFixed(1)
+        : null;
 
     let classificacaoRuptura: SeveridadeRuptura = "Sem histórico";
     if (rupturaPercentual !== null) {
@@ -157,9 +287,10 @@ export function converterParaLinhasCockpit(
       }
     }
 
-    const vendaPerdidaEstimada = diasZerados > 0 && cmd90d > 0
-      ? +(diasZerados * cmd90d * p.precoVenda).toFixed(2)
-      : 0;
+    const vendaPerdidaEstimada =
+      diasZerados !== null && diasZerados > 0 && cmd90d > 0
+        ? +(diasZerados * cmd90d * p.precoVenda).toFixed(2)
+        : 0;
 
     // Frequência por Notas em 90 dias
     const notasLiquidas90d = Math.max(0, notasVenda90d - notasDevolucao90d);
@@ -172,52 +303,96 @@ export function converterParaLinhasCockpit(
       classificacaoFrequencia = "Média";
     }
 
-    // Lotes e Múltiplos Industriais
-    const loteMultiplo = p.loteMultiplo > 1 ? p.loteMultiplo : inferirLotePadraoPorCategoria(p.descricao);
+    // Lote/múltiplo: o adapter já resolveu a precedência (ERP > histograma > vocabulário).
+    const loteMultiplo = p.loteMultiplo > 1 ? p.loteMultiplo : 1;
     const embalagemMinima = 1;
 
-    // Cálculo Numérico de Necessidade Bruta / Líquida
-    const resultadoNecessidade = calcularNecessidadeItem({
-      consumoDiario: cmd90d,
-      perfilGiro,
-      saldoFisico: saldoFoco,
-      estoqueMinimoCadastrado: minStockFoco,
-      quantidadeJaPedida: pedidosFoco,
-      leadTimeDias,
-    });
+    // Necessidade de TODAS as lojas da rede para este item, pela mesma régua.
+    // Sem isso não há como saber quem doa, quem recebe e quem tem prioridade.
+    const necessidadesPorLoja = new Map<number, ResultadoCalculoNecessidade>();
+    for (const filialId of todasAsFiliais) {
+      const r = calcularNecessidadeLoja(p, filialId, carga, parametrosMotor, leadTimeDias);
+      if (r) necessidadesPorLoja.set(filialId, r);
+    }
+
+    const resultadoNecessidade =
+      necessidadesPorLoja.get(filialFocoId) ??
+      calcularNecessidadeItem({
+        consumoDiario: cmdDiario,
+        perfilGiro,
+        saldoFisico: saldoFoco,
+        estoqueMinimoCadastrado: minStockFoco,
+        medianaLinhaVenda: medianaLinha,
+        quantidadeJaPedida: pedidosFoco ?? 0,
+        loteMultiplo,
+        parametrosMotor,
+        leadTimeDias,
+        sinalGovernanca: estFoco?.sinalGovernancaCompra ?? null,
+        margemRealizada: estFoco?.margemRealizada ?? null,
+        margemAlvo: estFoco?.margemAlvo ?? null,
+      });
 
     let necessidadeCompra = resultadoNecessidade.necessidadeLiquida;
 
-    // Oportunidade de Transferência Inter-Filiais Segura
-    let melhorOrigemTransferencia: {
-      filialId: number;
-      nomeFilial: string;
-      saldoOrigem: number;
-      minStockOrigem: number;
-      sobraReal: number;
-      quantidade: number;
-    } | null = null;
-
-    if (necessidadeCompra > 0) {
-      let maiorSobra = 0;
-      for (const est of outrasLojas) {
-        if (est.filialId !== filialFocoId) {
-          const sobra = Math.max(0, est.saldo - est.minStock);
-          if (sobra > maiorSobra) {
-            maiorSobra = sobra;
-            const qtdTransferir = Math.min(necessidadeCompra, sobra);
-            melhorOrigemTransferencia = {
-              filialId: est.filialId,
-              nomeFilial: NOMES_FILIAIS_CARREIRO[est.filialId] ?? `Loja ${est.filialId}`,
-              saldoOrigem: est.saldo,
-              minStockOrigem: est.minStock,
-              sobraReal: sobra,
-              quantidade: qtdTransferir,
-            };
-          }
-        }
-      }
+    // Balanceamento de rede — as regras do diário, para 5 lojas:
+    //
+    // 1. Prioridade para a loja que MAIS precisa (o core ordena destinos por
+    //    maior necessidade e doadoras por maior sobra).
+    // 2. A doadora só doa o que excede a demanda DELA: o piso é a previsão
+    //    calibrada da própria loja, não o mínimo do ERP. Loja com giro guarda o
+    //    que vai vender; loja onde a peça está parada doa tudo.
+    // 3. Loja que tem estoque suficiente não recebe: sua necessidade é zero.
+    //
+    // A necessidade usada aqui é a ANTES da governança: "não compre mais disso"
+    // não impede realocar o que a rede já tem. A governança volta a atuar sobre
+    // o que sobrar para comprar do fornecedor.
+    const filiaisParaBalanceamento: SaldoFilialParaTransferencia[] = [];
+    for (const [filialId, r] of necessidadesPorLoja) {
+      const est = carga.estoques.get(`${p.id}:${filialId}`);
+      filiaisParaBalanceamento.push({
+        filialId,
+        nomeFilial: nomesFiliais[filialId] ?? `Loja ${filialId}`,
+        saldoFisico: Math.max(0, est?.saldoFisico ?? 0),
+        estoqueMinimo: r.previsaoCalibrada,
+        necessidadeCompra: r.necessidadeAntesGovernanca,
+      });
     }
+
+    const transferenciasRede =
+      filiaisParaBalanceamento.length >= 2
+        ? calcularBalanceamentoRede(filiaisParaBalanceamento, {
+            produtoId: p.id,
+            codigoSku: p.codigoSku,
+          })
+        : [];
+
+    // O que CHEGA na loja em foco (pode vir de mais de uma doadora).
+    const recebimentosFoco = transferenciasRede.filter((t) => t.filialDestinoId === filialFocoId);
+    const totalRecebidoFoco = recebimentosFoco.reduce((acc, t) => acc + t.quantidadeTransferir, 0);
+    const principalOrigem = [...recebimentosFoco].sort(
+      (a, b) => b.quantidadeTransferir - a.quantidadeTransferir
+    )[0];
+
+    // Quando mais de uma loja doa, os números de origem são AGREGADOS: saldo,
+    // piso e sobra somados. Assim a conta fecha no tooltip (saldo − mantém ≥ doa).
+    // Mostrar só a doadora principal com a quantidade total dava "saldo 27,
+    // mantém 7, doa 26", que não fecha e mina a confiança do comprador.
+    const melhorOrigemTransferencia = principalOrigem
+      ? {
+          filialId: principalOrigem.filialOrigemId,
+          nomeFilial:
+            recebimentosFoco.length > 1
+              ? recebimentosFoco.map((t) => t.nomeFilialOrigem).join(" + ")
+              : principalOrigem.nomeFilialOrigem,
+          saldoOrigem: recebimentosFoco.reduce((acc, t) => acc + t.saldoOrigemAntes, 0),
+          minStockOrigem: recebimentosFoco.reduce((acc, t) => acc + t.estoqueMinimoOrigem, 0),
+          sobraReal: recebimentosFoco.reduce(
+            (acc, t) => acc + (t.saldoOrigemAntes - t.estoqueMinimoOrigem),
+            0
+          ),
+          quantidade: totalRecebidoFoco,
+        }
+      : null;
 
     // Definição da Sugestão Final de Compra e Status
     let sugestaoFinalCompra = 0;
@@ -225,25 +400,40 @@ export function converterParaLinhasCockpit(
     let motivoDecisao = "Estoque suficiente para cobrir o horizonte planejado";
     let quantidadeTransferenciaSugerida = 0;
 
+    const sinalGov = estFoco?.sinalGovernancaCompra ?? null;
+    const cortadoPorGovernanca =
+      resultadoNecessidade.necessidadeAntesGovernanca > resultadoNecessidade.necessidadeLiquida;
+
     if (isZumbi) {
       sugestaoFinalCompra = 0;
       statusSugestao = "TRAVADO_MARCA_ZUMBI";
       motivoDecisao = "TRAVA MARCA ZUMBI: Saldo em estoque sem vendas nos últimos 180 dias";
-    } else if (melhorOrigemTransferencia && melhorOrigemTransferencia.quantidade >= necessidadeCompra) {
-      quantidadeTransferenciaSugerida = melhorOrigemTransferencia.quantidade;
+    } else if (sinalGov === "PAUSAR" && resultadoNecessidade.necessidadeAntesGovernanca > 0) {
       sugestaoFinalCompra = 0;
-      statusSugestao = "COBERTO_POR_TRANSFERENCIA";
-      motivoDecisao = `Atendido por transferência segura de ${melhorOrigemTransferencia.nomeFilial} (Sobra Real: ${melhorOrigemTransferencia.sobraReal} un)`;
+      statusSugestao = "ESTOQUE_SUFICIENTE";
+      motivoDecisao =
+        `GOVERNANÇA DO CLIENTE: compra pausada para este item (demanda calculada era ` +
+        `${resultadoNecessidade.necessidadeAntesGovernanca} un). Origem: Decisão de Compra do Power BI.`;
     } else {
-      const necessidadeAposTransferencia = melhorOrigemTransferencia
-        ? necessidadeCompra - melhorOrigemTransferencia.quantidade
-        : necessidadeCompra;
+      // Transferência primeiro; o fornecedor só entra no que a rede não cobre.
+      // A governança do cliente atua sobre esse restante, não sobre a realocação.
+      const necessidadeBrutaFoco = resultadoNecessidade.necessidadeAntesGovernanca;
+      const restanteAposTransferencia = Math.max(0, necessidadeBrutaFoco - totalRecebidoFoco);
+      const necessidadeAposTransferencia = aplicarGovernancaCompra(
+        restanteAposTransferencia,
+        sinalGov,
+        resultadoNecessidade.fatorReducaoAplicado
+      );
 
       if (melhorOrigemTransferencia) {
         quantidadeTransferenciaSugerida = melhorOrigemTransferencia.quantidade;
       }
 
-      if (necessidadeAposTransferencia > 0) {
+      if (melhorOrigemTransferencia && restanteAposTransferencia === 0) {
+        sugestaoFinalCompra = 0;
+        statusSugestao = "COBERTO_POR_TRANSFERENCIA";
+        motivoDecisao = `Atendido por transferência de ${melhorOrigemTransferencia.nomeFilial}: ${totalRecebidoFoco} un (a origem mantém o que vai vender)`;
+      } else if (necessidadeAposTransferencia > 0) {
         const ajuste = ajustarQuantidadePorLote({
           quantidadeDesejada: necessidadeAposTransferencia,
           multiploLote: loteMultiplo,
@@ -251,7 +441,10 @@ export function converterParaLinhasCockpit(
         });
         sugestaoFinalCompra = ajuste.quantidadeAjustada;
         statusSugestao = "APROVADO_COMPRA";
-        motivoDecisao = `Demanda calculada: ${necessidadeAposTransferencia} un (Ajustado p/ múltiplo ${loteMultiplo}: ${sugestaoFinalCompra} un)`;
+        motivoDecisao =
+          totalRecebidoFoco > 0
+            ? `Transferir ${totalRecebidoFoco} un de ${melhorOrigemTransferencia?.nomeFilial} e comprar ${sugestaoFinalCompra} un (múltiplo ${loteMultiplo})`
+            : `Demanda calculada: ${necessidadeAposTransferencia} un (Ajustado p/ múltiplo ${loteMultiplo}: ${sugestaoFinalCompra} un)`;
       } else {
         sugestaoFinalCompra = 0;
         statusSugestao = "ESTOQUE_SUFICIENTE";
@@ -266,29 +459,34 @@ export function converterParaLinhasCockpit(
     const dtUltVenda = p.dataUltimaVenda ?? null;
     const dtUltimaCompra = p.dataUltimaCompra ?? null;
 
-    let diasSemVenda: number | null = null;
-    if (dtUltVenda) {
+    // Dias sem venda: preferir o valor medido pelo ERP; senão derivar da data.
+    // Sem nenhuma das duas fontes o valor é null — nunca 180 chutado.
+    let diasSemVenda: number | null = estFoco?.diasSemVenda ?? null;
+    if (diasSemVenda === null && dtUltVenda) {
       const ms = Date.now() - new Date(dtUltVenda).getTime();
-      diasSemVenda = Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
-    } else if (vendas90d === 0) {
-      diasSemVenda = 180;
+      const calculado = Math.floor(ms / (1000 * 60 * 60 * 24));
+      diasSemVenda = Number.isFinite(calculado) ? Math.max(0, calculado) : null;
     }
 
-    const giroUltimaVenda =
-      diasSemVenda === null
-        ? "Sem venda"
-        : diasSemVenda <= 30
-        ? "Alta"
-        : diasSemVenda <= 90
-        ? "Média"
-        : "Baixa";
+    const giroUltimaVenda = classificarGiroPorDiasSemVenda(diasSemVenda);
 
-    const consumoMensal = +(cmd90d * 30).toFixed(2);
-    const vendaACadaDias = cmd90d > 0 ? +(1 / cmd90d).toFixed(1) : null;
-    const classificacaoConsumo = vendas90d >= 30 ? "Alto" : vendas90d >= 10 ? "Médio" : "Baixo";
-    const periodoIdeal = curvaAbc === "A" ? "30 dias" : curvaAbc === "B" ? "90 dias" : "180 dias";
-    const histVendas90d = Math.max(0, Math.round(notasLiquidas90d * 0.95));
-    const histProdVend90d = Math.max(0, Math.round(vendas90d * 0.95));
+    const consumoMensal = +(cmdDiario * 30).toFixed(2);
+    const vendaACadaDias = cmdDiario > 0 ? +(1 / cmdDiario).toFixed(1) : null;
+    const classificacaoConsumo = classificarConsumoPorQuantidade(vendas90d);
+    const periodoIdeal = obterPeriodoIdealAnalise(classificacaoFrequencia);
+
+    // Janela ANTERIOR de 90 dias (de 180 a 90 dias atrás), que é o termo de
+    // comparação: "vendeu 12 agora contra 30 antes" conta uma história que "12"
+    // sozinho não conta. Sai de 180d menos 90d, sem consulta nova.
+    //
+    // Já foram preenchidas com `valor * 0,95`, um número inventado; depois
+    // viraram null. Agora são medição de verdade.
+    // Sem registro de histórico na loja, as duas seguem a mesma régua das colunas
+    // irmãs da janela atual, que já assumem zero: misturar zero numa e travessão
+    // na outra faria a mesma linha contar duas histórias.
+    const notas180d = histFoco?.notasFiscaisVenda180dias ?? 0;
+    const histVendas90d: number | null = Math.max(0, vendas180d - vendas90d);
+    const histProdVend90d: number | null = Math.max(0, notas180d - notasVenda90d);
 
     const statusMovimentacao =
       statusSugestao === "APROVADO_COMPRA"
@@ -309,6 +507,7 @@ export function converterParaLinhasCockpit(
       aplicacaoVeicular: p.aplicacaoVeicular,
       secaoId: p.secaoId ?? undefined,
       secaoNome: p.nomeSecao,
+      subgrupo: p.subgrupoNome ?? null,
       fornecedorId: p.fornecedorId,
       nomeFornecedor: p.nomeFornecedor,
       precoCusto: p.precoCusto,
@@ -321,7 +520,7 @@ export function converterParaLinhasCockpit(
       rupturaDiasZerados: diasZerados,
       rupturaPercentual,
       classificacaoRuptura,
-      dataUltimoZeramento: null,
+      dataUltimoZeramento: rupturaMedida ? histFoco?.dataUltimoZeramento ?? null : null,
       vendaPerdidaEstimadaReais: vendaPerdidaEstimada,
 
       // Frequência
@@ -358,6 +557,14 @@ export function converterParaLinhasCockpit(
       sugestaoFinalCompra,
       statusSugestao,
       motivoDecisao,
+      previsaoBrutaModelo: resultadoNecessidade.previsaoBruta,
+      horizonteDiasAplicado: resultadoNecessidade.horizonteDias,
+      margemSegurancaAplicada: resultadoNecessidade.margemSeguranca,
+      fatorCalibracaoAplicado: resultadoNecessidade.fatorCalibracao,
+      motivoInelegibilidade:
+        perfilGiro === "SEM_HISTORICO_SUFICIENTE"
+          ? `Sem recorrência: ${notasVenda90d} nota(s) e ${mesesAtivos} mês(es) com venda (mínimo ${parametrosMotor.elegibilidade.minimoNotasDistintas} e ${parametrosMotor.elegibilidade.minimoMesesAtivos})`
+          : null,
 
       // Ajustes e Múltiplos
       loteMultiplo,
@@ -386,9 +593,10 @@ export function converterParaLinhasCockpit(
       custo: p.precoCusto,
       dtUltVenda,
       dtUltimaCompra,
+      dtUltimoPedido: p.dataUltimoPedido ?? null,
       curvaAbcSistema: curvaAbc,
       produtosVend90d: vendas90d,
-      consumoDiario: cmd90d,
+      consumoDiario: cmdDiario,
       consumoMensal,
       vendaACadaDias,
       consumoUltimos30DiasQtd: vendas30d,
@@ -405,7 +613,11 @@ export function converterParaLinhasCockpit(
       statusMovimentacao,
       sugestaoCompra: sugestaoFinalCompra,
       sugestaoTransferencia: quantidadeTransferenciaSugerida,
-      temSimilarComEstoque: similares.length > 0,
+      // COM ESTOQUE, não "existe similar cadastrado". A linha roxa manda o
+      // comprador conferir antes de comprar porque há equivalente disponível na
+      // rede; se todos estão zerados, não há nada para conferir e o aviso vira
+      // ruído que ensina a ignorar a cor.
+      temSimilarComEstoque: similares.some((s) => s.saldoFisicoDisponivelRede > 0),
       exigeMultiploEmbalagem: loteMultiplo > 1,
     });
   }

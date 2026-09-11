@@ -276,7 +276,7 @@ export function criarBaseColumns({
               : "text-slate-500";
 
         const cobFormatada =
-          item.consumoMedioDiario90d > 0
+          item.consumoMedioDiario90d > 0 && item.diasCobertura90d !== null
             ? `${Math.round(item.diasCobertura90d)}d`
             : "—";
 

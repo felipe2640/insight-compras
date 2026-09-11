@@ -44,6 +44,8 @@ export interface LinhaCockpitMatriz {
   readonly aplicacaoVeicular: string | null;
   readonly secaoId?: number;
   readonly secaoNome: string | null;
+  /** Sub-grupo: tipo da peça (BIELETA, PIVO). null = o ERP não classificou. */
+  readonly subgrupo: string | null;
   readonly fornecedorId?: number;
   readonly nomeFornecedor?: string;
   readonly precoCusto: number;
@@ -52,8 +54,10 @@ export interface LinhaCockpitMatriz {
   readonly perfilGiro: PerfilRotatividade;
 
   // Ruptura
-  readonly rupturaDiasAnalisados: number;
-  readonly rupturaDiasZerados: number;
+  /** null = a fonte não mede ruptura. */
+  readonly rupturaDiasAnalisados: number | null;
+  /** null = a fonte não mede ruptura. */
+  readonly rupturaDiasZerados: number | null;
   readonly rupturaPercentual: number | null;
   readonly classificacaoRuptura: SeveridadeRuptura;
   readonly dataUltimoZeramento: string | null;
@@ -71,15 +75,18 @@ export interface LinhaCockpitMatriz {
   // Coberturas Comparativas (30d / 90d / 180d)
   readonly vendasLiquidas30d: number;
   readonly consumoMedioDiario30d: number;
-  readonly diasCobertura30d: number;
+  /** null = sem consumo na janela, cobertura não calculável. */
+  readonly diasCobertura30d: number | null;
 
   readonly vendasLiquidas90d: number;
   readonly consumoMedioDiario90d: number;
-  readonly diasCobertura90d: number;
+  /** null = sem consumo na janela, cobertura não calculável. */
+  readonly diasCobertura90d: number | null;
 
   readonly vendasLiquidas180d: number;
   readonly consumoMedioDiario180d: number;
-  readonly diasCobertura180d: number;
+  /** null = sem consumo na janela, cobertura não calculável. */
+  readonly diasCobertura180d: number | null;
 
   readonly tendenciaCobertura: TendenciaCobertura;
   readonly isMarcaZumbi: boolean; // true se saldoEstoque > 0 e vendasLiquidas180d === 0
@@ -89,11 +96,21 @@ export interface LinhaCockpitMatriz {
   readonly filialFocoNome: string;
   readonly estoqueLojaFoco: number;
   readonly estoqueMinimoLojaFoco: number;
-  readonly quantidadeJaPedidaFoco: number;
+  /** null = a fonte do cliente não expõe pedidos em aberto (não medido != zero). */
+  readonly quantidadeJaPedidaFoco: number | null;
   readonly estoqueOutrasLojasRede: number;
 
   // Sugestão e Decisão do Motor
   readonly sugestaoFinalCompra: number;
+  /**
+   * Contexto do modelo congelado na linha — o ciclo de aprendizado grava isto
+   * no snapshot para recalcular a calibração sem depender da fonte do cliente.
+   */
+  readonly previsaoBrutaModelo: number;
+  readonly horizonteDiasAplicado: number;
+  readonly margemSegurancaAplicada: number;
+  readonly fatorCalibracaoAplicado: number;
+  readonly motivoInelegibilidade: string | null;
   readonly statusSugestao: StatusSugestao;
   readonly motivoDecisao: string;
 
@@ -124,6 +141,8 @@ export interface LinhaCockpitMatriz {
   readonly custo?: number;
   readonly dtUltVenda?: string | null;
   readonly dtUltimaCompra?: string | null;
+  /** Última solicitação de compra. Nível de produto: a fonte não separa por loja. */
+  readonly dtUltimoPedido?: string | null;
   readonly curvaAbcSistema?: string;
   readonly produtosVend90d?: number;
   readonly consumoDiario?: number;
@@ -136,8 +155,8 @@ export interface LinhaCockpitMatriz {
   readonly classificacaoConsumo?: string;
   readonly ruptura?: string;
   readonly periodoIdeal?: string;
-  readonly histVendas90d?: number;
-  readonly histProdVend90d?: number;
+  readonly histVendas90d?: number | null;
+  readonly histProdVend90d?: number | null;
   readonly diasSemVenda?: number | null;
   readonly estoqueRede?: number;
   readonly statusMovimentacao?: string;
@@ -157,8 +176,8 @@ export type LinhaCockpitCompras = LinhaCockpitMatriz;
 // ============================================================================
 
 export interface PropsTooltipRuptura {
-  readonly diasAnalisados: number;
-  readonly diasZerados: number;
+  readonly diasAnalisados: number | null;
+  readonly diasZerados: number | null;
   readonly percentualRuptura: number | null;
   readonly classificacao: SeveridadeRuptura;
   readonly dataUltimoZeramento: string | null;
@@ -186,13 +205,13 @@ export interface PropsTooltipCobertura {
   readonly leadTimeDias?: number;
   readonly vendas30d: number;
   readonly cmd30d: number;
-  readonly cobertura30dDias: number;
+  readonly cobertura30dDias: number | null;
   readonly vendas90d: number;
   readonly cmd90d: number;
-  readonly cobertura90dDias: number;
+  readonly cobertura90dDias: number | null;
   readonly vendas180d: number;
   readonly cmd180d: number;
-  readonly cobertura180dDias: number;
+  readonly cobertura180dDias: number | null;
   readonly tendencia: TendenciaCobertura;
   readonly isMarcaZumbi: boolean;
   readonly delayDuration?: number;

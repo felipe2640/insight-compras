@@ -8,6 +8,7 @@
  * deliberadas de contornar (bypass) os guardrails de compras.
  */
 
+import { inferirLotePadraoPorCategoria } from "@adapters/comum/lote-autopecas";
 import { describe, it, expect } from "vitest";
 import {
   aplicarTravaMarcaZumbi,
@@ -20,7 +21,6 @@ import {
 import {
   arredondarParaMultiplo,
   ajustarQuantidadePorLote,
-  inferirLotePadraoPorCategoria,
 } from "@core/travas/lote-multiplo";
 
 describe("Adversarial Challenger 2 — Travas Anti-Encalhe e Múltiplos de Lote", () => {

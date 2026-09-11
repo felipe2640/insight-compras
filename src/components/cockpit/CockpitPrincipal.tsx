@@ -6,6 +6,10 @@ import {
   useReactTable,
   getCoreRowModel,
   getSortedRowModel,
+  getFilteredRowModel,
+  getFacetedRowModel,
+  getFacetedUniqueValues,
+  ColumnFiltersState,
   SortingState,
   ColumnPinningState,
   VisibilityState,
@@ -25,8 +29,16 @@ import {
 import { LinhaCockpitMatriz, ItemDeltaRascunho, LinhaCockpitCompras } from "@/tipos/cockpit";
 import { useFiltrosCockpit } from "@/hooks/useFiltrosCockpit";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
-import { NOMES_FILIAIS_CARREIRO } from "@adapters/carreiro/mapeador-dax";
-import { AppSidebar } from "@/components/layout/app-sidebar";
+import { AppSidebar, UsuarioSidebar } from "@/components/layout/app-sidebar";
+import { PayloadGradeTabular, PAYLOAD_TABULAR_VAZIO } from "@/lib/cockpit/codificacao-tabular";
+import { funcaoFiltroColuna } from "@/lib/cockpit/filtro-tanstack";
+import { ChipsFiltroColuna } from "@/components/cockpit/ChipsFiltroColuna";
+import { MenuFiltrosGrade } from "@/components/ui/menu-filtros-grade";
+import { LegendaGrade } from "@/components/cockpit/LegendaGrade";
+import { ContagensStatusGrade } from "@/lib/cockpit/escopo-grade";
+import { useGradeProgressiva } from "@/hooks/useGradeProgressiva";
+import { AvisoCatalogo } from "@/components/cockpit/AvisoCatalogo";
+import { BotoesExportacao } from "@/components/cockpit/BotoesExportacao";
 import { DataTableSection } from "@/components/cockpit/data-table-section";
 import { criarColunasCockpit } from "@/components/cockpit/colunas-cockpit";
 import { QuickFilterChip } from "@/components/cockpit/quick-filter-chip";
@@ -39,14 +51,38 @@ import {
 } from "@/components/ui/data-grid";
 import { DialogSimilares } from "@/components/tooltips/DialogSimilares";
 import { BannerRascunho } from "./BannerRascunho";
+import { DialogExportacao } from "./DialogExportacao";
+import { obterTenantAtivo, montarNomesFiliais } from "@/lib/cockpit/opcoes-tenant";
+import type { ContextoExportacao } from "@/lib/exportacao/tipos";
 import { CurvaABC } from "@core/dominio";
 import { cn } from "@/lib/utils";
 
 export interface CockpitPrincipalProps {
-  itensIniciais: readonly LinhaCockpitMatriz[];
+  /**
+   * Linhas já prontas. Caminho direto, usado em teste e em telas que não fazem
+   * carga progressiva. Em produção o cockpit recebe `gradeInicial`.
+   */
+  itensIniciais?: readonly LinhaCockpitMatriz[];
+  /**
+   * Linhas ACIONÁVEIS em formato tabular. O catálogo completo vem depois, pela
+   * /api/compras — ver useGradeProgressiva para o porquê.
+   */
+  gradeInicial?: PayloadGradeTabular;
+  /** Contagens do catálogo inteiro, do servidor: os chips não podem mentir na espera. */
+  contagensCatalogo?: ContagensStatusGrade;
   fornecedoresPermitidosInicial?: readonly number[] | null;
   filialFocoIdInicial?: number;
+  /** Sessão resolvida no servidor: evita o rodapé "vazio" enquanto a página hidrata. */
+  usuarioSessao?: UsuarioSidebar | null;
 }
+
+const CONTAGENS_VAZIAS: ContagensStatusGrade = {
+  total: 0,
+  pedir: 0,
+  transferir: 0,
+  ruptura: 0,
+  zumbi: 0,
+};
 
 const CARTEIRAS_DEMO = [
   { id: "GESTOR", nome: "Gestor Geral (Visão Completa da Rede)", fornecedores: null },
@@ -66,10 +102,27 @@ const OPCOES_ORDENACAO = [
 
 export function CockpitPrincipal({
   itensIniciais,
+  gradeInicial,
+  contagensCatalogo,
   fornecedoresPermitidosInicial = null,
   filialFocoIdInicial = 1,
+  usuarioSessao = null,
 }: CockpitPrincipalProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Identidade e cadastro do cliente ativo. Fica no topo porque a lista de
+  // lojas e a exportação dependem dele.
+  const tenantAtivo = useMemo(() => obterTenantAtivo(), []);
+  const nomesFiliaisTenant = useMemo(() => montarNomesFiliais(tenantAtivo), [tenantAtivo]);
+
+  // 0. Grade: acionáveis agora, catálogo completo em segundo plano.
+  const grade = useGradeProgressiva({
+    gradeInicial: gradeInicial ?? PAYLOAD_TABULAR_VAZIO,
+    contagensCatalogo: contagensCatalogo ?? CONTAGENS_VAZIAS,
+    filialId: filialFocoIdInicial,
+    automatico: gradeInicial !== undefined,
+  });
+  const linhasBase = itensIniciais ?? grade.itens;
 
   // 1. Estado de Carteira / Comprador Selecionado (RBAC)
   const [carteiraSelecionada, setCarteiraSelecionada] = useState<string>("GESTOR");
@@ -107,9 +160,9 @@ export function CockpitPrincipal({
 
   // 4. Aplicação dos Deltas sobre a base de dados
   const itensComOverrides = useMemo(() => {
-    if (Object.keys(deltas).length === 0) return itensIniciais;
+    if (Object.keys(deltas).length === 0) return linhasBase;
 
-    return itensIniciais.map((item) => {
+    return linhasBase.map((item) => {
       const delta = deltas[item.codigoSku] ?? deltas[String(item.produtoId)];
       if (!delta) return item;
 
@@ -131,7 +184,7 @@ export function CockpitPrincipal({
           : item.motivoDecisao,
       };
     });
-  }, [itensIniciais, deltas]);
+  }, [linhasBase, deltas]);
 
   // 5. Hook de Filtros de Alta Performance (< 250ms para 25.000 SKUs)
   const {
@@ -153,6 +206,7 @@ export function CockpitPrincipal({
     itens: itensComOverrides,
     fornecedoresPermitidos: fornecedoresAtivos,
     lojaFocoIdInicial: filialFocoIdInicial,
+    contagensCatalogo: gradeInicial ? grade.contagens : undefined,
   });
 
   // 6. Callbacks de Ajuste de Pedido e Transferência
@@ -193,12 +247,22 @@ export function CockpitPrincipal({
     let totalRupturas = 0;
     let totalTransferencias = 0;
     let totalZumbis = 0;
+    // A ruptura só é exibível se a fonte do cliente REALMENTE mediu dias zerados.
+    // Quando não mede, o cockpit mostra "—": um zero aqui afirmaria que nenhuma
+    // peça faltou no balcão, que é diferente de "não sabemos".
+    let rupturaMedida = false;
 
-    for (const item of itensFiltrados) {
+    // Os KPIs resumem a REDE, não a aba aberta. Recalcular sobre o filtro fazia
+    // "Catálogo Total" cair para 114 ao abrir em Comprar, e "Travas Anti-Encalhe"
+    // zerar mesmo com 2.001 itens travados — o cabeçalho contradizia os chips.
+    for (const item of itensComOverrides) {
       const qtdCompra = item.pedidoCustom > 0 ? item.pedidoCustom : item.sugestaoFinalCompra;
       if (qtdCompra > 0) {
         pecasTotaisSugeridas += qtdCompra;
         valorTotalSugerido += qtdCompra * item.precoCusto;
+      }
+      if (item.rupturaPercentual !== null) {
+        rupturaMedida = true;
       }
       if (item.classificacaoRuptura === "Grave" || item.classificacaoRuptura === "Atenção") {
         totalRupturas++;
@@ -212,26 +276,31 @@ export function CockpitPrincipal({
     }
 
     return {
-      totalSkus: itensFiltrados.length,
+      // Tamanho do CATÁLOGO, não do que já chegou ao navegador. Durante a carga
+      // progressiva, contar o que está em memória faria esta KPI dizer 2.236
+      // enquanto o chip "Todos" diz 19.118 — dois números para a mesma coisa.
+      totalSkus: gradeInicial ? grade.contagens.total : itensComOverrides.length,
       pecasTotaisSugeridas,
       valorTotalSugerido,
       totalRupturas,
+      rupturaMedida,
       totalTransferencias,
       totalZumbis,
     };
-  }, [itensFiltrados]);
+  }, [itensComOverrides, gradeInicial, grade.contagens.total]);
 
-  // 8. Lista de Lojas Formatada
+  // 8. Lista de Lojas — do cadastro do TENANT, nunca de um adapter de cliente.
+  // A interface é a mesma para todo mundo; quem muda é a configuração.
   const listaLojas = useMemo(() => {
-    return Object.entries(NOMES_FILIAIS_CARREIRO).map(([id, nome]) => ({
+    return Object.entries(nomesFiliaisTenant).map(([id, nome]) => ({
       id: parseInt(id, 10),
       nome,
     }));
-  }, []);
+  }, [nomesFiliaisTenant]);
 
   const nomeLojaFoco = useMemo(() => {
-    return NOMES_FILIAIS_CARREIRO[lojaFocoId as keyof typeof NOMES_FILIAIS_CARREIRO] || `Loja ${lojaFocoId}`;
-  }, [lojaFocoId]);
+    return nomesFiliaisTenant[lojaFocoId] ?? `Loja ${lojaFocoId}`;
+  }, [nomesFiliaisTenant, lojaFocoId]);
 
   // 9. Diálogo de Similares
   const [dialogSimilaresAberto, setDialogSimilaresAberto] = useState(false);
@@ -252,6 +321,8 @@ export function CockpitPrincipal({
   });
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+  // Filtros tipados por coluna: compõem com a busca livre e os chips de status.
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [rowHeight, setRowHeight] = useState<"compact" | "default" | "relaxed">("default");
 
   const handleSortChange = useCallback((optionId: string, desc?: boolean) => {
@@ -281,16 +352,24 @@ export function CockpitPrincipal({
       columnPinning,
       columnSizing,
       rowSelection,
+      columnFilters,
     },
     enableRowSelection: true,
     enableColumnResizing: true,
     columnResizeMode: "onChange",
     onRowSelectionChange: setRowSelection,
+    onColumnFiltersChange: setColumnFilters,
+    filterFns: { coluna: funcaoFiltroColuna },
+    defaultColumn: { filterFn: funcaoFiltroColuna },
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
     onColumnPinningChange: setColumnPinning,
     onColumnSizingChange: setColumnSizing,
     getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    // Valores distintos por coluna, para o filtro "é um de". Calculado sob demanda.
+    getFacetedRowModel: getFacetedRowModel(),
+    getFacetedUniqueValues: getFacetedUniqueValues(),
     getSortedRowModel: getSortedRowModel(),
   });
 
@@ -320,40 +399,35 @@ export function CockpitPrincipal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // 13. Exportar Pedidos para CSV
-  const handleExportarCsv = useCallback(() => {
-    const itensParaComprar = itensComOverrides.filter(
-      (item) => (item.pedidoCustom > 0 || item.sugestaoFinalCompra > 0)
-    );
-
-    if (itensParaComprar.length === 0) {
-      alert("Nenhum item com quantidade para compra neste filtro.");
-      return;
-    }
-
-    const cabecalho = "SKU;Descricao;Marca;Fornecedor;QtdSugerida;QtdComprador;PrecoCusto;ValorTotal;Motivo\n";
-    const linhasCsv = itensParaComprar
-      .map((item) => {
-        const qtd = item.pedidoCustom > 0 ? item.pedidoCustom : item.sugestaoFinalCompra;
-        const total = (qtd * item.precoCusto).toFixed(2);
-        return `"${item.codigoSku}";"${item.descricao}";"${item.marca}";"${item.nomeFornecedor ?? ""}";${item.sugestaoFinalCompra};${qtd};${item.precoCusto.toFixed(2)};${total};"${item.motivoDecisao}"`;
-      })
-      .join("\n");
-
-    const blob = new Blob([cabecalho + linhasCsv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `pedido_carreiro_loja${lojaFocoId}_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, [itensComOverrides, lojaFocoId]);
+  // 13. Exportação configurável por cliente (layouts, formato e colunas do tenant)
+  const [dialogExportacaoAberto, setDialogExportacaoAberto] = useState(false);
+  // Muda a cada modelo salvo, para os botões recarregarem a lista.
+  const [versaoModelos, setVersaoModelos] = useState(0);
+  const contextoExportacao = useMemo<ContextoExportacao>(
+    () => ({
+      tenantId: tenantAtivo.id,
+      nomeTenant: tenantAtivo.nome,
+      filialId: lojaFocoId,
+      nomeLoja: nomesFiliaisTenant[lojaFocoId] ?? `Loja ${lojaFocoId}`,
+      dataReferencia: new Date(),
+    }),
+    [tenantAtivo, nomesFiliaisTenant, lojaFocoId]
+  );
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
       {/* 1. Menu Lateral Retrátil com Navegação e Configurações */}
-      <AppSidebar />
+      <AppSidebar usuario={usuarioSessao} />
+
+      <DialogExportacao
+        aberto={dialogExportacaoAberto}
+        onFechar={() => setDialogExportacaoAberto(false)}
+        itensFiltrados={itensFiltrados as LinhaCockpitMatriz[]}
+        itensSelecionados={table.getSelectedRowModel().rows.map((r) => r.original as LinhaCockpitMatriz)}
+        configuracao={tenantAtivo.exportacao}
+        onModeloSalvo={() => setVersaoModelos((v) => v + 1)}
+        contexto={contextoExportacao}
+      />
 
       {/* 2. Conteúdo Principal Rolável */}
       <div className="flex flex-1 flex-col overflow-y-auto">
@@ -363,11 +437,10 @@ export function CockpitPrincipal({
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <span className="inline-block h-3 w-3 rounded-full bg-[#D4AF37] animate-pulse" />
+                {/* Identidade do TENANT. Estava fixa no código e vazava o nome
+                    do cliente para a demonstração pública. */}
                 <span className="text-base font-black tracking-tight text-white">
-                  REDE CARREIRO
-                </span>
-                <span className="text-[10px] bg-[#D4AF37] text-slate-950 font-black px-1.5 py-0.2 rounded shadow-sm">
-                  AUTOPEÇAS
+                  {tenantAtivo.nome.toUpperCase()}
                 </span>
               </div>
               <span className="hidden sm:inline-block text-slate-400 text-xs">|</span>
@@ -393,15 +466,14 @@ export function CockpitPrincipal({
                 </select>
               </div>
 
-              <button
-                type="button"
-                onClick={handleExportarCsv}
-                className="bg-[#D4AF37] hover:bg-[#B89628] text-slate-950 font-bold px-3 py-1.5 rounded shadow flex items-center gap-1.5 transition-colors"
-                title="Exportar pedidos para arquivo CSV"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Exportar CSV
-              </button>
+              {/* Um botão por modelo: o comprador exporta o de sempre num clique. */}
+              <BotoesExportacao
+                itens={itensFiltrados as LinhaCockpitMatriz[]}
+                contexto={contextoExportacao}
+                csvPadrao={tenantAtivo.exportacao.csvPadrao}
+                onAbrirConfiguracao={() => setDialogExportacaoAberto(true)}
+                versao={versaoModelos}
+              />
 
               <Link
                 href="/pedidos"
@@ -463,17 +535,32 @@ export function CockpitPrincipal({
             </div>
 
             {/* Rupturas no Balcão */}
-            <div className="bg-white p-3 rounded-xl border border-rose-200 bg-rose-50/40 shadow-sm dark:border-rose-900 dark:bg-rose-950/20 flex flex-col justify-between">
-              <span className="text-rose-800 font-semibold uppercase text-[10px] dark:text-rose-300">
-                Rupturas Críticas
-              </span>
-              <div className="flex items-baseline justify-between mt-1">
-                <span className="text-xl font-black text-rose-700 dark:text-rose-400">
-                  {kpis.totalRupturas.toLocaleString("pt-BR")}
+            {kpis.rupturaMedida ? (
+              <div className="bg-white p-3 rounded-xl border border-rose-200 bg-rose-50/40 shadow-sm flex flex-col justify-between">
+                <span className="text-rose-800 font-semibold uppercase text-[10px]">
+                  Rupturas Críticas
                 </span>
-                <span className="text-[11px] font-medium text-rose-600 dark:text-rose-400">Saldo 0 com saída</span>
+                <div className="flex items-baseline justify-between mt-1">
+                  <span className="text-xl font-black text-rose-700">
+                    {kpis.totalRupturas.toLocaleString("pt-BR")}
+                  </span>
+                  <span className="text-[11px] font-medium text-rose-600">Saldo 0 com saída</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div
+                className="bg-white p-3 rounded-xl border border-slate-200 bg-slate-50/60 shadow-sm flex flex-col justify-between"
+                title="A fonte de dados deste cliente não expõe histórico de saldo diário, então dias de ruptura não são medidos. Exibir zero aqui afirmaria que nenhuma peça faltou."
+              >
+                <span className="text-slate-600 font-semibold uppercase text-[10px]">
+                  Rupturas Críticas
+                </span>
+                <div className="flex items-baseline justify-between mt-1">
+                  <span className="text-xl font-black text-slate-400">—</span>
+                  <span className="text-[11px] font-medium text-slate-500">Não medido na fonte</span>
+                </div>
+              </div>
+            )}
 
             {/* Transferência Segura */}
             <div className="bg-white p-3 rounded-xl border border-indigo-200 bg-indigo-50/40 shadow-sm dark:border-indigo-900 dark:bg-indigo-950/20 flex flex-col justify-between">
@@ -548,6 +635,7 @@ export function CockpitPrincipal({
 
             {/* Controles da Grade: Menus de Coluna, Ordenação, Altura e Atalhos */}
             <DataGridMenuBar className="ml-auto">
+              <MenuFiltrosGrade table={table} />
               <DataGridSortMenu
                 value={sortValue}
                 onChange={handleSortChange}
@@ -604,6 +692,16 @@ export function CockpitPrincipal({
 
             {/* Filtros Rápidos por Chip (Curva ABC, Marcas) e Botão Limpar */}
             <div className="flex flex-wrap items-center gap-2">
+              {gradeInicial && (
+                <AvisoCatalogo
+                  estado={grade.estadoCatalogo}
+                  totalCatalogo={grade.contagens.total}
+                  totalCarregado={itensComOverrides.length}
+                  erro={grade.erro}
+                  onTentarNovamente={grade.carregarCatalogo}
+                />
+              )}
+
               <QuickFilterChip
                 label="Curva ABC"
                 options={opcoesCurva}
@@ -636,6 +734,10 @@ export function CockpitPrincipal({
 
         {/* 5. Seção da Grade Operacional Fiel com TanStack Virtualizer e 29 Colunas */}
         <main className="max-w-[1920px] mx-auto px-4 pb-6 w-full flex-1 flex flex-col">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <ChipsFiltroColuna table={table} />
+            <LegendaGrade className="ml-auto" />
+          </div>
           <DataTableSection
             table={table}
             filteredCount={itensFiltrados.length}

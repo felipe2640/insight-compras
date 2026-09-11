@@ -21,7 +21,11 @@ export interface Produto {
   readonly aplicacaoVeicular: string | null;
   readonly familiaId: string | null;
   readonly secaoId: number | null;
+  /** Grupo/classe do ERP. Cuidado: alguns clientes usam marca como classe. */
   readonly nomeSecao: string | null;
+  /** Sub-grupo (tipo da peça: BIELETA, PIVO, BOMBA COMBUSTIVEL). */
+  readonly subgrupoId?: number | null;
+  readonly subgrupoNome?: string | null;
   readonly fornecedorId: number;
   readonly nomeFornecedor: string;
   readonly precoCusto: number;
@@ -29,4 +33,9 @@ export interface Produto {
   readonly loteMultiplo: number; // 1 = avulso, 2 = par, 4 = jogo
   readonly dataUltimaVenda?: string | null;
   readonly dataUltimaCompra?: string | null;
+  /**
+   * Data da última solicitação de compra. Nível de PRODUTO: a fonte do cliente
+   * não distingue a loja que pediu.
+   */
+  readonly dataUltimoPedido?: string | null;
 }

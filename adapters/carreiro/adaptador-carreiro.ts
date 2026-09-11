@@ -12,26 +12,39 @@ import {
   FiltroCargaInventario,
   RespostaCargaInventario,
 } from "../AdaptadorInventario";
+import { EstoqueFilial } from "@core/dominio";
 import { ClienteDaxPowerBI, ConfiguracaoClienteDax } from "./cliente-dax";
 import { GerenciadorCacheResiliente } from "./cache-resiliente";
 import {
   CONSULTA_DAX_FRESCOR,
   CONSULTA_DAX_ENTRADAS_HOJE,
-  CONSULTA_DAX_SIMILARES,
+  CONSULTA_DAX_ULTIMO_PEDIDO,
+  gerarConsultaDaxSimilares,
+  TAMANHO_PAGINA_SIMILARES,
+  gerarConsultaDaxMovimentosEstoque,
+  DIAS_JANELA_RUPTURA,
+  DIAS_BLOCO_MOVIMENTOS,
   gerarConsultaDaxProdutosEstoque,
+  TAMANHO_PAGINA_PRODUTOS,
+  gerarConsultaDaxPosicaoEstoque,
   gerarConsultaDaxHistoricoVendas,
 } from "./consultas-homologadas";
 import {
+  NOMES_FILIAIS_CARREIRO,
+  NOMES_CADEMP_CARREIRO,
   mapearProdutosDax,
   mapearEstoquesDax,
   mapearHistoricoVendasDax,
   mapearEntradasNFeDax,
   mapearSimilaresDax,
+  aplicarRupturaReconstruida,
+  aplicarUltimoPedido,
 } from "./mapeador-dax";
 import {
   carregarSnapshotCarreiroLocal,
   localizarDiretorioSnapshot,
 } from "./carregador-snapshot-local";
+import { lerSnapshotNormalizado } from "./snapshot-normalizado";
 
 export interface OpcoesAdaptadorCarreiro {
   readonly configuracaoDax?: ConfiguracaoClienteDax;
@@ -60,31 +73,123 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   public async carregarInventarioCompleto(
     filtro: FiltroCargaInventario
   ): Promise<RespostaCargaInventario> {
+    try {
+      return await this.carregarComResiliencia(filtro);
+    } catch (erro) {
+      // Último recurso, depois de o cache L2 e o circuit breaker já terem agido:
+      // queda de rede no meio de uma apresentação não pode virar stack trace na
+      // tela. Fica FORA de `obterOuExecutar` de propósito — capturar lá dentro
+      // esconderia a falha do circuit breaker, que então nunca abriria.
+      const snapshot = lerSnapshotNormalizado();
+      if (snapshot) {
+        console.warn("[Adaptador Carreiro] Carga indisponível; servindo snapshot local.", erro);
+        return {
+          ...snapshot,
+          metadados: {
+            ...snapshot.metadados,
+            motivoModoDegradado:
+              `Power BI indisponível no momento. ${snapshot.metadados.motivoModoDegradado ?? ""}`.trim(),
+          },
+        };
+      }
+      throw erro;
+    }
+  }
+
+  private async carregarComResiliencia(
+    filtro: FiltroCargaInventario
+  ): Promise<RespostaCargaInventario> {
     const resultadoResiliente = await this.gerenciadorCache.obterOuExecutar(
       filtro,
       async () => {
+        // 0. Modo demonstração: snapshot primeiro, sem tocar a rede.
+        // Carga instantânea e imune a oscilação de conexão.
+        if (process.env.CARREIRO_PREFERIR_SNAPSHOT === "true") {
+          const snapshot = lerSnapshotNormalizado();
+          if (snapshot) return snapshot;
+          console.warn(
+            "[Adaptador Carreiro] CARREIRO_PREFERIR_SNAPSHOT ativo mas nenhum snapshot encontrado; seguindo para a carga ao vivo."
+          );
+        }
+
         // 1. Carga Online via Power BI Fabric REST API (se credenciais ativas)
         if (this.clienteDax.possuiConfiguracaoAtiva()) {
           const inicioBusca = Date.now();
 
-          // Execução Paralela das Consultas DAX Homologadas (eliminando waterfalls)
-          const [linhasProdutosEstoque, linhasHistorico, linhasEntradas, linhasSimilares] =
-            await Promise.all([
-              this.clienteDax.executarConsultaDax(gerarConsultaDaxProdutosEstoque(filtro)),
-              this.clienteDax.executarConsultaDax(gerarConsultaDaxHistoricoVendas(filtro)),
-              this.clienteDax.executarConsultaDax(CONSULTA_DAX_ENTRADAS_HOJE).catch((e) => {
-                console.warn("[Adaptador Carreiro] Aviso ao consultar MOVESTOQ entradas:", e);
-                return [] as readonly Record<string, unknown>[];
-              }),
-              this.clienteDax.executarConsultaDax(CONSULTA_DAX_SIMILARES).catch((e) => {
-                console.warn("[Adaptador Carreiro] Aviso ao consultar similares:", e);
-                return [] as readonly Record<string, unknown>[];
-              }),
-            ]);
+          // A posição de estoque é consultada UMA VEZ POR LOJA.
+          // Motivo verificado ao vivo: a consulta de rede inteira estoura o limite
+          // do executeQueries e volta truncada, com as medidas de estoque em branco
+          // e sem erro algum — 0 itens com saldo onde existem mais de 24 mil.
+          // TODAS as lojas, sempre. `filtro.filialId` é a filial em FOCO na tela,
+          // não um recorte de carga: sem a posição das outras lojas o motor não
+          // enxerga sobra para transferir, e a transferência é o que evita compra.
+          const lojasParaCarregar = Object.keys(NOMES_FILIAIS_CARREIRO).map(Number);
 
-          const produtos = mapearProdutosDax(linhasProdutosEstoque);
-          const estoques = mapearEstoquesDax(linhasProdutosEstoque);
+          const [
+            linhasAtributos,
+            linhasHistorico,
+            paginasPosicao,
+            linhasEntradas,
+            linhasSimilares,
+            linhasMovimentos,
+            linhasUltimoPedido,
+          ] = await Promise.all([
+            this.carregarCatalogoPaginado(filtro),
+            this.clienteDax.executarConsultaDax(gerarConsultaDaxHistoricoVendas(filtro)),
+            Promise.all(
+              lojasParaCarregar.map(async (filialId) => {
+                const nomeFilial = NOMES_FILIAIS_CARREIRO[filialId];
+                // O nome oficial da loja no CADEMP difere do rótulo de exibição.
+                const nomeCademp = NOMES_CADEMP_CARREIRO[filialId];
+                if (!nomeCademp) return { filialId, nomeFilial, linhas: [] as readonly Record<string, unknown>[] };
+                try {
+                  const linhas = await this.clienteDax.executarConsultaDax(
+                    gerarConsultaDaxPosicaoEstoque(nomeCademp, filtro)
+                  );
+                  return { filialId, nomeFilial, linhas };
+                } catch (e) {
+                  console.warn(
+                    `[Adaptador Carreiro] Falha na posição de estoque da filial ${filialId}:`,
+                    e
+                  );
+                  return { filialId, nomeFilial, linhas: [] as readonly Record<string, unknown>[] };
+                }
+              })
+            ),
+            this.clienteDax.executarConsultaDax(CONSULTA_DAX_ENTRADAS_HOJE).catch((e) => {
+              console.warn("[Adaptador Carreiro] Aviso ao consultar MOVESTOQ entradas:", e);
+              return [] as readonly Record<string, unknown>[];
+            }),
+            this.carregarSimilaresPaginado(),
+            this.carregarMovimentosDaJanela(),
+            this.clienteDax.executarConsultaDax(CONSULTA_DAX_ULTIMO_PEDIDO).catch((e) => {
+              console.warn("[Adaptador Carreiro] Aviso ao consultar solicitações de compra:", e);
+              return [] as readonly Record<string, unknown>[];
+            }),
+          ]);
+
+          const produtos = aplicarUltimoPedido(
+            mapearProdutosDax(linhasAtributos),
+            linhasUltimoPedido
+          );
+
+          // Cada página traz a filial no contexto, não em cada linha.
+          const estoques = new Map<string, EstoqueFilial>();
+          for (const pagina of paginasPosicao) {
+            const parcial = mapearEstoquesDax(pagina.linhas, {
+              filialId: pagina.filialId,
+              nomeFilial: pagina.nomeFilial,
+            });
+            for (const [chave, valor] of parcial) {
+              estoques.set(chave, valor);
+            }
+          }
+
           const historicos = mapearHistoricoVendasDax(linhasHistorico);
+
+          // Ruptura: o ERP não guarda saldo histórico, então é reconstruída a
+          // partir do saldo de hoje e dos movimentos da janela.
+          aplicarRupturaReconstruida(historicos, estoques, linhasMovimentos);
 
           const mapaProdutosPorId = new Map(produtos.map((p) => [p.id, p]));
 
@@ -157,5 +262,106 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   public obterGerenciadorCache(): GerenciadorCacheResiliente<RespostaCargaInventario> {
     return this.gerenciadorCache;
   }
+
+  /**
+   * Catálogo em páginas, por cursor no código do produto.
+   *
+   * O executeQueries corta a resposta por TAMANHO e não avisa. Medido ao vivo:
+   * a consulta de atributos devolvia 26.362 das 126.280 linhas de PRODUTOS —
+   * um terço do catálogo faltava, sempre na cauda dos códigos, porque a
+   * ordenação faz o corte cair sempre nos mesmos itens. Paginar é a única
+   * forma de saber que veio tudo: a última página vem menor que a página cheia.
+   */
+  private async carregarCatalogoPaginado(
+    filtro?: FiltroCargaInventario
+  ): Promise<readonly Record<string, unknown>[]> {
+    const MAXIMO_PAGINAS = 40; // trava contra laço infinito se o cursor não andar
+    const todas: Record<string, unknown>[] = [];
+    let cursor: string | null = null;
+
+    for (let pagina = 0; pagina < MAXIMO_PAGINAS; pagina++) {
+      const linhas = await this.clienteDax.executarConsultaDax(
+        gerarConsultaDaxProdutosEstoque(filtro, cursor)
+      );
+      todas.push(...(linhas as Record<string, unknown>[]));
+      if (linhas.length < TAMANHO_PAGINA_PRODUTOS) break;
+
+      const ultimo = linhas[linhas.length - 1];
+      const proximoCursor = ultimo?.Produto !== undefined ? String(ultimo.Produto) : null;
+      // Cursor parado significa página cheia de códigos iguais: parar é melhor
+      // do que repetir a mesma página para sempre.
+      if (!proximoCursor || proximoCursor === cursor) break;
+      cursor = proximoCursor;
+    }
+
+    return todas;
+  }
+
+
+  /**
+   * Intercambiáveis, em páginas por ID.
+   *
+   * A tabela PRODUTOS_SEMELHANTES passou a existir no modelo do cliente em
+   * 09/09/2026 (antes era uma temporária de auditoria, e a carga vinha vazia).
+   * São 135.334 pares contra um teto de resposta de 100.000 — sem paginar,
+   * 35 mil relações sumiriam em silêncio.
+   *
+   * Falhar aqui NÃO derruba a carga: sem similares o cockpit perde o aviso de
+   * "existe equivalente com saldo", mas a compra continua decidível.
+   */
+  private async carregarSimilaresPaginado(): Promise<readonly Record<string, unknown>[]> {
+    const MAXIMO_PAGINAS = 20;
+    const todas: Record<string, unknown>[] = [];
+    let cursor: number | null = null;
+
+    try {
+      for (let pagina = 0; pagina < MAXIMO_PAGINAS; pagina++) {
+        const linhas = await this.clienteDax.executarConsultaDax(gerarConsultaDaxSimilares(cursor));
+        todas.push(...(linhas as Record<string, unknown>[]));
+        if (linhas.length < TAMANHO_PAGINA_SIMILARES) break;
+
+        const ultimo = linhas[linhas.length - 1] as Record<string, unknown>;
+        const proximo = Number(ultimo?.Id);
+        if (!Number.isFinite(proximo) || proximo === cursor) break;
+        cursor = proximo;
+      }
+    } catch (erro) {
+      console.warn("[Adaptador Carreiro] Aviso ao consultar PRODUTOS_SEMELHANTES:", erro);
+      return todas;
+    }
+
+    return todas;
+  }
+
+
+  /**
+   * Movimentos da janela de ruptura, em blocos de dias.
+   *
+   * Sem bloco, uma janela maior encostaria no teto de resposta da API — o mesmo
+   * corte silencioso que escondia um terço do catálogo. Blocos de 30 dias dão
+   * cerca de 20 mil linhas cada, com folga larga.
+   *
+   * Falhar aqui NÃO derruba a carga: sem movimentos a ruptura fica "não medida",
+   * que é exatamente o que o cockpit mostrava antes.
+   */
+  private async carregarMovimentosDaJanela(): Promise<readonly Record<string, unknown>[]> {
+    const blocos: Array<[number, number]> = [];
+    for (let de = DIAS_JANELA_RUPTURA; de > 0; de -= DIAS_BLOCO_MOVIMENTOS) {
+      blocos.push([de, Math.max(0, de - DIAS_BLOCO_MOVIMENTOS)]);
+    }
+
+    try {
+      const partes = await Promise.all(
+        blocos.map(([de, ate]) =>
+          this.clienteDax.executarConsultaDax(gerarConsultaDaxMovimentosEstoque(de, ate))
+        )
+      );
+      return partes.flat() as readonly Record<string, unknown>[];
+    } catch (erro) {
+      console.warn("[Adaptador Carreiro] Aviso ao consultar movimentos de estoque:", erro);
+      return [];
+    }
+  }
+
 }
 

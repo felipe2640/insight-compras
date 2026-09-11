@@ -4,6 +4,9 @@
  * 100% em Português do Brasil (pt-BR).
  */
 
+import { ParametrosMotorCompra } from "@core/calculo/necessidade";
+import { ConfiguracaoExportacaoTenant } from "@/lib/exportacao/tipos";
+
 export interface CoresInstitucionaisTenant {
   /** Cor de destaque principal (botões, cabeçalhos, destaques) - ex: #0F2B5C */
   readonly primaria: string;
@@ -62,6 +65,41 @@ export interface AssinaturaInsightDTenant {
   readonly logoInsightDUrl?: string;
 }
 
+/**
+ * Procedência da calibração do motor deste cliente.
+ * Serve para auditoria: um número que veio de backtest é diferente de um palpite.
+ */
+export interface ProcedenciaCalibracaoTenant {
+  /** Modelo vencedor do backtest, ex.: "current_engine_calibrated_90". */
+  readonly modeloVencedor: string;
+  /** Data do estudo que produziu o fator (ISO). */
+  readonly dataEstudo: string;
+  /** Nº de séries produto+loja elegíveis no backtest. */
+  readonly seriesElegiveis: number;
+  /** Nº de comparações por modelo. */
+  readonly comparacoesPorModelo: number;
+  /** Cobertura de quantidade no holdout (0..1). */
+  readonly coberturaHoldout: number;
+  /** Observação livre para o auditor. */
+  readonly observacao?: string;
+}
+
+/**
+ * Parâmetros de motor específicos deste cliente.
+ *
+ * A LÓGICA do motor é a mesma para todos os tenants (vive em `core/`).
+ * O que muda aqui são os VALORES calibrados a partir do processo de venda e
+ * compra de cada cliente, aprendidos no backtest do estudo de machine learning.
+ */
+export interface ParametrosMotorTenant {
+  readonly motor: ParametrosMotorCompra;
+  /** Lead time padrão do fornecedor, em dias (diagnóstico e ponto de pedido). */
+  readonly leadTimePadraoDias: number;
+  /** Filial exibida por padrão no cockpit. */
+  readonly filialFocoPadraoId: number;
+  readonly procedenciaCalibracao: ProcedenciaCalibracaoTenant;
+}
+
 export interface ConfiguracaoTenant {
   /** Identificador único do tenant em minúsculas (slug) - ex: "carreiro" */
   readonly id: string;
@@ -83,6 +121,14 @@ export interface ConfiguracaoTenant {
   readonly filiais: readonly FilialCadastradaTenant[];
   /** Assinatura Powered by iNSIGHT D */
   readonly assinatura: AssinaturaInsightDTenant;
+  /** Parâmetros calibrados do motor de compra deste cliente. */
+  readonly parametrosMotor: ParametrosMotorTenant;
+  /**
+   * Layouts de exportação (CSV/XLSX/PDF) deste cliente.
+   * O ERP e os fornecedores de cada cliente exigem colunas, rótulos e
+   * separadores próprios; o motor de exportação é comum, o layout é daqui.
+   */
+  readonly exportacao: ConfiguracaoExportacaoTenant;
 }
 
 /**

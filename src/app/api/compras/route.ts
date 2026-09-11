@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { obterAdaptadorInventario } from "@adapters/index";
 import { aplicarGuardrailInventarioServerSide } from "@/lib/rbac/validador-carteira";
-import { UsuarioAutenticado, ErroAcessoNegado } from "@/lib/rbac/tipos";
+import { ErroAcessoNegado } from "@/lib/rbac/tipos";
+import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
+import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
+import { codificarGradeTabular } from "@/lib/cockpit/codificacao-tabular";
+import { contarStatusGrade, separarAcionaveis } from "@/lib/cockpit/escopo-grade";
 
 export const dynamic = "force-dynamic";
 
@@ -17,29 +21,9 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
 
   try {
-    // 1. Extração e Resolução de Usuário / RBAC
-    const roleHeader = (request.headers.get("x-user-role") ?? "GESTOR").toUpperCase();
-    const fornecedoresHeader = request.headers.get("x-allowed-suppliers");
-    const userId = request.headers.get("x-user-id") ?? "usuario-demo";
-    const userNome = request.headers.get("x-user-nome") ?? "Usuário Demonstração";
-
-    let allowedSupplierIds: ReadonlySet<number> | null = null;
-    if (fornecedoresHeader) {
-      const ids = fornecedoresHeader
-        .split(",")
-        .map((s) => parseInt(s.trim(), 10))
-        .filter((n) => !isNaN(n));
-      allowedSupplierIds = new Set(ids);
-    }
-
-    const usuario: UsuarioAutenticado = {
-      id: userId,
-      nome: userNome,
-      email: `${userId}@carreiro.com.br`,
-      role: roleHeader === "COMPRADOR" ? "COMPRADOR" : "GESTOR",
-      allowedSupplierIds,
-      tenantId: "carreiro",
-    };
+    // 1. Identidade: sessão validada pelo provedor (nunca cabeçalhos x-user-*)
+    const usuario = await obterUsuarioDaRequisicao(request);
+    if (!usuario) return respostaNaoAutenticado();
 
     // 2. Parâmetros de Filtro Solicitados
     const fornecedorQuery = searchParams.get("fornecedorId");
@@ -71,17 +55,31 @@ export async function GET(request: NextRequest) {
     const carga = await adaptador.carregarInventarioCompleto(filtroValidado);
 
     // 5. Transformação Canônica em Linhas da Matriz de Decisão
-    const linhas = converterParaLinhasCockpit(carga, { filialFocoId: filialId });
+    const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(filialId));
+
+    // Escopo: a grade abre com o que pede decisão e completa o catálogo depois.
+    // As contagens saem SEMPRE do conjunto completo — os chips não podem mentir
+    // enquanto o restante ainda está a caminho.
+    const escopo = searchParams.get("escopo") === "acionaveis" ? "acionaveis" : "todos";
+    const contagens = contarStatusGrade(linhas);
+    const linhasDoEscopo = escopo === "acionaveis" ? separarAcionaveis(linhas).acionaveis : linhas;
 
     const tempoExecucaoMs = Date.now() - inicio;
 
+    // Formato tabular: mesmo conteúdo, sem repetir o nome dos 94 campos em cada
+    // uma das ~19 mil linhas (medido: 48,4 MB -> 15,1 MB).
+    const tabular = searchParams.get("formato") === "tabular";
     const resposta = NextResponse.json({
       sucesso: true,
-      total: linhas.length,
+      total: linhasDoEscopo.length,
+      escopo,
+      contagens,
       filialFocoId: filialId,
       tempoExecucaoMs,
       provedorDados: carga.metadados.provedor,
-      dados: linhas,
+      ...(tabular
+        ? { grade: codificarGradeTabular(linhasDoEscopo) }
+        : { dados: linhasDoEscopo }),
     });
 
     // Injeta cabeçalhos de segurança HTTP

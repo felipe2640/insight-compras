@@ -2,7 +2,7 @@
 
 import React from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { Sparkles, AlertTriangle } from "lucide-react";
+import { Sparkles, AlertTriangle, ArrowLeftRight } from "lucide-react";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import {
 import { DataGridColumnHeader } from "@/components/ui/data-grid";
 import { LinhaCockpitCompras } from "@/tipos/cockpit";
 import { cn } from "@/lib/utils";
+import { TooltipCriterio, TooltipFrequencia, TooltipRuptura, TooltipTransferencia } from "@/components/tooltips";
 
 export interface OpcoesColunasCockpit {
   nomeLojaFoco?: string;
@@ -153,7 +154,7 @@ export function criarColunasCockpit({
           </div>
         );
       },
-      meta: {
+      meta: { variante: "texto",
         label: "Código",
         align: "left",
         pinned: "left",
@@ -174,7 +175,7 @@ export function criarColunasCockpit({
           {row.original.descricao}
         </div>
       ),
-      meta: {
+      meta: { variante: "texto",
         label: "Descrição",
         align: "left",
         pinned: "left",
@@ -210,7 +211,7 @@ export function criarColunasCockpit({
           </TooltipProvider>
         );
       },
-      meta: {
+      meta: { variante: "texto",
         label: "Aplicação",
         align: "left",
       },
@@ -230,7 +231,7 @@ export function criarColunasCockpit({
           {row.original.refFabricante || "—"}
         </span>
       ),
-      meta: { label: "Ref. Fabric", align: "left" },
+      meta: { variante: "texto", label: "Ref. Fabric", align: "left" },
       enableSorting: true,
     },
 
@@ -247,7 +248,33 @@ export function criarColunasCockpit({
           {row.original.marca || "—"}
         </span>
       ),
-      meta: { label: "Marca", align: "left" },
+      meta: { variante: "texto", label: "Marca", align: "left" },
+      enableSorting: true,
+    },
+
+    // Sub-grupo: o tipo da peça, como o ERP classifica. É por aqui que o
+    // comprador agrupa ("todas as bieletas"), não por fornecedor — fornecedor
+    // muda, o tipo da peça não.
+    {
+      id: "subgrupo",
+      accessorFn: (row) => row.subgrupo ?? "",
+      size: 130,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="left" label="Sub-grupo" />
+      ),
+      cell: ({ row }) => {
+        const sub = row.original.subgrupo;
+        return sub ? (
+          <span className="block truncate text-xs text-slate-700 dark:text-slate-300" title={sub}>
+            {sub}
+          </span>
+        ) : (
+          <span className="text-xs text-slate-400" title="O ERP do cliente não classificou este item">
+            —
+          </span>
+        );
+      },
+      meta: { variante: "selecao", label: "Sub-grupo", align: "left" },
       enableSorting: true,
     },
 
@@ -264,7 +291,7 @@ export function criarColunasCockpit({
           {formatarMoedaPtBr(row.original.custo ?? row.original.precoCusto ?? 0)}
         </span>
       ),
-      meta: { label: "Custo", align: "right" },
+      meta: { variante: "numero", label: "Custo", align: "right" },
       enableSorting: true,
     },
 
@@ -281,7 +308,7 @@ export function criarColunasCockpit({
           {formatarDataPtBr(row.original.dtUltVenda)}
         </span>
       ),
-      meta: { label: "Dt Ult Venda", align: "center" },
+      meta: { variante: "data", label: "Dt Ult Venda", align: "center" },
       enableSorting: true,
     },
 
@@ -298,7 +325,36 @@ export function criarColunasCockpit({
           {formatarDataPtBr(row.original.dtUltimaCompra)}
         </span>
       ),
-      meta: { label: "Última compra", align: "center" },
+      meta: { variante: "data", label: "Última compra", align: "center" },
+      enableSorting: true,
+    },
+
+    // Último pedido: quando alguém pediu esta peça pela última vez.
+    // Nível de PRODUTO, não de loja — a fonte do cliente não separa quem pediu.
+    {
+      id: "dtUltimoPedido",
+      accessorFn: (row) => row.dtUltimoPedido ?? "",
+      size: 100,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Último pedido" />
+      ),
+      cell: ({ row }) => {
+        const data = row.original.dtUltimoPedido;
+        return (
+          <div className="flex justify-center">
+            {data ? (
+              <span className="text-xs text-slate-700 dark:text-slate-300">
+                {new Date(`${data}T12:00:00`).toLocaleDateString("pt-BR")}
+              </span>
+            ) : (
+              <span className="text-xs text-slate-400" title="Nenhuma solicitação de compra registrada para este item">
+                —
+              </span>
+            )}
+          </div>
+        );
+      },
+      meta: { variante: "data", label: "Último pedido", align: "center" },
       enableSorting: true,
     },
 
@@ -326,7 +382,7 @@ export function criarColunasCockpit({
           </div>
         );
       },
-      meta: { label: "Curva ABC", align: "center" },
+      meta: { variante: "selecao", label: "Curva ABC", align: "center" },
       enableSorting: true,
     },
 
@@ -343,7 +399,7 @@ export function criarColunasCockpit({
           {formatarNumero(row.original.produtosVend90d ?? 0, 0)}
         </span>
       ),
-      meta: { label: "Produtos Vend 90d", align: "center" },
+      meta: { variante: "numero", label: "Produtos Vend 90d", align: "center" },
       enableSorting: true,
     },
 
@@ -360,7 +416,7 @@ export function criarColunasCockpit({
           {formatarNumero(row.original.notasLiquidas90d, 0)}
         </span>
       ),
-      meta: { label: "Notas Líq. 90d", align: "center" },
+      meta: { variante: "numero", label: "Notas Líq. 90d", align: "center" },
       enableSorting: true,
     },
 
@@ -377,7 +433,7 @@ export function criarColunasCockpit({
           {(row.original.consumoDiario ?? 0).toFixed(4)}
         </span>
       ),
-      meta: { label: "Consumo Diário", align: "center" },
+      meta: { variante: "numero", label: "Consumo Diário", align: "center" },
       enableSorting: true,
     },
 
@@ -394,7 +450,7 @@ export function criarColunasCockpit({
           {(row.original.consumoMensal ?? 0).toFixed(2)}
         </span>
       ),
-      meta: { label: "Consumo Mensal", align: "center" },
+      meta: { variante: "numero", label: "Consumo Mensal", align: "center" },
       enableSorting: true,
     },
 
@@ -413,7 +469,7 @@ export function criarColunasCockpit({
             : `${row.original.vendaACadaDias.toFixed(1)} d`}
         </span>
       ),
-      meta: { label: "Venda a cada", align: "center" },
+      meta: { variante: "numero", label: "Venda a cada", align: "center" },
       enableSorting: true,
     },
 
@@ -430,7 +486,7 @@ export function criarColunasCockpit({
           {formatarNumero(row.original.consumoUltimos30DiasQtd ?? 0, 0)}
         </span>
       ),
-      meta: { label: "Consumo Últ. 30 Dias (qtd)", align: "center" },
+      meta: { variante: "numero", label: "Consumo Últ. 30 Dias (qtd)", align: "center" },
       enableSorting: true,
     },
 
@@ -450,15 +506,35 @@ export function criarColunasCockpit({
             : giro === "Média"
             ? "text-blue-700 bg-blue-50 border-blue-200"
             : "text-slate-500 bg-slate-50 border-slate-200";
+        const dias = row.original.diasSemVenda;
         return (
           <div className="flex justify-center">
-            <span className={cn("rounded px-1.5 py-0.2 text-[10px] font-semibold border", color)}>
-              {giro}
-            </span>
+            <TooltipCriterio
+              titulo="Giro pela última venda"
+              classificacao={giro}
+              semMedida={
+                giro === "Sem histórico"
+                  ? "Sem data de última venda na fonte do cliente. Não é o mesmo que parado: é não medido."
+                  : null
+              }
+              medidas={[
+                { rotulo: "Dias sem venda", valor: dias === null || dias === undefined ? null : String(dias), destaque: true },
+                { rotulo: "Última venda", valor: row.original.dtUltVenda ?? null },
+              ]}
+              faixas={[
+                { rotulo: "Alta", condicao: "até 30 dias" },
+                { rotulo: "Média", condicao: "31 a 90 dias" },
+                { rotulo: "Baixa", condicao: "mais de 90 dias" },
+              ]}
+            >
+              <span className={cn("cursor-help rounded px-1.5 py-0.2 text-[10px] font-semibold border", color)}>
+                {giro}
+              </span>
+            </TooltipCriterio>
           </div>
         );
       },
-      meta: { label: "Giro últ. venda", align: "center" },
+      meta: { variante: "selecao", label: "Giro últ. venda", align: "center" },
       enableSorting: true,
     },
 
@@ -478,13 +554,24 @@ export function criarColunasCockpit({
             : freq === "Média"
             ? "text-blue-700 font-semibold"
             : "text-slate-500";
+        const item = row.original;
         return (
           <div className="flex justify-center">
-            <span className={cn("text-xs", color)}>{freq}</span>
+            <TooltipFrequencia
+              notasVenda={item.notasVenda90d}
+              notasDevolucao={item.notasDevolucao90d}
+              notasLiquidas={item.notasLiquidas90d}
+              frequenciaPercentual={item.frequenciaPercentual90d}
+              classificacao={item.classificacaoFrequencia}
+              totalPecasVendidas={item.totalPecasVendidas90d}
+              extratoMovimentacoes={item.extratoFrequencia90d}
+            >
+              <span className={cn("cursor-help text-xs", color)}>{freq}</span>
+            </TooltipFrequencia>
           </div>
         );
       },
-      meta: { label: "Frequência", align: "center" },
+      meta: { variante: "selecao", label: "Frequência", align: "center" },
       enableSorting: true,
     },
 
@@ -496,14 +583,33 @@ export function criarColunasCockpit({
       header: ({ header }) => (
         <DataGridColumnHeader header={header} align="center" label="Consumo" />
       ),
-      cell: ({ row }) => (
-        <div className="flex justify-center">
-          <span className="text-xs text-slate-700 dark:text-slate-300">
-            {row.original.classificacaoConsumo}
-          </span>
-        </div>
-      ),
-      meta: { label: "Consumo", align: "center" },
+      cell: ({ row }) => {
+        const item = row.original;
+        return (
+          <div className="flex justify-center">
+            <TooltipCriterio
+              titulo="Consumo pela quantidade vendida"
+              classificacao={item.classificacaoConsumo}
+              medidas={[
+                { rotulo: "Vendas líquidas 90d", valor: `${item.vendasLiquidas90d} un`, destaque: true },
+                { rotulo: "Vendas líquidas 30d", valor: `${item.vendasLiquidas30d} un` },
+                { rotulo: "Vendas líquidas 180d", valor: `${item.vendasLiquidas180d} un` },
+                { rotulo: "Peças vendidas 90d", valor: `${item.totalPecasVendidas90d} un` },
+              ]}
+              faixas={[
+                { rotulo: "Alta", condicao: "100 un ou mais em 90d" },
+                { rotulo: "Média", condicao: "30 a 99 un em 90d" },
+                { rotulo: "Baixa", condicao: "menos de 30 un em 90d" },
+              ]}
+            >
+              <span className="cursor-help text-xs text-slate-700 dark:text-slate-300">
+                {item.classificacaoConsumo}
+              </span>
+            </TooltipCriterio>
+          </div>
+        );
+      },
+      meta: { variante: "selecao", label: "Consumo", align: "center" },
       enableSorting: true,
     },
 
@@ -516,22 +622,43 @@ export function criarColunasCockpit({
         <DataGridColumnHeader header={header} align="center" label="Ruptura" />
       ),
       cell: ({ row }) => {
-        const rup = row.original.ruptura;
+        const item = row.original;
+        const rup = item.ruptura;
+        // "Sem histórico" NÃO é vermelho. Antes caía no ramo final e ficava
+        // pintado como ruptura grave — o cockpit gritava perigo onde só faltava
+        // medição. Não medido é cinza, e o tooltip diz de quem é a lacuna.
         const color =
           rup === "Boa"
             ? "text-emerald-700 bg-emerald-50 border-emerald-200"
             : rup === "Atenção"
             ? "text-amber-700 bg-amber-50 border-amber-200 font-semibold"
-            : "text-rose-700 bg-rose-50 border-rose-200 font-bold";
+            : rup === "Grave"
+            ? "text-rose-700 bg-rose-50 border-rose-200 font-bold"
+            : "text-slate-500 bg-slate-50 border-slate-200 border-dashed";
+        const rotulo =
+          item.rupturaPercentual !== null
+            ? `${item.rupturaPercentual.toFixed(1).replace(".", ",")}%`
+            : rup;
         return (
           <div className="flex justify-center">
-            <span className={cn("rounded px-1.5 py-0.2 text-[10px] border", color)}>
-              {rup}
-            </span>
+            <TooltipRuptura
+              diasAnalisados={item.rupturaDiasAnalisados}
+              diasZerados={item.rupturaDiasZerados}
+              percentualRuptura={item.rupturaPercentual}
+              classificacao={item.classificacaoRuptura}
+              dataUltimoZeramento={item.dataUltimoZeramento}
+              vendaPerdidaEstimadaReais={item.vendaPerdidaEstimadaReais}
+              consumoDiarioReferencia={item.consumoMedioDiario90d}
+              precoVenda={item.precoVenda}
+            >
+              <span className={cn("cursor-help rounded px-1.5 py-0.2 text-[10px] border", color)}>
+                {rotulo}
+              </span>
+            </TooltipRuptura>
           </div>
         );
       },
-      meta: { label: "Ruptura", align: "center" },
+      meta: { variante: "selecao", label: "Ruptura", align: "center" },
       enableSorting: true,
     },
 
@@ -550,7 +677,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: "Período ideal", align: "center" },
+      meta: { variante: "selecao", label: "Período ideal", align: "center" },
       enableSorting: true,
     },
 
@@ -560,7 +687,7 @@ export function criarColunasCockpit({
       accessorFn: (row) => row.histVendas90d,
       size: 90,
       header: ({ header }) => (
-        <DataGridColumnHeader header={header} align="center" label="Hist vendas 90d" />
+        <DataGridColumnHeader header={header} align="center" label="Vendas 90d anteriores" />
       ),
       cell: ({ row }) => (
         <div className="flex justify-center">
@@ -569,7 +696,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: "Hist vendas 90d", align: "center" },
+      meta: { variante: "numero", label: "Vendas 90d anteriores", align: "center" },
       enableSorting: true,
     },
 
@@ -588,7 +715,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: "Hist prod vend 90d", align: "center" },
+      meta: { variante: "numero", label: "Notas 90d anteriores", align: "center" },
       enableSorting: true,
     },
 
@@ -607,7 +734,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: "Dias sem venda", align: "center" },
+      meta: { variante: "numero", label: "Dias sem venda", align: "center" },
       enableSorting: true,
     },
 
@@ -626,7 +753,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: rotuloEstoqueFoco, align: "center" },
+      meta: { variante: "numero", label: rotuloEstoqueFoco, align: "center" },
       enableSorting: true,
     },
 
@@ -645,7 +772,7 @@ export function criarColunasCockpit({
           </span>
         </div>
       ),
-      meta: { label: rotuloEstoqueOutra, align: "center" },
+      meta: { variante: "numero", label: rotuloEstoqueOutra, align: "center" },
       enableSorting: true,
     },
 
@@ -680,7 +807,7 @@ export function criarColunasCockpit({
           </div>
         );
       },
-      meta: { label: "Mov nova", align: "center" },
+      meta: { variante: "selecao", label: "Mov nova", align: "center" },
       enableSorting: true,
     },
 
@@ -700,6 +827,11 @@ export function criarColunasCockpit({
           <div className="flex justify-center">
             <div className="relative inline-flex items-center justify-center">
               <input
+                // `key` pela SKU: a grade é virtualizada e o React reaproveita o
+                // <input> do slot quando a linha muda. Como o valor é `defaultValue`
+                // (não controlado), sem a key o input mostrava a quantidade da
+                // linha ANTERIOR naquele slot ao trocar de aba ou rolar.
+                key={item.codigoSku}
                 type="number"
                 min="0"
                 defaultValue={item.pedidoCustom ?? item.sugestaoCompra}
@@ -745,27 +877,68 @@ export function criarColunasCockpit({
         const item = row.original;
         const podeTransferir = (item.sugestaoTransferencia ?? 0) > 0;
 
+        const origem = item.filialOrigemTransferenciaNome;
+
+        const campo = (
+          <input
+            // Mesma razão da coluna Pedido: sem `key` o slot virtualizado
+            // mantinha o valor da linha anterior (aba Transferir mostrava 0
+            // em itens com transferência sugerida).
+            key={item.codigoSku}
+            type="number"
+            min="0"
+            disabled={!podeTransferir}
+            defaultValue={item.transferenciaCustom ?? item.sugestaoTransferencia}
+            onChange={(e) => {
+              const val = parseInt(e.target.value, 10);
+              if (!isNaN(val) && val >= 0) {
+                onTransferirCommit?.(item.codigoSku, val);
+              }
+            }}
+            className={cn(
+              "h-7 w-16 rounded border text-center font-mono text-xs font-semibold outline-none transition-colors",
+              podeTransferir
+                ? "bg-indigo-50 border-indigo-300 text-indigo-900 focus:ring-1 focus:ring-indigo-500"
+                : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
+            )}
+            aria-label={
+              podeTransferir && origem
+                ? `Transferir ${item.sugestaoTransferencia} un de ${origem} para ${item.filialFocoNome}, SKU ${item.codigoSku}`
+                : `Quantidade de transferência para SKU ${item.codigoSku}`
+            }
+          />
+        );
+
+        // Sem os dois lados na tela, "5" não diz nada: o comprador precisa saber
+        // de onde a peça sai e para onde vai antes de confirmar.
+        if (!podeTransferir || !origem) {
+          return <div className="flex justify-center">{campo}</div>;
+        }
+
+        // Ao LADO do campo, não abaixo: na altura compacta a linha tem 36px e
+        // uma segunda linha seria cortada justamente onde está a informação.
         return (
-          <div className="flex justify-center">
-            <input
-              type="number"
-              min="0"
-              disabled={!podeTransferir}
-              defaultValue={item.transferenciaCustom ?? item.sugestaoTransferencia}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (!isNaN(val) && val >= 0) {
-                  onTransferirCommit?.(item.codigoSku, val);
-                }
-              }}
-              className={cn(
-                "h-7 w-16 rounded border text-center font-mono text-xs font-semibold outline-none transition-colors",
-                podeTransferir
-                  ? "bg-indigo-50 border-indigo-300 text-indigo-900 focus:ring-1 focus:ring-indigo-500"
-                  : "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed dark:bg-slate-800 dark:border-slate-700"
-              )}
-              aria-label={`Quantidade de transferência para SKU ${item.codigoSku}`}
-            />
+          <div className="flex items-center justify-center gap-1">
+            {campo}
+            <TooltipTransferencia
+              filialOrigemNome={origem}
+              saldoOrigem={item.saldoOrigemTransferencia}
+              estoqueMinimoOrigem={item.estoqueMinimoOrigemTransferencia}
+              sobraRealOrigem={item.sobraRealOrigemTransferencia}
+              filialDestinoNome={item.filialFocoNome}
+              necessidadeDestino={item.necessidadeDestinoTransferencia}
+              quantidadeTransferirRecomendada={item.sugestaoTransferencia ?? 0}
+              motivo={item.motivoDecisao}
+            >
+              <button
+                type="button"
+                aria-label={`De ${origem} para ${item.filialFocoNome}. Ver detalhes da transferência.`}
+                title={`De ${origem} para ${item.filialFocoNome}`}
+                className="flex h-5 w-5 shrink-0 cursor-help items-center justify-center rounded border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300"
+              >
+                <ArrowLeftRight className="h-3 w-3" />
+              </button>
+            </TooltipTransferencia>
           </div>
         );
       },

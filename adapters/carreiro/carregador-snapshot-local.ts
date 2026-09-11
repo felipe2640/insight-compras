@@ -169,6 +169,8 @@ export async function carregarSnapshotCarreiroLocal(
         devolucoes90dias: 0,
         notasFiscaisVenda90dias: notas90,
         notasFiscaisDevolucao90dias: 0,
+        mesesAtivos12meses: 12,
+        medianaLinhaVenda: 1,
         diasRuptura90dias: 0,
         diasObservados: 180,
         dataPrimeiraVendaRegistrada: null,

@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
-import { TENANT_CARREIRO } from "@config/tenants/carreiro";
-import { obterConfiguracaoTenant } from "@config/tenants";
+import { obterConfiguracaoTenant, TENANT_PADRAO } from "@config/tenants";
 import { gerarStringCssVarsInline } from "@config/tenants/tipos";
 
 export const metadata: Metadata = {
-  title: "iNSIGHT D - Copiloto de Inteligência de Compras | Rede Carreiro",
+  title: "iNSIGHT D — Copiloto de Inteligência e Decisão de Compras",
   description: "Plataforma White-Label de Inteligência e Decisão de Compras de Autopeças",
 };
 
@@ -17,7 +16,7 @@ export default function RootLayout({
 }) {
   const headersList = headers();
   const tenantIdHeader = headersList.get("x-tenant-id") || "carreiro";
-  const tenant = obterConfiguracaoTenant(tenantIdHeader) || TENANT_CARREIRO;
+  const tenant = obterConfiguracaoTenant(tenantIdHeader) || TENANT_PADRAO;
   const inlineCssVars = gerarStringCssVarsInline(tenant);
 
   return (

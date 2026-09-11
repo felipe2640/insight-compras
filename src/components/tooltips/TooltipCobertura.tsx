@@ -1,11 +1,18 @@
 "use client";
 
-import React, { useState, useRef, useId, useCallback } from "react";
+import React from "react";
 import { PropsTooltipCobertura, TendenciaCobertura } from "@/tipos/cockpit";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-function formatarCobertura(dias: number, cmd: number): string {
-  if (cmd <= 0 || !Number.isFinite(dias)) {
+
+function formatarCobertura(dias: number | null, cmd: number): string {
+  if (dias === null || cmd <= 0 || !Number.isFinite(dias)) {
     return "Sem consumo";
   }
   if (dias >= 999) {
@@ -31,53 +38,14 @@ export function TooltipCobertura({
   delayDuration = 0,
   children,
 }: PropsTooltipCobertura) {
-  const [visivel, setVisivel] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const tooltipId = useId();
 
   const isZumbiEfetivo = isMarcaZumbi || (saldoEstoqueAtual > 0 && vendas180d === 0);
 
-  const abrir = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (delayDuration === 0) {
-      setVisivel(true);
-    } else {
-      timerRef.current = setTimeout(() => setVisivel(true), delayDuration);
-    }
-  }, [delayDuration]);
-
-  const fechar = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setVisivel(false);
-  }, []);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
-        fechar();
-      }
-    },
-    [fechar]
-  );
-
   return (
-    <div
-      className="relative inline-flex items-center"
-      onMouseEnter={abrir}
-      onMouseLeave={fechar}
-      onFocus={abrir}
-      onBlur={fechar}
-      onKeyDown={handleKeyDown}
-      aria-describedby={visivel ? tooltipId : undefined}
-    >
-      {children}
-
-      {visivel && (
-        <div
-          id={tooltipId}
-          role="tooltip"
-          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 w-80 rounded-md border border-slate-200 bg-white p-3 text-xs shadow-xl transition-opacity dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-        >
+    <TooltipProvider>
+      <Tooltip delayDuration={delayDuration}>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent variante="painel" side="top" className="w-80 p-3 text-xs">
           <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
             <span className="font-semibold text-slate-900 dark:text-white">Coberturas Comparativas</span>
             <span
@@ -158,8 +126,8 @@ export function TooltipCobertura({
               </div>
             )}
           </div>
-        </div>
-      )}
-    </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

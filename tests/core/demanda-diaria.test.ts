@@ -3,136 +3,107 @@ import {
   calcularConsumoDiario,
   calcularConsumoJanela,
   calcularProjecaoMensal,
+  calcularMedianaLinhaVenda,
   classificarPerfilGiro,
   verificarElegibilidadeHistorico,
-  CRITERIOS_ELEGIBILIDADE,
+  CRITERIOS_ELEGIBILIDADE_PADRAO,
 } from "@core/calculo/demanda-diaria";
 
 describe("Motor de Demanda Diária e Perfil de Rotatividade", () => {
   describe("calcularConsumoDiario", () => {
-    it("deve calcular o consumo diário com precisão para saídas normais em 180 dias", () => {
-      const consumo = calcularConsumoDiario({
-        vendasLiquidas180d: 180,
-        notasFiscais90d: 15,
-        diasObservados: 180,
-      });
-      expect(consumo).toBe(1);
+    it("usa o tamanho da janela como denominador fixo", () => {
+      expect(calcularConsumoDiario({ vendasLiquidasJanela: 180, diasJanela: 180 })).toBe(1);
     });
 
-    it("deve calcular o consumo proporcional quando o histórico observado for inferior a 180 dias", () => {
-      const consumo = calcularConsumoDiario({
-        vendasLiquidas180d: 60,
-        notasFiscais90d: 10,
-        diasObservados: 60,
-      });
-      expect(consumo).toBe(1);
+    it("NÃO infla a taxa quando o item tem pouco histórico dentro da janela", () => {
+      // 60 unidades numa janela de 180 dias são 0,333/dia — e não 1,0/dia.
+      // Dividir por "dias observados" era o que inflava itens novos e intermitentes.
+      const consumo = calcularConsumoDiario({ vendasLiquidasJanela: 60, diasJanela: 180 });
+      expect(consumo).toBeCloseTo(0.3333, 4);
     });
 
-    it("deve retornar 0 quando o volume de vendas líquidas for zero", () => {
-      const consumo = calcularConsumoDiario({
-        vendasLiquidas180d: 0,
-        notasFiscais90d: 0,
-        diasObservados: 180,
-      });
-      expect(consumo).toBe(0);
+    it("usa 180 dias como janela padrão", () => {
+      expect(calcularConsumoDiario({ vendasLiquidasJanela: 90 })).toBe(0.5);
     });
 
-    it("deve retornar 0 quando o volume de vendas líquidas for negativo (devoluções)", () => {
-      const consumo = calcularConsumoDiario({
-        vendasLiquidas180d: -5,
-        notasFiscais90d: 2,
-        diasObservados: 90,
-      });
-      expect(consumo).toBe(0);
+    it("retorna 0 para vendas zeradas ou negativas", () => {
+      expect(calcularConsumoDiario({ vendasLiquidasJanela: 0, diasJanela: 180 })).toBe(0);
+      expect(calcularConsumoDiario({ vendasLiquidasJanela: -5, diasJanela: 180 })).toBe(0);
     });
 
-    it("deve evitar divisão por zero quando diasObservados for 0 ou negativo", () => {
-      const consumoZero = calcularConsumoDiario({
-        vendasLiquidas180d: 10,
-        notasFiscais90d: 3,
-        diasObservados: 0,
-      });
-      const consumoNegativo = calcularConsumoDiario({
-        vendasLiquidas180d: 10,
-        notasFiscais90d: 3,
-        diasObservados: -30,
-      });
-
-      expect(consumoZero).toBe(0);
-      expect(consumoNegativo).toBe(0);
-    });
-
-    it("deve limitar o divisor a 180 dias no máximo", () => {
-      // 360 vendas com 360 dias observados deve usar base 180: 360 / 180 = 2
-      const consumo = calcularConsumoDiario({
-        vendasLiquidas180d: 360,
-        notasFiscais90d: 20,
-        diasObservados: 360,
-      });
-      expect(consumo).toBe(2);
+    it("evita divisão por zero", () => {
+      expect(calcularConsumoDiario({ vendasLiquidasJanela: 10, diasJanela: 0 })).toBe(0);
+      expect(calcularConsumoDiario({ vendasLiquidasJanela: 10, diasJanela: -30 })).toBe(0);
     });
   });
 
-  describe("calcularConsumoJanela e calcularProjecaoMensal", () => {
-    it("deve calcular consumo para janelas arbitrárias (30d, 90d)", () => {
+  describe("calcularConsumoJanela", () => {
+    it("calcula a taxa de cada janela com o próprio denominador", () => {
       expect(calcularConsumoJanela(30, 30)).toBe(1);
       expect(calcularConsumoJanela(90, 90)).toBe(1);
-      expect(calcularConsumoJanela(0, 30)).toBe(0);
-      expect(calcularConsumoJanela(15, 0)).toBe(0);
+      expect(calcularConsumoJanela(45, 90)).toBe(0.5);
     });
 
-    it("deve calcular a projeção mensal multiplicando consumo diário por 30", () => {
-      expect(calcularProjecaoMensal(0.5)).toBe(15);
+    it("retorna 0 em entradas inválidas", () => {
+      expect(calcularConsumoJanela(0, 90)).toBe(0);
+      expect(calcularConsumoJanela(10, 0)).toBe(0);
+    });
+  });
+
+  describe("calcularProjecaoMensal", () => {
+    it("projeta 30 dias", () => {
+      expect(calcularProjecaoMensal(1)).toBe(30);
       expect(calcularProjecaoMensal(0)).toBe(0);
-      expect(calcularProjecaoMensal(-2)).toBe(0);
     });
   });
 
   describe("verificarElegibilidadeHistorico", () => {
-    it("deve reprovar itens com menos de 3 notas fiscais nos últimos 90 dias", () => {
-      expect(verificarElegibilidadeHistorico(2, 90)).toBe(false);
-      expect(verificarElegibilidadeHistorico(0, 90)).toBe(false);
+    it("exige notas distintas E meses ativos", () => {
+      expect(verificarElegibilidadeHistorico(3, 2)).toBe(true);
+      expect(verificarElegibilidadeHistorico(2, 2)).toBe(false); // notas insuficientes
+      expect(verificarElegibilidadeHistorico(3, 1)).toBe(false); // sem recorrência mensal
     });
 
-    it("deve reprovar itens com menos de 15 dias de histórico observado", () => {
-      expect(verificarElegibilidadeHistorico(5, 14)).toBe(false);
-      expect(verificarElegibilidadeHistorico(5, 0)).toBe(false);
+    it("reprova concentração de notas em um único mês", () => {
+      // 40 notas, todas no mesmo mês: volume alto, recorrência nenhuma.
+      expect(verificarElegibilidadeHistorico(40, 1)).toBe(false);
     });
 
-    it("deve aprovar itens que cumprem ambos os critérios mínimos", () => {
-      expect(
-        verificarElegibilidadeHistorico(
-          CRITERIOS_ELEGIBILIDADE.MINIMO_NOTAS_90D,
-          CRITERIOS_ELEGIBILIDADE.MINIMO_DIAS_HISTORICO
-        )
-      ).toBe(true);
-      expect(verificarElegibilidadeHistorico(10, 90)).toBe(true);
+    it("aceita critérios customizados do tenant", () => {
+      const criterios = { minimoNotasDistintas: 5, minimoMesesAtivos: 3 };
+      expect(verificarElegibilidadeHistorico(4, 3, criterios)).toBe(false);
+      expect(verificarElegibilidadeHistorico(5, 3, criterios)).toBe(true);
+    });
+
+    it("expõe os critérios padrão do estudo (3 notas, 2 meses)", () => {
+      expect(CRITERIOS_ELEGIBILIDADE_PADRAO.minimoNotasDistintas).toBe(3);
+      expect(CRITERIOS_ELEGIBILIDADE_PADRAO.minimoMesesAtivos).toBe(2);
     });
   });
 
   describe("classificarPerfilGiro", () => {
-    it("deve retornar SEM_HISTORICO_SUFICIENTE se os critérios de recorrência não forem atendidos", () => {
-      // 1 venda única pontual acidental de 20 unidades em 90 dias (1 nota)
-      const perfil = classificarPerfilGiro(20 / 90, 1, 90);
-      expect(perfil).toBe("SEM_HISTORICO_SUFICIENTE");
+    it("classifica pelos limiares de consumo mensal (6 e 2,5)", () => {
+      expect(classificarPerfilGiro(6 / 30, 3, 2)).toBe("ALTO_GIRO");
+      expect(classificarPerfilGiro(2.5 / 30, 3, 2)).toBe("MEDIO_GIRO");
+      expect(classificarPerfilGiro(2.49 / 30, 3, 2)).toBe("BAIXO_GIRO_INTERMITENTE");
     });
 
-    it("deve classificar como ALTO_GIRO quando a projeção mensal for >= 6 un/mês", () => {
-      // Consumo diário de 0.25 un/dia * 30 = 7.5 un/mês
-      const perfil = classificarPerfilGiro(0.25, 6, 90);
-      expect(perfil).toBe("ALTO_GIRO");
+    it("marca sem histórico quando falta recorrência, mesmo com consumo alto", () => {
+      expect(classificarPerfilGiro(10, 2, 2)).toBe("SEM_HISTORICO_SUFICIENTE");
+      expect(classificarPerfilGiro(10, 3, 1)).toBe("SEM_HISTORICO_SUFICIENTE");
+    });
+  });
+
+  describe("calcularMedianaLinhaVenda", () => {
+    it("calcula a mediana apenas das quantidades positivas", () => {
+      expect(calcularMedianaLinhaVenda([1, 2, 3])).toBe(2);
+      expect(calcularMedianaLinhaVenda([2, 4])).toBe(3);
+      expect(calcularMedianaLinhaVenda([0, 0, 4, 4])).toBe(4);
     });
 
-    it("deve classificar como MEDIO_GIRO quando a projeção mensal estiver entre 2.5 e 5.9 un/mês", () => {
-      // Consumo diário de 0.10 un/dia * 30 = 3.0 un/mês
-      const perfil = classificarPerfilGiro(0.1, 4, 90);
-      expect(perfil).toBe("MEDIO_GIRO");
-    });
-
-    it("deve classificar como BAIXO_GIRO_INTERMITENTE quando a projeção mensal for < 2.5 un/mês", () => {
-      // Consumo diário de 0.05 un/dia * 30 = 1.5 un/mês
-      const perfil = classificarPerfilGiro(0.05, 3, 90);
-      expect(perfil).toBe("BAIXO_GIRO_INTERMITENTE");
+    it("retorna 0 sem quantidades positivas", () => {
+      expect(calcularMedianaLinhaVenda([])).toBe(0);
+      expect(calcularMedianaLinhaVenda([0, -1])).toBe(0);
     });
   });
 });

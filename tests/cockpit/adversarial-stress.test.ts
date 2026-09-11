@@ -97,6 +97,7 @@ function gerarDatasetAdversarial(quantidade: number): LinhaCockpitMatriz[] {
       aplicacaoVeicular: veiculo,
       secaoId: secao.id,
       secaoNome: secao.nome,
+      subgrupo: null,
       fornecedorId,
       nomeFornecedor: `DISTRIBUIDORA DE AUTOPEÇAS ${marca}`,
       precoCusto: 45.0 + (i % 450),
@@ -134,6 +135,11 @@ function gerarDatasetAdversarial(quantidade: number): LinhaCockpitMatriz[] {
       quantidadeJaPedidaFoco: 0,
       estoqueOutrasLojasRede: 25,
       sugestaoFinalCompra: temCompra ? 12 : 0,
+      previsaoBrutaModelo: 0,
+      horizonteDiasAplicado: 0,
+      margemSegurancaAplicada: 0,
+      fatorCalibracaoAplicado: 1,
+      motivoInelegibilidade: null,
       statusSugestao: isZumbi
         ? "TRAVADO_MARCA_ZUMBI"
         : temCompra
