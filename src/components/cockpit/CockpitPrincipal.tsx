@@ -52,7 +52,7 @@ import {
 import { DialogSimilares } from "@/components/tooltips/DialogSimilares";
 import { BannerRascunho } from "./BannerRascunho";
 import { DialogExportacao } from "./DialogExportacao";
-import { obterTenantAtivo, montarNomesFiliais } from "@/lib/cockpit/opcoes-tenant";
+import { useTenantAtivo, useNomesFiliais } from "@/lib/cockpit/contexto-tenant";
 import type { ContextoExportacao } from "@/lib/exportacao/tipos";
 import { CurvaABC } from "@core/dominio";
 import { cn } from "@/lib/utils";
@@ -70,6 +70,11 @@ export interface CockpitPrincipalProps {
   gradeInicial?: PayloadGradeTabular;
   /** Contagens do catálogo inteiro, do servidor: os chips não podem mentir na espera. */
   contagensCatalogo?: ContagensStatusGrade;
+  /**
+   * Carteira do usuário da sessão: fornecedores que ele pode ver, ou `null`
+   * para irrestrito (gestor e admin). O servidor valida de novo a cada
+   * requisição — isto aqui é só para a tela dizer a verdade.
+   */
   fornecedoresPermitidosInicial?: readonly number[] | null;
   filialFocoIdInicial?: number;
   /** Sessão resolvida no servidor: evita o rodapé "vazio" enquanto a página hidrata. */
@@ -84,12 +89,6 @@ const CONTAGENS_VAZIAS: ContagensStatusGrade = {
   zumbi: 0,
 };
 
-const CARTEIRAS_DEMO = [
-  { id: "GESTOR", nome: "Gestor Geral (Visão Completa da Rede)", fornecedores: null },
-  { id: "COMPRADOR_SUSPENSAO", nome: "Comprador: Suspensão & Freios", fornecedores: [500, 501, 502, 503, 504] },
-  { id: "COMPRADOR_MOTOR", nome: "Comprador: Motor & Injeção", fornecedores: [505, 506, 507, 508] },
-  { id: "COMPRADOR_ELETRICA", nome: "Comprador: Baterias & Lubrificantes", fornecedores: [509, 510, 511, 512] },
-];
 
 const OPCOES_ORDENACAO = [
   { id: "custo-desc", label: "Maior Custo (R$)", desc: true },
@@ -110,10 +109,12 @@ export function CockpitPrincipal({
 }: CockpitPrincipalProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Identidade e cadastro do cliente ativo. Fica no topo porque a lista de
-  // lojas e a exportação dependem dele.
-  const tenantAtivo = useMemo(() => obterTenantAtivo(), []);
-  const nomesFiliaisTenant = useMemo(() => montarNomesFiliais(tenantAtivo), [tenantAtivo]);
+  // Identidade e cadastro do cliente ativo, resolvidos no SERVIDOR e entregues
+  // pelo layout raiz. Ler a variável de ambiente aqui não funcionava: no pacote
+  // do navegador ela não existe, e a tela caía na demonstração por cima de dados
+  // reais. Fica no topo porque a lista de lojas e a exportação dependem dele.
+  const tenantAtivo = useTenantAtivo();
+  const nomesFiliaisTenant = useNomesFiliais();
 
   // 0. Grade: acionáveis agora, catálogo completo em segundo plano.
   const grade = useGradeProgressiva({
@@ -124,12 +125,25 @@ export function CockpitPrincipal({
   });
   const linhasBase = itensIniciais ?? grade.itens;
 
-  // 1. Estado de Carteira / Comprador Selecionado (RBAC)
-  const [carteiraSelecionada, setCarteiraSelecionada] = useState<string>("GESTOR");
-  const fornecedoresAtivos = useMemo(() => {
-    const c = CARTEIRAS_DEMO.find((item) => item.id === carteiraSelecionada);
-    return c ? c.fornecedores : fornecedoresPermitidosInicial;
-  }, [carteiraSelecionada, fornecedoresPermitidosInicial]);
+  /**
+   * 1. Carteira — a do usuário LOGADO, e mais nenhuma.
+   *
+   * Havia aqui um seletor com quatro carteiras inventadas ("Comprador:
+   * Suspensão & Freios", fornecedores 500 a 504 e seguintes). Nenhuma delas
+   * existe na operação de cliente nenhum: eram números escolhidos a esmo, numa
+   * tela que o comprador usa para decidir compra. O servidor sempre barrou o
+   * que o usuário não podia ver, então nunca foi falha de acesso — era a tela
+   * afirmando uma organização de compras que não é a do cliente.
+   *
+   * Trocar de carteira de verdade — o gestor olhando pela lente de um
+   * comprador — depende do cadastro real, que existe em /api/admin/usuarios e
+   * ainda não foi ligado aqui.
+   */
+  const fornecedoresAtivos = fornecedoresPermitidosInicial;
+  const carteiraIrrestrita = fornecedoresPermitidosInicial === null;
+  const rotuloCarteira = carteiraIrrestrita
+    ? "Rede completa"
+    : `Minha carteira · ${fornecedoresPermitidosInicial?.length ?? 0} fornecedor(es)`;
 
   // 2. Estado de Deltas / Ajustes do Comprador
   const [deltas, setDeltas] = useState<Record<string, ItemDeltaRascunho>>({});
@@ -141,8 +155,11 @@ export function CockpitPrincipal({
     restaurarRascunho,
     descartarRascunho,
   } = useSessionDraft({
-    tenantId: "carreiro",
-    userId: carteiraSelecionada,
+    // Do tenant, não "carreiro" fixo: a chave do rascunho no navegador era a
+    // mesma para todo cliente, e dois clientes na mesma máquina misturavam o
+    // que ainda não tinham enviado.
+    tenantId: tenantAtivo.id,
+    userId: usuarioSessao?.nome ?? "anonimo",
     deltas,
   });
 
@@ -432,11 +449,11 @@ export function CockpitPrincipal({
       {/* 2. Conteúdo Principal Rolável */}
       <div className="flex flex-1 flex-col overflow-y-auto">
         {/* Header Institucional Superior */}
-        <header className="sticky top-0 z-30 bg-[#0F2B5C] text-white shadow-md border-b border-[#D4AF37]/30">
+        <header className="sticky top-0 z-30 bg-primaria text-white shadow-md border-b border-secundaria/30">
           <div className="max-w-[1920px] mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <span className="inline-block h-3 w-3 rounded-full bg-[#D4AF37] animate-pulse" />
+                <span className="inline-block h-3 w-3 rounded-full bg-secundaria animate-pulse" />
                 {/* Identidade do TENANT. Estava fixa no código e vazava o nome
                     do cliente para a demonstração pública. */}
                 <span className="text-base font-black tracking-tight text-white">
@@ -449,21 +466,11 @@ export function CockpitPrincipal({
               </span>
             </div>
 
-            {/* Seletor de Carteira RBAC e Ações */}
+            {/* Carteira do usuário da sessão — leitura, não escolha. */}
             <div className="flex items-center flex-wrap gap-2 text-xs">
               <div className="flex items-center bg-white/10 rounded px-2.5 py-1 border border-white/20">
                 <span className="text-slate-300 mr-2 font-medium">Carteira:</span>
-                <select
-                  value={carteiraSelecionada}
-                  onChange={(e) => setCarteiraSelecionada(e.target.value)}
-                  className="bg-transparent text-white font-semibold outline-none cursor-pointer text-xs"
-                >
-                  {CARTEIRAS_DEMO.map((c) => (
-                    <option key={c.id} value={c.id} className="bg-slate-900 text-white">
-                      {c.nome}
-                    </option>
-                  ))}
-                </select>
+                <span className="font-semibold text-white">{rotuloCarteira}</span>
               </div>
 
               {/* Um botão por modelo: o comprador exporta o de sempre num clique. */}
@@ -625,9 +632,13 @@ export function CockpitPrincipal({
                 onChange={(e) => setLojaFocoId(Number(e.target.value))}
                 className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               >
+                {/* O nome vem do cadastro do tenant e já diz o que precisa
+                    dizer. Havia aqui um "(Matriz)" colado quando o id era 1 —
+                    que assumia matriz = loja 1 e, na Carreiro, rendia
+                    "Carreiro Pedro II (Matriz) (Matriz)". */}
                 {listaLojas.map((loja) => (
                   <option key={loja.id} value={loja.id}>
-                    {loja.nome} {loja.id === 1 ? "(Matriz)" : ""}
+                    {loja.nome}
                   </option>
                 ))}
               </select>
@@ -670,7 +681,7 @@ export function CockpitPrincipal({
                     className={cn(
                       "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors border",
                       ativo
-                        ? "bg-[#0F2B5C] text-white border-[#0F2B5C] shadow-sm"
+                        ? "bg-primaria text-white border-primaria shadow-sm"
                         : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
                     )}
                   >

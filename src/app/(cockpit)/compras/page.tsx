@@ -1,5 +1,6 @@
 import React from "react";
 import { obterAdaptadorInventario } from "@adapters/index";
+import { aplicarGuardrailInventarioServerSide } from "@/lib/rbac/validador-carteira";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
 import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { CockpitPrincipal } from "@/components/cockpit/CockpitPrincipal";
@@ -13,13 +14,25 @@ export const dynamic = "force-dynamic";
 async function CarregarDadosCockpit() {
   const usuario = await obterUsuarioAtual();
   const adaptador = obterAdaptadorInventario();
-  const carga = await adaptador.carregarInventarioCompleto({
-    fornecedoresPermitidos: null,
-    filialId: 1,
-    // O comprador decide sobre o que tem saldo ou saiu recentemente. Trazer o
-    // catálogo inteiro enche a grade de item morto e atrasa a carga.
-    apenasComEstoqueOuVenda: true,
-  });
+
+  /**
+   * A carteira do usuário vale JÁ NESTA carga, não só na /api/compras.
+   *
+   * Aqui ia `fornecedoresPermitidos: null` fixo: o primeiro desenho da página
+   * — que é o que o comprador lê antes de qualquer interação — trazia o
+   * catálogo inteiro da rede, inclusive fornecedores fora da carteira dele. A
+   * rota da API sempre aplicou o guardrail; esta página não aplicava.
+   */
+  const filtro = usuario
+    ? aplicarGuardrailInventarioServerSide(usuario, {
+        filialId: 1,
+        // O comprador decide sobre o que tem saldo ou saiu recentemente. Trazer
+        // o catálogo inteiro enche a grade de item morto e atrasa a carga.
+        apenasComEstoqueOuVenda: true,
+      })
+    : { fornecedoresPermitidos: [] as number[], filialId: 1, apenasComEstoqueOuVenda: true };
+
+  const carga = await adaptador.carregarInventarioCompleto(filtro);
   // Parâmetros calibrados do tenant (Carreiro: fator 0,90 do backtest).
   const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(1));
 
@@ -33,6 +46,9 @@ async function CarregarDadosCockpit() {
       gradeInicial={codificarGradeTabular(acionaveis)}
       contagensCatalogo={contarStatusGrade(linhas)}
       filialFocoIdInicial={1}
+      fornecedoresPermitidosInicial={
+        filtro.fornecedoresPermitidos ? Array.from(filtro.fornecedoresPermitidos) : null
+      }
       usuarioSessao={usuario ? { nome: usuario.nome, papelRotulo: rotuloPapel(usuario.role) } : null}
     />
   );

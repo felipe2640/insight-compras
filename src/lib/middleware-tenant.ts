@@ -15,7 +15,7 @@ export interface EntradaResolucaoTenant {
 export interface ResultadoResolucaoTenant {
   readonly tenant: ConfiguracaoTenant;
   readonly tenantId: string;
-  readonly origemResolucao: "query" | "subdominio" | "custom_domain" | "cookie" | "fallback";
+  readonly origemResolucao: "ambiente" | "query" | "subdominio" | "custom_domain" | "cookie" | "fallback";
   readonly headersDownstream: Record<string, string>;
 }
 
@@ -74,6 +74,24 @@ export function extrairSubdominioDeHost(host: string): string | null {
  */
 export function processarRequisicaoTenant(entrada: EntradaResolucaoTenant): ResultadoResolucaoTenant {
   const { hostname, searchParams, cookies } = entrada;
+
+  /**
+   * Ordem 0: instalação DEDICADA a um cliente (TENANT_ATIVO no ambiente).
+   *
+   * Aqui ela decide sozinha, e nem query nem cookie a demovem. Sem esta porta,
+   * bastava alguém abrir uma vez `…/compras?tenant=demonstracao` para o
+   * middleware gravar o cookie `x-tenant-id` — que vence a variável — e aquele
+   * navegador ficava PRESO no outro tenant: nomes de loja sintéticos e paleta
+   * errada sobre o estoque real do cliente, sem aviso e sem desfazer, a não ser
+   * limpando cookies. Foi o que aconteceu numa verificação nossa.
+   *
+   * A troca por query e subdomínio continua valendo onde ela existe para servir:
+   * a instalação MULTI-cliente, que não define TENANT_ATIVO.
+   */
+  const dedicado = process.env.TENANT_ATIVO?.trim();
+  if (dedicado) {
+    return montarResultado(resolverTenantConfigurado(), "ambiente");
+  }
 
   // 1. Ordem 1: Query param explícito (?tenant=carreiro) para dev local, CI e Vercel Preview
   const tenantQuery = sanitizarParametroTenant(searchParams.get("tenant"));

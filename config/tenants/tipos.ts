@@ -113,6 +113,18 @@ export interface ConfiguracaoTenant {
   readonly subdominiosValidos: readonly string[];
   /** Domínio customizado opcional do cliente - ex: "compras.carreiro.com.br" */
   readonly customDomain?: string;
+  /**
+   * De onde vêm os dados de estoque e venda DESTE cliente.
+   *
+   * A fábrica de adaptadores escolhia sozinha: havendo credenciais de Power BI
+   * no ambiente, ela devolvia o adaptador da Carreiro — com os GUIDs e os nomes
+   * CADEMP da rede dela — fosse qual fosse o tenant. Duas consequências: o
+   * ambiente de DEMONSTRAÇÃO servia dados reais de cliente sob nomes
+   * sintéticos, e o segundo cliente herdaria o mapeamento do primeiro.
+   *
+   * "sintetica" nunca toca a nuvem de ninguém.
+   */
+  readonly fonteDados: "powerbi-carreiro" | "sintetica";
   /** Paleta de cores institucionais */
   readonly cores: CoresInstitucionaisTenant;
   /** Identidade visual (logos e favicon) */
@@ -133,6 +145,11 @@ export interface ConfiguracaoTenant {
 
 /**
  * Converte um valor hexadecimal (#RRGGBB) para componentes numéricos RGB e formato CSS.
+ *
+ * `cssRgb` sai com os canais SEPARADOS POR ESPAÇO ("11 57 176"), e não por
+ * vírgula, porque é assim que o Tailwind monta `rgb(var(--x) / <alpha-value>)`.
+ * É o que permite escrever `border-secundaria/30` — com a vírgula, qualquer
+ * classe com opacidade sobre a cor do cliente simplesmente não pinta.
  */
 export function hexParaRgb(hex: string): { r: number; g: number; b: number; cssRgb: string } {
   const normalizado = hex.replace("#", "").trim();
@@ -146,14 +163,15 @@ export function hexParaRgb(hex: string): { r: number; g: number; b: number; cssR
 
   const num = parseInt(valorHex, 16);
   if (isNaN(num) || valorHex.length !== 6) {
-    return { r: 15, g: 43, b: 92, cssRgb: "15, 43, 92" }; // Fallback Azul Carreiro
+    // Fundo ardósia neutro da plataforma, não a cor de um cliente.
+    return { r: 30, g: 41, b: 59, cssRgb: "30 41 59" };
   }
 
   const r = (num >> 16) & 255;
   const g = (num >> 8) & 255;
   const b = num & 255;
 
-  return { r, g, b, cssRgb: `${r}, ${g}, ${b}` };
+  return { r, g, b, cssRgb: `${r} ${g} ${b}` };
 }
 
 /**
@@ -162,6 +180,7 @@ export function hexParaRgb(hex: string): { r: number; g: number; b: number; cssR
 export function gerarVariaveisCssTenant(tenant: ConfiguracaoTenant): Record<string, string> {
   const rgbPrimaria = hexParaRgb(tenant.cores.primaria).cssRgb;
   const rgbSecundaria = hexParaRgb(tenant.cores.secundaria).cssRgb;
+  const rgbDestaqueMultiplo = hexParaRgb(tenant.cores.fundoDestaqueMultiplo).cssRgb;
 
   return {
     "--cor-primaria": tenant.cores.primaria,
@@ -177,6 +196,9 @@ export function gerarVariaveisCssTenant(tenant: ConfiguracaoTenant): Record<stri
     "--cor-texto": tenant.cores.texto,
     "--cor-texto-secundario": tenant.cores.textoSecundario,
     "--cor-destaque-multiplo": tenant.cores.fundoDestaqueMultiplo,
+    // A grade pinta a linha de múltiplo de embalagem com opacidade (40% e 70%
+    // no hover), e para isso precisa dos canais, não do hex.
+    "--cor-destaque-multiplo-rgb": rgbDestaqueMultiplo,
   };
 }
 

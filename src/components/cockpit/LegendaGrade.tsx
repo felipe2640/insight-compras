@@ -33,7 +33,7 @@ export const ITENS_LEGENDA_GRADE: readonly ItemLegenda[] = [
   {
     rotulo: "Múltiplo de embalagem",
     explicacao: "A quantidade foi arredondada para a caixa fechada do fornecedor.",
-    amostra: "bg-[#FFFFCC] border-amber-300",
+    amostra: "bg-destaqueMultiplo border-amber-300",
   },
 ];
 

@@ -2,13 +2,18 @@
 
 import React, { useState } from "react";
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import { useTenantAtivo } from "@/lib/cockpit/contexto-tenant";
 import { Palette, Save, CheckCircle2 } from "lucide-react";
 
 export default function PaginaTema() {
-  const [nomeRede, setNomeRede] = useState("REDE CARREIRO");
+  // Os campos abrem com o que está VALENDO, do cadastro do tenant. Estavam
+  // fixos na Carreiro: qualquer outro cliente abria esta tela vendo a marca
+  // alheia como se fosse a dele.
+  const tenant = useTenantAtivo();
+  const [nomeRede, setNomeRede] = useState(tenant.nome.toUpperCase());
   const [subtitulo, setSubtitulo] = useState("Copiloto de Inteligência & Decisão de Compras");
-  const [corPrimaria, setCorPrimaria] = useState("#0F2B5C");
-  const [corDestaque, setCorDestaque] = useState("#D4AF37");
+  const [corPrimaria, setCorPrimaria] = useState(tenant.cores.primaria);
+  const [corDestaque, setCorDestaque] = useState(tenant.cores.secundaria);
   const [salvo, setSalvo] = useState(false);
 
   const handleSalvar = (e: React.FormEvent) => {
@@ -37,9 +42,9 @@ export default function PaginaTema() {
             <button
               type="button"
               onClick={handleSalvar}
-              className="flex items-center gap-1.5 rounded-lg bg-[#0F2B5C] px-4 py-2 text-xs font-bold text-white shadow hover:bg-[#0A1E40] transition-colors"
+              className="flex items-center gap-1.5 rounded-lg bg-primaria px-4 py-2 text-xs font-bold text-white shadow hover:bg-primaria-hover transition-colors"
             >
-              <Save className="h-4 w-4 text-[#D4AF37]" />
+              <Save className="h-4 w-4 text-secundaria" />
               Salvar Identidade Visual
             </button>
           </div>

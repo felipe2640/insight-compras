@@ -22,18 +22,19 @@ import {
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { LinhaCockpitMatriz } from "@/tipos/cockpit";
 import { decodificarGradeTabular, PayloadGradeTabular } from "@/lib/cockpit/codificacao-tabular";
-import { montarNomesFiliais, obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
+import { useNomesFiliais } from "@/lib/cockpit/contexto-tenant";
 import { cn } from "@/lib/utils";
 
-// Do cadastro do TENANT: a tela é a mesma para todo cliente, o que muda é a
-// configuração. Importar constante de adapter aqui amarraria a interface a um
-// cliente específico.
-const LOJAS = Object.entries(montarNomesFiliais(obterTenantAtivo())).map(([id, nome]) => ({
-  id: Number(id),
-  nome,
-}));
-
 export default function PaginaTransferencias() {
+  // Do cadastro do TENANT, resolvido no servidor: a tela é a mesma para todo
+  // cliente, o que muda é a configuração. Importar constante de adapter aqui
+  // amarraria a interface a um cliente específico.
+  const nomesFiliais = useNomesFiliais();
+  const LOJAS = useMemo(
+    () => Object.entries(nomesFiliais).map(([id, nome]) => ({ id: Number(id), nome })),
+    [nomesFiliais]
+  );
+
   const [destino, setDestino] = useState(1);
   const [linhas, setLinhas] = useState<LinhaCockpitMatriz[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -91,9 +92,9 @@ export default function PaginaTransferencias() {
     <div className="flex h-screen overflow-hidden bg-slate-100">
       <AppSidebar />
       <main className="flex flex-1 flex-col overflow-y-auto">
-        <header className="sticky top-0 z-30 border-b border-[#D4AF37]/30 bg-[#0F2B5C] px-4 py-2.5 text-white shadow-md">
+        <header className="sticky top-0 z-30 border-b border-secundaria/30 bg-primaria px-4 py-2.5 text-white shadow-md">
           <h1 className="flex items-center gap-2 text-sm font-semibold">
-            <ArrowLeftRight className="h-4 w-4 text-[#D4AF37]" />
+            <ArrowLeftRight className="h-4 w-4 text-secundaria" />
             Transferências
           </h1>
           <p className="text-xs text-white/70">

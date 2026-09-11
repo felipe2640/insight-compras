@@ -124,7 +124,7 @@ export function BotoesExportacao({
               "flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors",
               vazio
                 ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
-                : "border-[#D4AF37] bg-[#D4AF37] text-slate-900 hover:bg-[#c39f2f]"
+                : "border-secundaria bg-secundaria text-slate-900 hover:bg-secundaria-hover"
             )}
           >
             {gerando === modelo.id ? (

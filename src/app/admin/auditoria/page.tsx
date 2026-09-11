@@ -3,11 +3,18 @@ import Link from "next/link";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { servicoAuditoriaPadrao } from "@/lib/auditoria";
 import { validarCadeiaAuditoria } from "@/lib/auditoria/repositorio-auditoria";
+import { obterUsuarioAtual } from "@/lib/autenticacao/servidor";
+import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 
 export const dynamic = "force-dynamic";
 
 export default async function PaginaAuditoriaGestor() {
-  const tenantId = "carreiro";
+  // O tenant vem da SESSÃO. Estava "carreiro" fixo aqui: qualquer outro
+  // cliente que abrisse esta tela veria a trilha de pedidos da Carreiro.
+  const usuario = await obterUsuarioAtual();
+  const tenant = obterTenantAtivo();
+  const tenantId = usuario?.tenantId ?? tenant.id;
+
   const [trilha, kpis] = await Promise.all([
     servicoAuditoriaPadrao.consultarTrilha({ tenantId }),
     servicoAuditoriaPadrao.calcularKpisGerenciais(tenantId),
@@ -21,7 +28,7 @@ export default async function PaginaAuditoriaGestor() {
 
       <div className="flex flex-1 flex-col overflow-y-auto">
       {/* Header Institucional */}
-      <header className="bg-[#0F2B5C] text-white shadow-md border-b border-[#D4AF37]/30">
+      <header className="bg-primaria text-white shadow-md border-b border-secundaria/30">
         <div className="max-w-[1920px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link
@@ -30,8 +37,8 @@ export default async function PaginaAuditoriaGestor() {
             >
               ← Voltar ao Cockpit
             </Link>
-            <span className="text-sm font-black text-[#D4AF37]">
-              REDE CARREIRO AUTOPEÇAS
+            <span className="text-sm font-black text-secundaria">
+              {tenant.nome.toUpperCase()}
             </span>
             <span className="text-slate-400 text-xs">|</span>
             <span className="text-xs text-slate-200">
@@ -48,7 +55,7 @@ export default async function PaginaAuditoriaGestor() {
                   : "Alerta de Adulteração na Cadeia!"}
               </span>
             </div>
-            <span className="text-xs text-[#D4AF37] font-semibold">
+            <span className="text-xs text-secundaria font-semibold">
               Powered by iNSIGHT D
             </span>
           </div>

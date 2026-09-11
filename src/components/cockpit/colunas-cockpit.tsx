@@ -51,7 +51,10 @@ function formatarNumero(valor: number, decimais = 0): string {
 }
 
 export function criarColunasCockpit({
-  nomeLojaFoco = "Pedro II",
+  // Rótulo neutro: quem chama sempre passa o nome vindo do cadastro do tenant.
+  // O padrão era "Pedro II" — uma loja de um cliente específico, que aparecia
+  // no cabeçalho da coluna de estoque de qualquer instalação.
+  nomeLojaFoco = "Loja Foco",
   nomeOutrasLojas = "Rede",
   onAbrirSimilares,
   onPedirCommit,
@@ -738,7 +741,7 @@ export function criarColunasCockpit({
       enableSorting: true,
     },
 
-    // 25. Est [Loja Foco] (ex: Est Pedro II / Est APT)
+    // 25. Est [Loja Foco] — o nome vem do cadastro de filiais do tenant
     {
       id: "estoqueLojaFoco",
       accessorFn: (row) => row.estoqueLojaFoco,
@@ -844,7 +847,7 @@ export function criarColunasCockpit({
                 className={cn(
                   "h-7 w-16 rounded border text-center font-mono text-xs font-semibold outline-none transition-colors focus:ring-1 focus:ring-blue-500",
                   exigeMultiplo
-                    ? "bg-[#FFFFCC] border-amber-300 text-amber-950 font-bold"
+                    ? "bg-destaqueMultiplo border-amber-300 text-amber-950 font-bold"
                     : "bg-white border-slate-300 text-slate-900 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                 )}
                 aria-label={`Quantidade de pedido para SKU ${item.codigoSku}`}

@@ -4,7 +4,7 @@
  * 100% em Português do Brasil (pt-BR).
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   processarRequisicaoTenant,
   sanitizarParametroTenant,
@@ -123,6 +123,47 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
     });
   });
 
+  describe("0. Instalação dedicada a um cliente (TENANT_ATIVO)", () => {
+    const envOriginal = process.env.TENANT_ATIVO;
+    afterEach(() => {
+      if (envOriginal === undefined) delete process.env.TENANT_ATIVO;
+      else process.env.TENANT_ATIVO = envOriginal;
+    });
+
+    it("a variável de ambiente vence a query: ?tenant= não desvia a instalação", () => {
+      process.env.TENANT_ATIVO = "carreiro";
+      const r = processarRequisicaoTenant({
+        hostname: "compras.carreiro.com.br",
+        searchParams: new URLSearchParams("tenant=demonstracao"),
+      });
+      expect(r.tenantId).toBe("carreiro");
+      expect(r.origemResolucao).toBe("ambiente");
+    });
+
+    it("a variável de ambiente vence o cookie gravado por uma visita anterior", () => {
+      // Cenário real: alguém abriu ?tenant=demonstracao uma vez, o middleware
+      // gravou o cookie, e o navegador ficava preso no tenant errado.
+      process.env.TENANT_ATIVO = "carreiro";
+      const r = processarRequisicaoTenant({
+        hostname: "compras.carreiro.com.br",
+        searchParams: new URLSearchParams(),
+        cookies: { "x-tenant-id": "demonstracao" },
+      });
+      expect(r.tenantId).toBe("carreiro");
+      expect(r.origemResolucao).toBe("ambiente");
+    });
+
+    it("sem a variável, a instalação multi-cliente continua trocando por query", () => {
+      delete process.env.TENANT_ATIVO;
+      const r = processarRequisicaoTenant({
+        hostname: "app.insightd.com.br",
+        searchParams: new URLSearchParams("tenant=carreiro"),
+      });
+      expect(r.tenantId).toBe("carreiro");
+      expect(r.origemResolucao).toBe("query");
+    });
+  });
+
   describe("3. Injeção de Cabeçalhos Downstream e Middleware Next.js", () => {
     it("deve injetar cabeçalhos downstream com os dados do tenant Carreiro", () => {
       const resultado = processarRequisicaoTenant({
@@ -132,8 +173,8 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
 
       expect(resultado.headersDownstream["x-tenant-id"]).toBe("carreiro");
       expect(resultado.headersDownstream["x-tenant-subdominio"]).toBe("carreiro.insightd.com.br");
-      expect(resultado.headersDownstream["x-tenant-cor-primaria"]).toBe("#0F2B5C");
-      expect(resultado.headersDownstream["x-tenant-cor-secundaria"]).toBe("#D4AF37");
+      expect(resultado.headersDownstream["x-tenant-cor-primaria"]).toBe("#0B39B0");
+      expect(resultado.headersDownstream["x-tenant-cor-secundaria"]).toBe("#3B6BE0");
       expect(resultado.headersDownstream["x-tenant-cor-destaque-multiplo"]).toBe("#FFFFCC");
       expect(resultado.headersDownstream["x-tenant-cor-fundo"]).toBe("#F8FAFC");
     });
@@ -155,7 +196,7 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
       const response = await middleware(mockRequest);
 
       expect(response.request.headers.get("x-tenant-id")).toBe("carreiro");
-      expect(response.request.headers.get("x-tenant-cor-primaria")).toBe("#0F2B5C");
+      expect(response.request.headers.get("x-tenant-cor-primaria")).toBe("#0B39B0");
       expect(response.cookiesToSet.name).toBe("x-tenant-id");
       expect(response.cookiesToSet.value).toBe("carreiro");
 

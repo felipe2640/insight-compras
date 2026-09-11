@@ -3,21 +3,12 @@
 import React, { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ShieldCheck, Lock, User, Building2 } from "lucide-react";
-// identidade injetada pela página (server)
-import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
-
-// Identidade do cliente ativo. Sem TENANT_ATIVO configurado é a demonstração,
-// e nenhum nome de rede real aparece na tela.
-const TENANT = obterTenantAtivo();
-const tenantNome = TENANT.nome;
-const iniciais = tenantNome
-  .split(/\s+/)
-  .filter((p) => p.length > 2)
-  .slice(0, 2)
-  .map((p) => p[0]?.toUpperCase() ?? "")
-  .join("") || "ID";
+// Identidade injetada pelo servidor (layout raiz). Sem TENANT_ATIVO
+// configurado é a demonstração, e nenhum nome de rede real aparece na tela.
+import { useTenantAtivo } from "@/lib/cockpit/contexto-tenant";
 
 export function FormularioLogin() {
+  const tenantNome = useTenantAtivo().nome;
   const router = useRouter();
   const parametros = useSearchParams();
   const [usuario, setUsuario] = useState("");
@@ -109,13 +100,13 @@ export function FormularioLogin() {
       <button
         type="submit"
         disabled={carregando}
-        className="w-full rounded-lg bg-[#0F2B5C] py-2.5 font-bold text-white shadow hover:bg-[#0A1E40] transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+        className="w-full rounded-lg bg-primaria py-2.5 font-bold text-white shadow hover:bg-primaria-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
       >
         {carregando ? (
           <span>Autenticando...</span>
         ) : (
           <>
-            <ShieldCheck className="h-4 w-4 text-[#D4AF37]" />
+            <ShieldCheck className="h-4 w-4 text-secundaria" />
             <span>Entrar</span>
           </>
         )}

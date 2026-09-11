@@ -53,7 +53,7 @@ export function DataTableSection({
             return "bg-purple-50/60 border-l-4 border-purple-400 hover:bg-purple-50/90";
           }
           if (exigeMultiplo) {
-            return "bg-[#FFFFCC]/40 border-l-4 border-amber-300 hover:bg-[#FFFFCC]/70";
+            return "bg-destaqueMultiplo/40 border-l-4 border-amber-300 hover:bg-destaqueMultiplo/70";
           }
           return undefined;
         }}

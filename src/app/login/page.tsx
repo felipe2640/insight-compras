@@ -18,7 +18,16 @@ import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 export const dynamic = "force-dynamic";
 
 export default function PaginaLogin() {
-  const modoDemonstracao = idProvedorConfigurado() === "demo";
+  /**
+   * A tabela de contas e senhas só aparece FORA de produção.
+   *
+   * Ela existe para quem está desenvolvendo ou demonstrando. Se um deploy de
+   * cliente subir sem o banco de autenticação, o provedor cai em "demo" — e
+   * antes disto a tela de entrada publicava usuário e senha de acesso total
+   * para quem chegasse na URL.
+   */
+  const modoDemonstracao =
+    idProvedorConfigurado() === "demo" && process.env.NODE_ENV !== "production";
   const senhaDemo = process.env.DEMO_SENHA ?? "demo";
   const tenant = obterTenantAtivo();
 
