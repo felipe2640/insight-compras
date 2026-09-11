@@ -423,7 +423,7 @@ export function DialogExportacao({
             type="button"
             onClick={exportar}
             disabled={gerando}
-            className="flex items-center gap-2 rounded bg-[#0F2B5C] px-4 py-2 text-sm font-bold text-white hover:bg-[#0A1E40] disabled:opacity-60"
+            className="flex items-center gap-2 rounded bg-primaria px-4 py-2 text-sm font-bold text-white hover:bg-primaria-hover disabled:opacity-60"
           >
             {gerando ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
             {gerando ? "Gerando…" : `Exportar ${ROTULO_FORMATO[formato].nome}`}

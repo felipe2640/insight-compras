@@ -132,10 +132,10 @@ export function AppSidebar({ className, usuario }: { className?: string; usuario
       )}
     >
       {/* 1. Header com Marca do Tenant */}
-      <div className="flex h-14 items-center justify-between border-b border-slate-200 px-3 bg-[#0F2B5C] text-white dark:border-slate-800">
+      <div className="flex h-14 items-center justify-between border-b border-slate-200 px-3 bg-primaria text-white dark:border-slate-800">
         {!colapsado ? (
           <div className="flex items-center gap-2 truncate">
-            <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-[#D4AF37] animate-pulse" />
+            <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-secundaria animate-pulse" />
             <div className="flex flex-col truncate">
               <span className="text-xs font-black tracking-tight leading-none text-white">
                 {nomeTenant}
@@ -146,7 +146,7 @@ export function AppSidebar({ className, usuario }: { className?: string; usuario
             </div>
           </div>
         ) : (
-          <div className="mx-auto flex h-8 w-8 items-center justify-center rounded bg-[#D4AF37] text-slate-950 font-black text-xs">
+          <div className="mx-auto flex h-8 w-8 items-center justify-center rounded bg-secundaria text-slate-950 font-black text-xs">
             RC
           </div>
         )}

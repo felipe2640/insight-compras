@@ -11,7 +11,7 @@ const config: Config = {
    *
    * Com "class", o tema escuro só existe se alguém marcar `.dark` no <html>,
    * o que nada faz hoje. O cockpit é uma ferramenta de trabalho diurno e a
-   * paleta institucional (azul/dourado Carreiro) foi desenhada sobre fundo claro.
+   * paleta institucional do cliente foi desenhada sobre fundo claro.
    */
   darkMode: "class",
   content: [
@@ -22,12 +22,19 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        /**
+         * As duas cores da marca vêm pelos canais RGB, e não pelo hex, para
+         * que o Tailwind consiga aplicar opacidade: `border-secundaria/30`,
+         * `bg-primaria/10`. Com `var(--cor-primaria)` cru, toda classe com
+         * barra de opacidade sobre a cor do cliente deixava de pintar — que é
+         * por onde os hexadecimais escritos à mão tinham entrado.
+         */
         primaria: {
-          DEFAULT: "var(--cor-primaria)",
+          DEFAULT: "rgb(var(--cor-primaria-rgb) / <alpha-value>)",
           hover: "var(--cor-primaria-hover)",
         },
         secundaria: {
-          DEFAULT: "var(--cor-secundaria)",
+          DEFAULT: "rgb(var(--cor-secundaria-rgb) / <alpha-value>)",
           hover: "var(--cor-secundaria-hover)",
         },
         acento: "var(--cor-acento)",
@@ -36,7 +43,7 @@ const config: Config = {
         borda: "var(--cor-borda)",
         texto: "var(--cor-texto)",
         textoSecundario: "var(--cor-texto-secundario)",
-        destaqueMultiplo: "var(--cor-destaque-multiplo)",
+        destaqueMultiplo: "rgb(var(--cor-destaque-multiplo-rgb) / <alpha-value>)",
       },
     },
   },

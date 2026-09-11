@@ -18,12 +18,22 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
     "carreiro",
   ],
   customDomain: "compras.carreiro.com.br",
+  /**
+   * Paleta tirada do LOGOTIPO da rede, não inventada.
+   *
+   * O que havia aqui era um azul-marinho escuro com dourado — e dourado não
+   * existe na marca: o logo é um azul forte com a marca em branco. Quem visse
+   * a plataforma ao lado da fachada não reconheceria a mesma empresa.
+   *
+   * A secundária é o mesmo azul, dois passos mais claro, para detalhes e
+   * bordas sobre o azul cheio; o branco do logo entra como acento.
+   */
   cores: {
-    primaria: "#0F2B5C", // Azul Carreiro Institucional
-    primariaHover: "#0A1E40", // Azul Escurecido para Hover
-    secundaria: "#D4AF37", // Dourado Carreiro Nobre
-    secundariaHover: "#B89628", // Dourado Escurecido para Hover
-    acento: "#E6C200", // Amarelo Ouro de Acento
+    primaria: "#0B39B0", // Azul Carreiro, lido do logotipo
+    primariaHover: "#082B87", // Azul aprofundado para hover
+    secundaria: "#3B6BE0", // Azul claro de detalhe (bordas, badges)
+    secundariaHover: "#2B55C0", // Azul de detalhe em hover
+    acento: "#FFFFFF", // Branco do logotipo
     fundo: "#F8FAFC", // Slate 50 (Fundo Clean)
     card: "#FFFFFF", // Fundo Branco Puro de Cartões
     borda: "#E2E8F0", // Slate 200 (Borda Suave)

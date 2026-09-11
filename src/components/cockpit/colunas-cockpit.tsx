@@ -844,7 +844,7 @@ export function criarColunasCockpit({
                 className={cn(
                   "h-7 w-16 rounded border text-center font-mono text-xs font-semibold outline-none transition-colors focus:ring-1 focus:ring-blue-500",
                   exigeMultiplo
-                    ? "bg-[#FFFFCC] border-amber-300 text-amber-950 font-bold"
+                    ? "bg-destaqueMultiplo border-amber-300 text-amber-950 font-bold"
                     : "bg-white border-slate-300 text-slate-900 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                 )}
                 aria-label={`Quantidade de pedido para SKU ${item.codigoSku}`}

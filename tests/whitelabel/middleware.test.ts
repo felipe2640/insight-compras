@@ -132,8 +132,8 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
 
       expect(resultado.headersDownstream["x-tenant-id"]).toBe("carreiro");
       expect(resultado.headersDownstream["x-tenant-subdominio"]).toBe("carreiro.insightd.com.br");
-      expect(resultado.headersDownstream["x-tenant-cor-primaria"]).toBe("#0F2B5C");
-      expect(resultado.headersDownstream["x-tenant-cor-secundaria"]).toBe("#D4AF37");
+      expect(resultado.headersDownstream["x-tenant-cor-primaria"]).toBe("#0B39B0");
+      expect(resultado.headersDownstream["x-tenant-cor-secundaria"]).toBe("#3B6BE0");
       expect(resultado.headersDownstream["x-tenant-cor-destaque-multiplo"]).toBe("#FFFFCC");
       expect(resultado.headersDownstream["x-tenant-cor-fundo"]).toBe("#F8FAFC");
     });
@@ -155,7 +155,7 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
       const response = await middleware(mockRequest);
 
       expect(response.request.headers.get("x-tenant-id")).toBe("carreiro");
-      expect(response.request.headers.get("x-tenant-cor-primaria")).toBe("#0F2B5C");
+      expect(response.request.headers.get("x-tenant-cor-primaria")).toBe("#0B39B0");
       expect(response.cookiesToSet.name).toBe("x-tenant-id");
       expect(response.cookiesToSet.value).toBe("carreiro");
 

@@ -100,13 +100,13 @@ export function FormularioLogin() {
       <button
         type="submit"
         disabled={carregando}
-        className="w-full rounded-lg bg-[#0F2B5C] py-2.5 font-bold text-white shadow hover:bg-[#0A1E40] transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+        className="w-full rounded-lg bg-primaria py-2.5 font-bold text-white shadow hover:bg-primaria-hover transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
       >
         {carregando ? (
           <span>Autenticando...</span>
         ) : (
           <>
-            <ShieldCheck className="h-4 w-4 text-[#D4AF37]" />
+            <ShieldCheck className="h-4 w-4 text-secundaria" />
             <span>Entrar</span>
           </>
         )}

@@ -21,7 +21,7 @@ export default async function PaginaAuditoriaGestor() {
 
       <div className="flex flex-1 flex-col overflow-y-auto">
       {/* Header Institucional */}
-      <header className="bg-[#0F2B5C] text-white shadow-md border-b border-[#D4AF37]/30">
+      <header className="bg-primaria text-white shadow-md border-b border-secundaria/30">
         <div className="max-w-[1920px] mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link
@@ -30,7 +30,7 @@ export default async function PaginaAuditoriaGestor() {
             >
               ← Voltar ao Cockpit
             </Link>
-            <span className="text-sm font-black text-[#D4AF37]">
+            <span className="text-sm font-black text-secundaria">
               REDE CARREIRO AUTOPEÇAS
             </span>
             <span className="text-slate-400 text-xs">|</span>
@@ -48,7 +48,7 @@ export default async function PaginaAuditoriaGestor() {
                   : "Alerta de Adulteração na Cadeia!"}
               </span>
             </div>
-            <span className="text-xs text-[#D4AF37] font-semibold">
+            <span className="text-xs text-secundaria font-semibold">
               Powered by iNSIGHT D
             </span>
           </div>

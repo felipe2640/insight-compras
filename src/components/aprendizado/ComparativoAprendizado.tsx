@@ -268,7 +268,7 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
             <button type="button" onClick={() => void simular()} disabled={simulando} className="flex items-center gap-1.5 rounded border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 disabled:opacity-60">
               {simulando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Simular (60 dias)
             </button>
-            <button type="button" onClick={() => void publicar()} disabled={publicando || !simulacao?.proposta?.some((p) => p.aplicavel)} className="flex items-center gap-1.5 rounded bg-[#0F2B5C] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0A1E40] disabled:opacity-50">
+            <button type="button" onClick={() => void publicar()} disabled={publicando || !simulacao?.proposta?.some((p) => p.aplicavel)} className="flex items-center gap-1.5 rounded bg-primaria px-3 py-1.5 text-xs font-bold text-white hover:bg-primaria-hover disabled:opacity-50">
               {publicando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />} Publicar
             </button>
           </div>

@@ -434,11 +434,11 @@ export function CockpitPrincipal({
       {/* 2. Conteúdo Principal Rolável */}
       <div className="flex flex-1 flex-col overflow-y-auto">
         {/* Header Institucional Superior */}
-        <header className="sticky top-0 z-30 bg-[#0F2B5C] text-white shadow-md border-b border-[#D4AF37]/30">
+        <header className="sticky top-0 z-30 bg-primaria text-white shadow-md border-b border-secundaria/30">
           <div className="max-w-[1920px] mx-auto px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <span className="inline-block h-3 w-3 rounded-full bg-[#D4AF37] animate-pulse" />
+                <span className="inline-block h-3 w-3 rounded-full bg-secundaria animate-pulse" />
                 {/* Identidade do TENANT. Estava fixa no código e vazava o nome
                     do cliente para a demonstração pública. */}
                 <span className="text-base font-black tracking-tight text-white">
@@ -676,7 +676,7 @@ export function CockpitPrincipal({
                     className={cn(
                       "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors border",
                       ativo
-                        ? "bg-[#0F2B5C] text-white border-[#0F2B5C] shadow-sm"
+                        ? "bg-primaria text-white border-primaria shadow-sm"
                         : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
                     )}
                   >
