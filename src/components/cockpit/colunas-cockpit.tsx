@@ -51,7 +51,10 @@ function formatarNumero(valor: number, decimais = 0): string {
 }
 
 export function criarColunasCockpit({
-  nomeLojaFoco = "Pedro II",
+  // Rótulo neutro: quem chama sempre passa o nome vindo do cadastro do tenant.
+  // O padrão era "Pedro II" — uma loja de um cliente específico, que aparecia
+  // no cabeçalho da coluna de estoque de qualquer instalação.
+  nomeLojaFoco = "Loja Foco",
   nomeOutrasLojas = "Rede",
   onAbrirSimilares,
   onPedirCommit,
@@ -738,7 +741,7 @@ export function criarColunasCockpit({
       enableSorting: true,
     },
 
-    // 25. Est [Loja Foco] (ex: Est Pedro II / Est APT)
+    // 25. Est [Loja Foco] — o nome vem do cadastro de filiais do tenant
     {
       id: "estoqueLojaFoco",
       accessorFn: (row) => row.estoqueLojaFoco,

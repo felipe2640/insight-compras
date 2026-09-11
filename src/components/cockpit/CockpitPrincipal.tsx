@@ -143,7 +143,10 @@ export function CockpitPrincipal({
     restaurarRascunho,
     descartarRascunho,
   } = useSessionDraft({
-    tenantId: "carreiro",
+    // Do tenant, não "carreiro" fixo: a chave do rascunho no navegador era a
+    // mesma para todo cliente, e dois clientes na mesma máquina misturavam o
+    // que ainda não tinham enviado.
+    tenantId: tenantAtivo.id,
     userId: carteiraSelecionada,
     deltas,
   });

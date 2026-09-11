@@ -4,7 +4,7 @@
  * 100% em Português do Brasil (pt-BR).
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   processarRequisicaoTenant,
   sanitizarParametroTenant,
@@ -120,6 +120,47 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
       // Recuar para a DEMONSTRAÇÃO, não para um cliente: host desconhecido ou
       // hostil nunca pode acabar mostrando a operação de quem confiou os dados.
       expect(resultado.tenantId).toBe("demonstracao");
+    });
+  });
+
+  describe("0. Instalação dedicada a um cliente (TENANT_ATIVO)", () => {
+    const envOriginal = process.env.TENANT_ATIVO;
+    afterEach(() => {
+      if (envOriginal === undefined) delete process.env.TENANT_ATIVO;
+      else process.env.TENANT_ATIVO = envOriginal;
+    });
+
+    it("a variável de ambiente vence a query: ?tenant= não desvia a instalação", () => {
+      process.env.TENANT_ATIVO = "carreiro";
+      const r = processarRequisicaoTenant({
+        hostname: "compras.carreiro.com.br",
+        searchParams: new URLSearchParams("tenant=demonstracao"),
+      });
+      expect(r.tenantId).toBe("carreiro");
+      expect(r.origemResolucao).toBe("ambiente");
+    });
+
+    it("a variável de ambiente vence o cookie gravado por uma visita anterior", () => {
+      // Cenário real: alguém abriu ?tenant=demonstracao uma vez, o middleware
+      // gravou o cookie, e o navegador ficava preso no tenant errado.
+      process.env.TENANT_ATIVO = "carreiro";
+      const r = processarRequisicaoTenant({
+        hostname: "compras.carreiro.com.br",
+        searchParams: new URLSearchParams(),
+        cookies: { "x-tenant-id": "demonstracao" },
+      });
+      expect(r.tenantId).toBe("carreiro");
+      expect(r.origemResolucao).toBe("ambiente");
+    });
+
+    it("sem a variável, a instalação multi-cliente continua trocando por query", () => {
+      delete process.env.TENANT_ATIVO;
+      const r = processarRequisicaoTenant({
+        hostname: "app.insightd.com.br",
+        searchParams: new URLSearchParams("tenant=carreiro"),
+      });
+      expect(r.tenantId).toBe("carreiro");
+      expect(r.origemResolucao).toBe("query");
     });
   });
 
