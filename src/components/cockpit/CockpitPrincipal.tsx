@@ -52,7 +52,7 @@ import {
 import { DialogSimilares } from "@/components/tooltips/DialogSimilares";
 import { BannerRascunho } from "./BannerRascunho";
 import { DialogExportacao } from "./DialogExportacao";
-import { obterTenantAtivo, montarNomesFiliais } from "@/lib/cockpit/opcoes-tenant";
+import { useTenantAtivo, useNomesFiliais } from "@/lib/cockpit/contexto-tenant";
 import type { ContextoExportacao } from "@/lib/exportacao/tipos";
 import { CurvaABC } from "@core/dominio";
 import { cn } from "@/lib/utils";
@@ -110,10 +110,12 @@ export function CockpitPrincipal({
 }: CockpitPrincipalProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Identidade e cadastro do cliente ativo. Fica no topo porque a lista de
-  // lojas e a exportação dependem dele.
-  const tenantAtivo = useMemo(() => obterTenantAtivo(), []);
-  const nomesFiliaisTenant = useMemo(() => montarNomesFiliais(tenantAtivo), [tenantAtivo]);
+  // Identidade e cadastro do cliente ativo, resolvidos no SERVIDOR e entregues
+  // pelo layout raiz. Ler a variável de ambiente aqui não funcionava: no pacote
+  // do navegador ela não existe, e a tela caía na demonstração por cima de dados
+  // reais. Fica no topo porque a lista de lojas e a exportação dependem dele.
+  const tenantAtivo = useTenantAtivo();
+  const nomesFiliaisTenant = useNomesFiliais();
 
   // 0. Grade: acionáveis agora, catálogo completo em segundo plano.
   const grade = useGradeProgressiva({
@@ -625,9 +627,13 @@ export function CockpitPrincipal({
                 onChange={(e) => setLojaFocoId(Number(e.target.value))}
                 className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               >
+                {/* O nome vem do cadastro do tenant e já diz o que precisa
+                    dizer. Havia aqui um "(Matriz)" colado quando o id era 1 —
+                    que assumia matriz = loja 1 e, na Carreiro, rendia
+                    "Carreiro Pedro II (Matriz) (Matriz)". */}
                 {listaLojas.map((loja) => (
                   <option key={loja.id} value={loja.id}>
-                    {loja.nome} {loja.id === 1 ? "(Matriz)" : ""}
+                    {loja.nome}
                   </option>
                 ))}
               </select>

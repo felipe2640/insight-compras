@@ -22,18 +22,19 @@ import {
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { LinhaCockpitMatriz } from "@/tipos/cockpit";
 import { decodificarGradeTabular, PayloadGradeTabular } from "@/lib/cockpit/codificacao-tabular";
-import { montarNomesFiliais, obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
+import { useNomesFiliais } from "@/lib/cockpit/contexto-tenant";
 import { cn } from "@/lib/utils";
 
-// Do cadastro do TENANT: a tela é a mesma para todo cliente, o que muda é a
-// configuração. Importar constante de adapter aqui amarraria a interface a um
-// cliente específico.
-const LOJAS = Object.entries(montarNomesFiliais(obterTenantAtivo())).map(([id, nome]) => ({
-  id: Number(id),
-  nome,
-}));
-
 export default function PaginaTransferencias() {
+  // Do cadastro do TENANT, resolvido no servidor: a tela é a mesma para todo
+  // cliente, o que muda é a configuração. Importar constante de adapter aqui
+  // amarraria a interface a um cliente específico.
+  const nomesFiliais = useNomesFiliais();
+  const LOJAS = useMemo(
+    () => Object.entries(nomesFiliais).map(([id, nome]) => ({ id: Number(id), nome })),
+    [nomesFiliais]
+  );
+
   const [destino, setDestino] = useState(1);
   const [linhas, setLinhas] = useState<LinhaCockpitMatriz[]>([]);
   const [carregando, setCarregando] = useState(true);
