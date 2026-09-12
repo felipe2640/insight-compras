@@ -12,6 +12,7 @@ import {
   ResumoKpisAuditoria,
 } from "./tipos";
 import { supabaseConfigurado } from "@/lib/aprendizado/supabase";
+import { resolverTenantConfigurado } from "@config/tenants";
 import {
   IdProvedorAuditoria,
   ParametrosRegistroPedido,
@@ -37,8 +38,29 @@ export function idProvedorAuditoria(): IdProvedorAuditoria {
   return supabaseConfigurado() ? "supabase" : "memoria";
 }
 
+/**
+ * Registros de demonstração: só para o tenant de DEMONSTRAÇÃO.
+ *
+ * O provedor em memória é o que atende quando não há banco configurado — e
+ * isso acontece por OMISSÃO, bastando faltar a variável do Supabase no
+ * ambiente. Semeado incondicionalmente, ele enchia a instalação de um cliente
+ * REAL com registros de auditoria fabricados — numa trilha cuja promessa é ser imutável e assinada.
+ *
+ * Medido com TENANT_ATIVO=carreiro e sem Supabase: a tela trazia "Carlos
+ * Comprador" e "Ana Suprimentos" operando em "Loja Central 01" e "Filial Norte
+ * 02" — pessoas e lojas que não existem na rede — com justificativas escritas
+ * e valores em reais, e os indicadores do topo calculados em cima disso.
+ *
+ * A regra é a mesma da fonte de dados: quem declara `fonteDados: "sintetica"`
+ * recebe conteúdo sintético; cliente real começa vazio, que é a verdade.
+ */
+function deveSemearDemonstracao(): boolean {
+  return resolverTenantConfigurado().fonteDados === "sintetica";
+}
+
 let repositorioPersonalizado: RepositorioAuditoria | null = null;
 let instanciaMemoria: RepositorioAuditoriaEmMemoria | null = null;
+let memoriaSemeada: boolean | null = null;
 let instanciaSupabase: RepositorioAuditoriaSupabase | null = null;
 
 export function obterRepositorioAuditoria(): RepositorioAuditoria {
@@ -51,7 +73,12 @@ export function obterRepositorioAuditoria(): RepositorioAuditoria {
     return (instanciaSupabase ??= new RepositorioAuditoriaSupabase());
   }
 
-  return (instanciaMemoria ??= new RepositorioAuditoriaEmMemoria(true));
+  const semear = deveSemearDemonstracao();
+  if (!instanciaMemoria || memoriaSemeada !== semear) {
+    instanciaMemoria = new RepositorioAuditoriaEmMemoria(semear);
+    memoriaSemeada = semear;
+  }
+  return instanciaMemoria;
 }
 
 export function definirRepositorioAuditoria(repo: RepositorioAuditoria | null): void {
@@ -61,6 +88,7 @@ export function definirRepositorioAuditoria(repo: RepositorioAuditoria | null): 
 export function reiniciarRepositorioAuditoria(): void {
   repositorioPersonalizado = null;
   instanciaMemoria = null;
+  memoriaSemeada = null;
   instanciaSupabase = null;
 }
 

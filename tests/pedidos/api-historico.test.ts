@@ -34,9 +34,13 @@ describe("API /api/pedidos/historico — Consulta e Transição de Ciclo de Vida
 
     expect(res.status).toBe(200);
     const corpo = await res.json();
-    expect(corpo.configurado).toBe(true);
     expect(Array.isArray(corpo.pedidos)).toBe(true);
     expect(corpo.pedidos.length).toBeGreaterThanOrEqual(4);
+    // `configurado` passou a significar PERSISTIDO, não "tem o que listar".
+    // Sem banco, o histórico vive na memória e some no próximo reinício — e a
+    // tela precisa poder avisar. Antes a rota respondia sempre `true`, então o
+    // aviso que já existia na interface nunca aparecia.
+    expect(corpo.configurado).toBe(false);
   });
 
   it("GET com pedidoId deve retornar o pedido e sua lista de itens", async () => {
