@@ -164,4 +164,47 @@ describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central"
       expect(CATALOGO_TENANTS["carreiro"]).toBe(TENANT_CARREIRO);
     });
   });
+
+  describe("6. Processo de Compras e Rastreamento de Recusas (ERP Connectsoft)", () => {
+    it("deve conter configuração ativa de processo de compra", () => {
+      expect(TENANT_CARREIRO.processoCompra).toBeDefined();
+      expect(TENANT_CARREIRO.processoCompra?.habilitado).toBe(true);
+      expect(TENANT_CARREIRO.processoCompra?.tipoERP).toBe("connectsoft-shopcash");
+    });
+
+    it("deve habilitar todas as 4 etapas do ciclo de compras", () => {
+      const etapas = TENANT_CARREIRO.processoCompra?.etapas;
+      expect(etapas?.solicitacao).toBe(true);
+      expect(etapas?.cotacao).toBe(true);
+      expect(etapas?.pedido).toBe(true);
+      expect(etapas?.notaEntrada).toBe(true);
+    });
+
+    it("deve mapear corretamente as tabelas do ERP / Semantic Model", () => {
+      const tabelas = TENANT_CARREIRO.processoCompra?.tabelasERP;
+      expect(tabelas?.solicitacoes).toBe("TBL_SOLICITACOES_COMPRAS");
+      expect(tabelas?.solicitacoesEventos).toBe("TBL_SOLICITACOES_COMPRAS_EVENTOS");
+      expect(tabelas?.cotacoes).toBe("TBL_COTACAO");
+      expect(tabelas?.cotacoesItens).toBe("TBL_COTACAO_ITENS");
+      expect(tabelas?.cotacoesFornecedores).toBe("TBL_COTACAO_FORN");
+      expect(tabelas?.ligacaoPedidoSolicitacao).toBe("ITEMSPEDIDO_SOLICITACOES");
+      expect(tabelas?.pedidos).toBe("PEDIDOS");
+      expect(tabelas?.notas).toBe("NOTAS");
+    });
+
+    it("deve conter a taxonomia completa dos 9 motivos de recusa", () => {
+      const motivos = TENANT_CARREIRO.processoCompra?.motivosRecusa;
+      expect(motivos).toHaveLength(9);
+      const codigos = motivos?.map((m) => m.codigo);
+      expect(codigos).toContain("PRECO_ELEVADO");
+      expect(codigos).toContain("FORNECEDOR_SEM_ESTOQUE");
+      expect(codigos).toContain("PRODUTO_FORA_DE_LINHA");
+      expect(codigos).toContain("ERRO_DE_DIGITACAO");
+      expect(codigos).toContain("DUPLICIDADE");
+      expect(codigos).toContain("CANCELADO_PELO_CLIENTE");
+      expect(codigos).toContain("ATENDIDO_POR_TRANSFERENCIA");
+      expect(codigos).toContain("ABAIXO_LOTE_MINIMO");
+      expect(codigos).toContain("MARGEM_INSUFICIENTE");
+    });
+  });
 });

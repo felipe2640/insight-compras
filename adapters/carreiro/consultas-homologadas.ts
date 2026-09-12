@@ -641,3 +641,75 @@ SUMMARIZECOLUMNS(
     "UltimoPedido", MAX(TBL_SOLICITACOES_COMPRAS_HIST[DH_CRIACAO])
 )
 `.trim();
+
+/**
+ * 8. Rastreamento de Solicitações de Compra de Balcão e Motivos de Recusa.
+ * Permite auditar demandas dos vendedores, aprovações, recusas e motivos.
+ */
+export const CONSULTA_DAX_RASTREAMENTO_SOLICITACOES = `
+EVALUATE
+SELECTCOLUMNS(
+    TBL_SOLICITACOES_COMPRAS,
+    "SolicitacaoId", TBL_SOLICITACOES_COMPRAS[ID],
+    "Codigo", TBL_SOLICITACOES_COMPRAS[CODIGO],
+    "DataCriacao", TBL_SOLICITACOES_COMPRAS[DH_CRIACAO],
+    "DataNecessidade", TBL_SOLICITACOES_COMPRAS[DH_NECESSIDADE],
+    "Solicitador", TBL_SOLICITACOES_COMPRAS[NOME_SOLICITADOR],
+    "Tipo", TBL_SOLICITACOES_COMPRAS[TIPO],
+    "Origem", TBL_SOLICITACOES_COMPRAS[ORIGEM],
+    "Status", TBL_SOLICITACOES_COMPRAS[STATUS],
+    "StatusAprovacao", TBL_SOLICITACOES_COMPRAS[STATUS_APROV],
+    "Sku", TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO],
+    "DescricaoProduto", TBL_SOLICITACOES_COMPRAS[DESCRICAO_PRODUTO],
+    "Quantidade", TBL_SOLICITACOES_COMPRAS[QTDE],
+    "Observacoes", TBL_SOLICITACOES_COMPRAS[OBSERVACOES],
+    "EmpresaId", TBL_SOLICITACOES_COMPRAS[ACODEMPRESA]
+)
+ORDER BY [DataCriacao] DESC
+`.trim();
+
+/**
+ * 9. Rastreamento de Cotações com Itens e Propostas de Fornecedores.
+ * Traz as cotações abertas e concluídas, itens cotados e fornecedores participantes.
+ */
+export const CONSULTA_DAX_RASTREAMENTO_COTACOES = `
+EVALUATE
+SUMMARIZECOLUMNS(
+    TBL_COTACAO[ROW_ID],
+    TBL_COTACAO[CODIGO],
+    TBL_COTACAO[DESCRICAO],
+    TBL_COTACAO[DATAHORA],
+    TBL_COTACAO[STATUS],
+    TBL_COTACAO[ACODEMPRESA],
+    "TotalItens", COUNTROWS(TBL_COTACAO_ITENS),
+    "TotalPropostas", COUNTROWS(TBL_COTACAO_FORN),
+    "PropostasVencedoras", CALCULATE(COUNTROWS(TBL_COTACAO_FORN), KEEPFILTERS(TBL_COTACAO_FORN[GANHADOR] = "T")),
+    "MenorValorCotado", MIN(TBL_COTACAO_FORN[VR_UNIT])
+)
+ORDER BY TBL_COTACAO[DATAHORA] DESC
+`.trim();
+
+/**
+ * 10. Rastreamento de Pedidos de Compra Formalizados no ERP.
+ * Liga os pedidos de compra (TIPO = 'C') às cotações e solicitações de origem.
+ */
+export const CONSULTA_DAX_RASTREAMENTO_PEDIDOS_COMPRA = `
+EVALUATE
+FILTER(
+    SELECTCOLUMNS(
+        PEDIDOS,
+        "PedidoId", PEDIDOS[ID],
+        "Numero", PEDIDOS[NUMERO],
+        "DataEmissao", PEDIDOS[DATAEMISSAO],
+        "FornecedorId", PEDIDOS[ACODFORNECEDOR],
+        "Tipo", PEDIDOS[TIPO],
+        "CotacaoId", PEDIDOS[COTACAO_ID],
+        "Status", PEDIDOS[STATUS],
+        "ValorTotal", PEDIDOS[VALORPEDIDO],
+        "EmpresaId", PEDIDOS[ACODEMPRESA]
+    ),
+    [Tipo] = "C"
+)
+ORDER BY [DataEmissao] DESC
+`.trim();
+

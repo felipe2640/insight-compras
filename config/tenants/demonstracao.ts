@@ -201,4 +201,54 @@ export const TENANT_DEMONSTRACAO: ConfiguracaoTenant = {
       },
     ],
   },
+
+  processoCompra: {
+    habilitado: true,
+    tipoERP: "generico",
+    etapas: {
+      solicitacao: true,
+      cotacao: true,
+      pedido: true,
+      notaEntrada: true,
+    },
+    tabelasERP: {
+      solicitacoes: "solicitacoes_compra",
+      solicitacoesEventos: "solicitacoes_eventos",
+      cotacoes: "cotacoes",
+      cotacoesItens: "cotacoes_itens",
+      cotacoesFornecedores: "cotacoes_fornecedores",
+      ligacaoPedidoSolicitacao: "pedidos_solicitacoes",
+      pedidos: "pedidos",
+      notas: "notas",
+    },
+    statusAprovacaoSolicitacao: {
+      A: "Aprovada",
+      R: "Recusada",
+      P: "Pendente",
+    },
+    statusCotacao: {
+      A: "Aberta",
+      F: "Fechada",
+    },
+    motivosRecusa: [
+      {
+        codigo: "PRECO_ELEVADO",
+        rotulo: "Preço Elevado",
+        descricao: "Preço cotado acima do mercado.",
+        categoria: "preco",
+      },
+      {
+        codigo: "SEM_ESTOQUE",
+        rotulo: "Sem Estoque",
+        descricao: "Fornecedor sem estoque no momento.",
+        categoria: "disponibilidade",
+      },
+      {
+        codigo: "CANCELADO_CLIENTE",
+        rotulo: "Cancelado pelo Cliente",
+        descricao: "Cliente desistiu da compra.",
+        categoria: "cliente",
+      },
+    ],
+  },
 };
