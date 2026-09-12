@@ -19,17 +19,18 @@ export const dynamic = "force-dynamic";
 
 export default function PaginaLogin() {
   /**
-   * A tabela de contas e senhas só aparece FORA de produção.
+   * A tabela de contas e senhas acompanha o provedor de demonstração.
    *
-   * Ela existe para quem está desenvolvendo ou demonstrando. Se um deploy de
-   * cliente subir sem o banco de autenticação, o provedor cai em "demo" — e
-   * antes disto a tela de entrada publicava usuário e senha de acesso total
-   * para quem chegasse na URL.
+   * Ela só aparece onde ele de fato autentica: no tenant de DEMONSTRAÇÃO. Na
+   * instalação de um cliente o provedor recusa, e publicar as senhas seria
+   * pior que inútil. Estava amarrada a NODE_ENV, o que escondia a tabela no
+   * mostruário publicado — e, junto com a trava do provedor, deixava o
+   * visitante diante de um login em que era impossível entrar.
    */
-  const modoDemonstracao =
-    idProvedorConfigurado() === "demo" && process.env.NODE_ENV !== "production";
-  const senhaDemo = process.env.DEMO_SENHA ?? "demo";
   const tenant = obterTenantAtivo();
+  const modoDemonstracao =
+    idProvedorConfigurado() === "demo" && tenant.fonteDados === "sintetica";
+  const senhaDemo = process.env.DEMO_SENHA ?? "demo";
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-100 p-4">

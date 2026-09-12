@@ -136,21 +136,26 @@ export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao, Administr
 
   async entrar(credenciais: CredenciaisLogin): Promise<SessaoAutenticada> {
     /**
-     * Em produção, este provedor NÃO autentica ninguém.
+     * Contas de demonstração só entram no tenant de DEMONSTRAÇÃO.
      *
-     * A seleção de provedor cai em "demo" quando não há banco de autenticação
-     * configurado — e isso acontece por OMISSÃO: basta a variável do Supabase
-     * faltar no ambiente. O deploy de um cliente subia então com contas
-     * internas de senha "demo", uma delas ADMIN, para quem chegasse na URL.
+     * O risco real nunca foi "produção": era a instalação de um CLIENTE subir
+     * com contas internas de senha "demo", uma delas ADMIN, para quem chegasse
+     * na URL — e isso acontece por OMISSÃO, bastando faltar a variável do
+     * Supabase no ambiente, porque a seleção de provedor cai em "demo" sozinha.
      *
-     * Falhar aqui torna o erro visível no primeiro login em vez de deixar a
-     * porta encostada. A correção é configurar o provedor de verdade, não
-     * remover esta guarda.
+     * Amarrar a trava em NODE_ENV pegava junto o que ela não devia pegar: o
+     * mostruário publicado, cujo propósito é justamente deixar qualquer um
+     * entrar e olhar. Medido no deploy: a plataforma subia em "Rede
+     * Demonstração", com dado sintético e nome de rede nenhum, e ainda assim
+     * recusava o login — ninguém conseguia ver a demonstração.
+     *
+     * Quem decide é o mesmo critério de todo o resto: a `fonteDados` do tenant.
+     * Sintética, entra; cliente real, não entra — em produção ou fora dela.
      */
-    if (process.env.NODE_ENV === "production") {
+    if (resolverTenantConfigurado().fonteDados !== "sintetica") {
       throw new ErroProvedorIndisponivel(
         "demo",
-        "contas de demonstração não entram em produção; configure SUPABASE_URL e SUPABASE_ANON_KEY."
+        "contas de demonstração não entram na instalação de um cliente; configure SUPABASE_URL e SUPABASE_ANON_KEY."
       );
     }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   montarUsuarioAutenticado,
   normalizarFornecedores,
@@ -296,6 +296,38 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
     // Enviou DELETE para o ID da conta órfã
     const deleteChamada = chamadas.find((c) => c.init.method === "DELETE");
     expect(deleteChamada?.url).toContain("admin/users/uuid-orfao");
+  });
+});
+
+describe("contas de demonstração só valem no tenant de DEMONSTRAÇÃO", () => {
+  const envOriginal = { ...process.env };
+  afterEach(() => {
+    process.env = { ...envOriginal };
+  });
+
+  it("entra no mostruário, esteja em produção ou não", async () => {
+    delete process.env.TENANT_ATIVO;
+    process.env.NODE_ENV = "production";
+    const sessao = await new ProvedorAutenticacaoDemo().entrar({
+      usuario: "gestor",
+      senha: "demo",
+      tenantId: "demonstracao",
+    });
+    expect(sessao.usuario.role).toBe("GESTOR");
+  });
+
+  it("NÃO entra na instalação de um cliente, mesmo fora de produção", async () => {
+    // O risco nunca foi "produção": era a instalação de um CLIENTE subir com
+    // contas internas de senha "demo" porque a variável do Supabase faltou.
+    process.env.TENANT_ATIVO = "carreiro";
+    process.env.NODE_ENV = "development";
+    await expect(
+      new ProvedorAutenticacaoDemo().entrar({
+        usuario: "gestor",
+        senha: "demo",
+        tenantId: "carreiro",
+      })
+    ).rejects.toThrow(/não entram na instalação de um cliente/);
   });
 });
 
