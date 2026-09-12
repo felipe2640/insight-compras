@@ -4,7 +4,7 @@
  * Requisitos: ORIGINAL_REQUEST R1 & PROJECT.md
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { ClienteDaxPowerBI } from "@adapters/carreiro/cliente-dax";
 import { AdaptadorInventarioCarreiro } from "@adapters/carreiro/adaptador-carreiro";
 import { AdaptadorInventarioMock } from "@adapters/mock/adaptador-mock";
@@ -206,6 +206,28 @@ describe("Adaptador Carreiro & Cliente DAX REST API (Marco 2)", () => {
     it("deve retornar AdaptadorInventarioMock quando solicitado explicitamente", () => {
       const adapter = obterAdaptadorInventario({ tipo: "MOCK" });
       expect(adapter).toBeInstanceOf(AdaptadorInventarioMock);
+    });
+
+    describe("modo AUTO: quem decide a fonte é o tenant, não o ambiente", () => {
+      const envOriginal = { ...process.env };
+      afterEach(() => {
+        process.env = { ...envOriginal };
+      });
+
+      it("tenant de demonstração NUNCA toca o Power BI, mesmo com credenciais no ambiente", () => {
+        // O mostruário existe para não expor cliente nenhum. Antes, bastava o
+        // ambiente ter as credenciais para ele servir o estoque real da rede
+        // sob nomes de loja sintéticos.
+        delete process.env.TENANT_ATIVO;
+        delete process.env.USE_MOCK_ADAPTER;
+        process.env.POWERBI_TENANT_ID = "tenant-teste";
+        process.env.POWERBI_CLIENT_ID = "client-teste";
+        process.env.POWERBI_CLIENT_SECRET = "segredo-teste";
+        process.env.POWERBI_WORKSPACE_ID = "workspace-teste";
+        process.env.POWERBI_DATASET_ID = "dataset-teste";
+
+        expect(obterAdaptadorInventario({ tipo: "AUTO" })).toBeInstanceOf(AdaptadorInventarioMock);
+      });
     });
 
     it("deve retornar AdaptadorInventarioCarreiro quando tipo for CARREIRO", () => {

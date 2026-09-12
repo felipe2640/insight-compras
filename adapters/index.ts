@@ -13,6 +13,7 @@ import { ClienteDaxPowerBI } from "./carreiro/cliente-dax";
 import { AdaptadorInventarioMock } from "./mock/adaptador-mock";
 import { OpcoesGeradorSintetico } from "./mock/gerador-sintetico";
 import { localizarDiretorioSnapshot } from "./carreiro/carregador-snapshot-local";
+import { resolverTenantConfigurado } from "@config/tenants";
 
 export * from "./AdaptadorInventario";
 export * from "./carreiro/adaptador-carreiro";
@@ -41,10 +42,17 @@ let instanciaCarreiroSingleton: AdaptadorInventarioCarreiro | null = null;
 /**
  * Fábrica canônica para obtenção do adaptador de inventário adequado ao ambiente.
  *
- * Modo AUTO (padrão):
- * - Se as credenciais do Power BI Fabric estiverem ativas, retorna o Adaptador Carreiro (DAX).
- * - Se um diretório de snapshot for explicitamente informado, retorna o Adaptador Carreiro (Snapshot).
- * - Caso contrário, faz fallback gracioso para o Adaptador Mock sintético de alta velocidade.
+ * Modo AUTO (padrão): quem decide é o TENANT, pela sua `fonteDados`.
+ *
+ * Antes decidia o ambiente: havendo credenciais de Power BI, devolvia o
+ * adaptador da Carreiro — com os GUIDs e os nomes CADEMP dela — para qualquer
+ * tenant. O ambiente de DEMONSTRAÇÃO, cuja razão de existir é não expor
+ * cliente nenhum, servia o estoque real da rede sob nomes sintéticos assim que
+ * as credenciais estivessem no ambiente. E o segundo cliente herdaria o
+ * mapeamento do primeiro, calado.
+ *
+ * Declarada "sintetica", a fonte não toca a nuvem de ninguém, tenha o ambiente
+ * as credenciais que tiver.
  */
 export function obterAdaptadorInventario(
   opcoes: OpcoesFabricaAdaptador = {}
@@ -65,7 +73,14 @@ export function obterAdaptadorInventario(
     return instanciaCarreiroSingleton;
   }
 
-  // Modo AUTO: Detecção dinâmica de credenciais ativas do Power BI Fabric
+  // Modo AUTO: a fonte declarada pelo tenant manda.
+  if (resolverTenantConfigurado().fonteDados === "sintetica") {
+    if (!instanciaMockSingleton || opcoes.mock) {
+      instanciaMockSingleton = new AdaptadorInventarioMock(opcoes.mock);
+    }
+    return instanciaMockSingleton;
+  }
+
   const clienteDax = new ClienteDaxPowerBI(opcoes.carreiro?.configuracaoDax);
   if (clienteDax.possuiConfiguracaoAtiva() || opcoes.carreiro?.diretorioSnapshot) {
     if (!instanciaCarreiroSingleton || opcoes.carreiro) {

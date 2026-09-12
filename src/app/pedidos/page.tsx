@@ -189,9 +189,9 @@ export default function PaginaPedidos() {
     <div className="flex h-screen overflow-hidden bg-slate-100">
       <AppSidebar />
       <main className="flex flex-1 flex-col overflow-y-auto">
-        <header className="sticky top-0 z-30 border-b border-[#D4AF37]/30 bg-[#0F2B5C] px-4 py-2.5 text-white shadow-md">
+        <header className="sticky top-0 z-30 border-b border-secundaria/30 bg-primaria px-4 py-2.5 text-white shadow-md">
           <h1 className="flex items-center gap-2 text-sm font-semibold">
-            <PackageCheck className="h-4 w-4 text-[#D4AF37]" />
+            <PackageCheck className="h-4 w-4 text-secundaria" />
             Ciclo de Vida de Pedidos
           </h1>
           <p className="text-xs text-white/70">
@@ -470,7 +470,7 @@ export default function PaginaPedidos() {
                               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                                 <div className="mb-3 flex items-center justify-between">
                                   <h3 className="font-bold text-slate-800 text-xs flex items-center gap-2">
-                                    <PackageCheck className="h-4 w-4 text-[#0F2B5C]" />
+                                    <PackageCheck className="h-4 w-4 text-primaria" />
                                     Trilha do Ciclo de Vida — Pedido #{p.id}
                                   </h3>
                                   <span className="text-[11px] text-slate-400">

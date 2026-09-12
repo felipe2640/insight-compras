@@ -26,12 +26,19 @@ describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central"
       expect(TENANT_CARREIRO.customDomain).toBe("compras.carreiro.com.br");
     });
 
-    it("deve possuir a paleta de cores institucional com Azul e Dourado Carreiro", () => {
-      expect(TENANT_CARREIRO.cores.primaria).toBe("#0F2B5C"); // Azul Carreiro
-      expect(TENANT_CARREIRO.cores.secundaria).toBe("#D4AF37"); // Dourado Carreiro
+    it("deve possuir a paleta tirada do logotipo: azul Carreiro e branco", () => {
+      expect(TENANT_CARREIRO.cores.primaria).toBe("#0B39B0"); // Azul do logotipo
+      expect(TENANT_CARREIRO.cores.secundaria).toBe("#3B6BE0"); // Azul claro de detalhe
+      expect(TENANT_CARREIRO.cores.acento).toBe("#FFFFFF"); // Branco do logotipo
       expect(TENANT_CARREIRO.cores.fundoDestaqueMultiplo).toBe("#FFFFCC"); // Amarelo Pastel Cockpit
-      expect(TENANT_CARREIRO.cores.primariaHover).toBe("#0A1E40");
-      expect(TENANT_CARREIRO.cores.secundariaHover).toBe("#B89628");
+      expect(TENANT_CARREIRO.cores.primariaHover).toBe("#082B87");
+      expect(TENANT_CARREIRO.cores.secundariaHover).toBe("#2B55C0");
+    });
+
+    it("não deve conter dourado: a marca da rede é azul e branca", () => {
+      const paleta = Object.values(TENANT_CARREIRO.cores).map((c) => c.toUpperCase());
+      expect(paleta).not.toContain("#D4AF37");
+      expect(paleta).not.toContain("#E6C200");
     });
 
     it("deve conter identidade visual e assinatura Powered by iNSIGHT D", () => {
@@ -46,17 +53,20 @@ describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central"
 
   describe("2. Conversão Hexadecimal para RGB", () => {
     it("deve converter cores hexadecimais para canais numéricos e string CSS", () => {
-      const azul = hexParaRgb("#0F2B5C");
-      expect(azul.r).toBe(15);
-      expect(azul.g).toBe(43);
-      expect(azul.b).toBe(92);
-      expect(azul.cssRgb).toBe("15, 43, 92");
+      const azul = hexParaRgb("#0B39B0");
+      expect(azul.r).toBe(11);
+      expect(azul.g).toBe(57);
+      expect(azul.b).toBe(176);
+      // Separado por ESPAÇO: é o que `rgb(var(--x) / <alpha-value>)` do
+      // Tailwind consome. Com vírgula, toda classe com opacidade sobre a cor
+      // do cliente deixa de pintar.
+      expect(azul.cssRgb).toBe("11 57 176");
 
-      const dourado = hexParaRgb("#D4AF37");
-      expect(dourado.r).toBe(212);
-      expect(dourado.g).toBe(175);
-      expect(dourado.b).toBe(55);
-      expect(dourado.cssRgb).toBe("212, 175, 55");
+      const azulClaro = hexParaRgb("#3B6BE0");
+      expect(azulClaro.r).toBe(59);
+      expect(azulClaro.g).toBe(107);
+      expect(azulClaro.b).toBe(224);
+      expect(azulClaro.cssRgb).toBe("59 107 224");
     });
 
     it("deve aceitar hex de 3 dígitos (#FFF)", () => {
@@ -64,12 +74,14 @@ describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central"
       expect(branco.r).toBe(255);
       expect(branco.g).toBe(255);
       expect(branco.b).toBe(255);
-      expect(branco.cssRgb).toBe("255, 255, 255");
+      expect(branco.cssRgb).toBe("255 255 255");
     });
 
-    it("deve retornar fallback seguro caso o valor hexadecimal seja inválido", () => {
+    it("deve retornar fallback NEUTRO caso o valor hexadecimal seja inválido", () => {
       const invalido = hexParaRgb("invalido");
-      expect(invalido.cssRgb).toBe("15, 43, 92"); // Fallback azul
+      // Ardósia da plataforma. Era o azul da Carreiro: um hex digitado errado
+      // no cadastro de QUALQUER cliente pintava a tela dele com a cor de outro.
+      expect(invalido.cssRgb).toBe("30 41 59");
     });
   });
 
@@ -105,18 +117,19 @@ describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central"
   describe("4. Geração de Variáveis CSS e Injeção Inline sem FOUC", () => {
     it("deve gerar mapa de variáveis CSS com canais hex e rgb", () => {
       const vars = gerarVariaveisCssTenant(TENANT_CARREIRO);
-      expect(vars["--cor-primaria"]).toBe("#0F2B5C");
-      expect(vars["--cor-primaria-rgb"]).toBe("15, 43, 92");
-      expect(vars["--cor-secundaria"]).toBe("#D4AF37");
-      expect(vars["--cor-secundaria-rgb"]).toBe("212, 175, 55");
+      expect(vars["--cor-primaria"]).toBe("#0B39B0");
+      expect(vars["--cor-primaria-rgb"]).toBe("11 57 176");
+      expect(vars["--cor-secundaria"]).toBe("#3B6BE0");
+      expect(vars["--cor-secundaria-rgb"]).toBe("59 107 224");
+      expect(vars["--cor-destaque-multiplo-rgb"]).toBe("255 255 204");
       expect(vars["--cor-destaque-multiplo"]).toBe("#FFFFCC");
       expect(vars["--cor-fundo"]).toBe("#F8FAFC");
     });
 
     it("deve formatar string CSS inline válida para o <style> do SSR", () => {
       const cssString = gerarStringCssVarsInline(TENANT_CARREIRO);
-      expect(cssString).toContain("--cor-primaria: #0F2B5C;");
-      expect(cssString).toContain("--cor-secundaria: #D4AF37;");
+      expect(cssString).toContain("--cor-primaria: #0B39B0;");
+      expect(cssString).toContain("--cor-secundaria: #3B6BE0;");
       expect(cssString).toContain("--cor-destaque-multiplo: #FFFFCC;");
     });
   });

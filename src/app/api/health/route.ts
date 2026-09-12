@@ -7,6 +7,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const adaptador = obterAdaptadorInventario();
   const saudeConexao = await adaptador.verificarSaudeConexao();
+  // Qual cliente ESTA instalação atende. Era "carreiro" fixo, numa rota
+  // pública: a sonda de saúde de qualquer deploy anunciava o nome alheio.
   const tenant = resolverTenantConfigurado();
 
   return NextResponse.json({

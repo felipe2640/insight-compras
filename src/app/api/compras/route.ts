@@ -82,9 +82,19 @@ export async function GET(request: NextRequest) {
       filialId,
     });
 
+    /**
+     * Troca de fonte de dados pela URL: só FORA de produção.
+     *
+     * `?provedor=MOCK` fazia qualquer usuário autenticado trocar o estoque real
+     * pelo gerador sintético de 25.000 SKUs — e a tela não avisa em nada que os
+     * números deixaram de ser os da rede. Serve para desenvolvimento e teste;
+     * na mão do cliente é uma forma silenciosa de decidir compra sobre número
+     * inventado.
+     */
     const provedorQuery = searchParams.get("provedor")?.toUpperCase();
+    const podeTrocarProvedor = process.env.NODE_ENV !== "production";
     const tipoProvedor =
-      provedorQuery === "CARREIRO" || provedorQuery === "MOCK"
+      podeTrocarProvedor && (provedorQuery === "CARREIRO" || provedorQuery === "MOCK")
         ? provedorQuery
         : undefined;
 

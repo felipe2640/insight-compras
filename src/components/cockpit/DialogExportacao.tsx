@@ -1003,13 +1003,12 @@ export function DialogExportacao({
               type="button"
               onClick={exportar}
               disabled={gerando}
-              className="flex items-center gap-2 rounded-lg bg-[#0F2B5C] px-4 py-2 text-xs font-bold text-white hover:bg-[#0A1E40] disabled:opacity-60 shadow-sm"
-              style={{ backgroundColor: "var(--cor-primaria)" }}
+              className="flex items-center gap-2 rounded-lg bg-primaria px-4 py-2 text-xs font-bold text-white hover:bg-primaria-hover disabled:opacity-60 shadow-sm"
             >
               {gerando ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <FileDown className="h-4 w-4" style={{ color: "var(--cor-secundaria)" }} />
+                <FileDown className="h-4 w-4 text-secundaria" />
               )}
               {gerando ? "Gerando Arquivo…" : `Exportar ${ROTULO_FORMATO[formato].nome}`}
             </button>

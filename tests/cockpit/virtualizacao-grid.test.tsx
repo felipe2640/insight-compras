@@ -4,6 +4,19 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { CockpitPrincipal, criarColunasCockpit } from "@/components/cockpit";
 import { LinhaCockpitMatriz } from "@/tipos/cockpit";
+import { ProvedorTenant } from "@/lib/cockpit/contexto-tenant";
+import { resolverTenantConfigurado } from "@config/tenants";
+
+const tenantConfigurado = resolverTenantConfigurado();
+const { parametrosMotor: _pm, ...tenantClienteTeste } = tenantConfigurado;
+
+function renderComTenant(ui: React.ReactElement) {
+  return render(
+    <ProvedorTenant tenant={tenantClienteTeste}>
+      {ui}
+    </ProvedorTenant>
+  );
+}
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -166,7 +179,7 @@ describe("Cockpit — Virtualização da Grade Viva (CockpitPrincipal & colunas-
   it("deve renderizar cabeçalhos e dados na grade viva CockpitPrincipal", () => {
     const dados = gerarLinhasTeste(5);
 
-    render(
+    renderComTenant(
       <CockpitPrincipal
         itensIniciais={dados}
       />
@@ -191,7 +204,7 @@ describe("Cockpit — Virtualização da Grade Viva (CockpitPrincipal & colunas-
   it("deve abrir diálogo de similares ao clicar no badge Sparkles no CockpitPrincipal", () => {
     const dados = gerarLinhasTeste(3);
 
-    render(
+    renderComTenant(
       <CockpitPrincipal
         itensIniciais={dados}
       />
@@ -210,7 +223,7 @@ describe("Cockpit — Virtualização da Grade Viva (CockpitPrincipal & colunas-
   it("deve exibir alerta de NF-e do Dia com TooltipNfeDoDia e abrir tooltip ao focar", () => {
     const dados = gerarLinhasTeste(2);
 
-    render(
+    renderComTenant(
       <CockpitPrincipal
         itensIniciais={dados}
       />
@@ -227,7 +240,7 @@ describe("Cockpit — Virtualização da Grade Viva (CockpitPrincipal & colunas-
   });
 
   it("deve exibir mensagem de estado vazio quando a lista de dados for vazia", () => {
-    render(
+    renderComTenant(
       <CockpitPrincipal
         itensIniciais={[]}
       />

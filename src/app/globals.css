@@ -3,19 +3,26 @@
 @tailwind utilities;
 
 :root {
-  --cor-primaria: #0F2B5C;
-  --cor-primaria-rgb: 15, 43, 92;
-  --cor-primaria-hover: #0A1E40;
-  --cor-secundaria: #D4AF37;
-  --cor-secundaria-rgb: 212, 175, 55;
-  --cor-secundaria-hover: #B89628;
-  --cor-acento: #E6C200;
+  /**
+   * Reserva neutra da PLATAFORMA, usada no instante anterior ao <style> que o
+   * layout injeta com as cores do tenant. Aqui ficavam o azul e o dourado da
+   * Carreiro: um cliente pintava o padrão de todos os outros, e num piscar de
+   * olhos a tela de qualquer rede aparecia com a marca alheia.
+   */
+  --cor-primaria: #1E293B;
+  --cor-primaria-rgb: 30 41 59;
+  --cor-primaria-hover: #0F172A;
+  --cor-secundaria: #0EA5E9;
+  --cor-secundaria-rgb: 14 165 233;
+  --cor-secundaria-hover: #0284C7;
+  --cor-acento: #38BDF8;
   --cor-fundo: #F8FAFC;
   --cor-card: #FFFFFF;
   --cor-borda: #E2E8F0;
   --cor-texto: #0F172A;
   --cor-texto-secundario: #475569;
   --cor-destaque-multiplo: #FFFFCC;
+  --cor-destaque-multiplo-rgb: 255 255 204;
 }
 
 body {

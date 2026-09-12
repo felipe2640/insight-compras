@@ -35,15 +35,9 @@ import {
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { LinhaCockpitMatriz } from "@/tipos/cockpit";
 import { decodificarGradeTabular, PayloadGradeTabular } from "@/lib/cockpit/codificacao-tabular";
-import { montarNomesFiliais, obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 import { TooltipTransferencia } from "@/components/tooltips/TooltipTransferencia";
+import { useNomesFiliais } from "@/lib/cockpit/contexto-tenant";
 import { cn } from "@/lib/utils";
-
-// Lista dinâmica de lojas do tenant configurado
-const LOJAS = Object.entries(montarNomesFiliais(obterTenantAtivo())).map(([id, nome]) => ({
-  id: Number(id),
-  nome,
-}));
 
 export interface ItemTransferenciaRede {
   readonly id: string;
@@ -69,8 +63,14 @@ export interface ItemTransferenciaRede {
 type ModoVisualizacao = "matriz_rede" | "por_loja";
 
 export default function PaginaTransferencias() {
+  const nomesFiliais = useNomesFiliais();
+  const LOJAS = useMemo(
+    () => Object.entries(nomesFiliais).map(([id, nome]) => ({ id: Number(id), nome })),
+    [nomesFiliais]
+  );
+
   const [modo, setModo] = useState<ModoVisualizacao>("matriz_rede");
-  const [destinoFoco, setDestinoFoco] = useState<number>(LOJAS[0]?.id ?? 1);
+  const [destinoFoco, setDestinoFoco] = useState<number>(1);
 
   // Estados de dados
   const [todasTransferencias, setTodasTransferencias] = useState<ItemTransferenciaRede[]>([]);
@@ -297,18 +297,11 @@ export default function PaginaTransferencias() {
 
       <main className="flex flex-1 flex-col overflow-y-auto">
         {/* Cabeçalho da Página */}
-        <header
-          className="sticky top-0 z-30 border-b px-6 py-3 shadow-md"
-          style={{
-            backgroundColor: "var(--cor-primaria)",
-            borderColor: "var(--cor-secundaria)",
-            color: "#FFFFFF",
-          }}
-        >
+        <header className="sticky top-0 z-30 border-b border-secundaria/30 bg-primaria px-6 py-3 text-white shadow-md">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="flex items-center gap-2 text-sm font-black">
-                <ArrowLeftRight className="h-4 w-4" style={{ color: "var(--cor-secundaria)" }} />
+                <ArrowLeftRight className="h-4 w-4 text-secundaria" />
                 Transferências Inter-Filiais &amp; Balanceamento de Rede
               </h1>
               <p className="text-xs text-white/80">

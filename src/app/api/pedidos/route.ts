@@ -57,11 +57,17 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    // O tenant vem da SESSÃO, nunca da URL.
+    //
+    // Aqui se lia `?tenantId=` com "carreiro" como padrão, e a rota não conferia
+    // a sessão: qualquer usuário autenticado — de qualquer cliente — lia a
+    // trilha de auditoria e os KPIs de outro só trocando o parâmetro. A rota
+    // irmã (/api/pedidos/historico) sempre fez assim; esta ficou para trás.
+    const usuario = await obterUsuarioDaRequisicao(request);
+    if (!usuario) return respostaNaoAutenticado();
+    const tenantId = usuario.tenantId;
+
     const searchParams = request.nextUrl.searchParams;
-    const tenantId =
-      searchParams.get("tenantId") ||
-      request.headers.get("x-tenant-id") ||
-      resolverTenantConfigurado().id;
     const filialId = searchParams.get("filialId");
     const compradorId = searchParams.get("compradorId");
 

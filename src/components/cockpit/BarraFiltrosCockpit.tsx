@@ -18,7 +18,15 @@ export interface BarraFiltrosCockpitProps {
     ruptura: number;
     zumbi: number;
   };
-  lojas?: Array<{ id: number; nome: string }>;
+  /**
+   * Lojas da rede, SEMPRE do cadastro do tenant.
+   *
+   * Aqui havia uma lista fixa como valor padrão — cinco lojas de uma rede que
+   * não é a deste cadastro (Trairi, Paraipaba, Itapipoca...). Quem esquecesse
+   * de passar a prop mostrava ao cliente as lojas de outro. Sem padrão, o
+   * compilador cobra.
+   */
+  lojas: Array<{ id: number; nome: string }>;
   lojaFocoId: number;
   onLojaFocoChange: (id: number) => void;
   onLimparFiltros?: () => void;
@@ -33,13 +41,7 @@ export function BarraFiltrosCockpit({
   totalItens,
   totalFiltrados,
   contagensStatus,
-  lojas = [
-    { id: 1, nome: "Loja 01 - Trairi (Matriz)" },
-    { id: 2, nome: "Loja 02 - Paraipaba" },
-    { id: 3, nome: "Loja 03 - Itapipoca" },
-    { id: 4, nome: "Loja 04 - Paracuru" },
-    { id: 5, nome: "Loja 05 - São Gonçalo" },
-  ],
+  lojas,
   lojaFocoId,
   onLojaFocoChange,
   onLimparFiltros,

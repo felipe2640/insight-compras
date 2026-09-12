@@ -6,6 +6,12 @@ import { BarraFiltrosCockpit, areVirtualRowPropsEqual } from "@/components/cockp
 import { VirtualRowProps } from "@/components/cockpit/VirtualRow";
 import { LinhaCockpitMatriz } from "@/tipos/cockpit";
 
+/** Lojas fictícias: a barra recebe a lista do cadastro, nunca a inventa. */
+const LOJAS_TESTE = [
+  { id: 1, nome: "Loja Matriz" },
+  { id: 2, nome: "Loja Norte" },
+];
+
 describe("Cockpit — BarraFiltrosCockpit e Memoização de Linha VirtualRow", () => {
   describe("BarraFiltrosCockpit", () => {
     it("deve renderizar campo de busca, contadores e acionar onQueryChange", () => {
@@ -16,6 +22,7 @@ describe("Cockpit — BarraFiltrosCockpit e Memoização de Linha VirtualRow", (
           onQueryChange={onQueryChange}
           statusFiltro="ALL"
           onStatusChange={vi.fn()}
+          lojas={LOJAS_TESTE}
           totalItens={25000}
           totalFiltrados={350}
           lojaFocoId={1}
@@ -41,6 +48,7 @@ describe("Cockpit — BarraFiltrosCockpit e Memoização de Linha VirtualRow", (
           onQueryChange={vi.fn()}
           statusFiltro="ALL"
           onStatusChange={onStatusChange}
+          lojas={LOJAS_TESTE}
           totalItens={100}
           totalFiltrados={100}
           contagensStatus={{
@@ -80,6 +88,7 @@ describe("Cockpit — BarraFiltrosCockpit e Memoização de Linha VirtualRow", (
           onQueryChange={vi.fn()}
           statusFiltro="ALL"
           onStatusChange={vi.fn()}
+          lojas={LOJAS_TESTE}
           totalItens={100}
           totalFiltrados={100}
           lojaFocoId={1}
