@@ -29,6 +29,7 @@ import {
 import { LinhaCockpitMatriz, ItemDeltaRascunho, LinhaCockpitCompras } from "@/tipos/cockpit";
 import { useFiltrosCockpit } from "@/hooks/useFiltrosCockpit";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
+import { useSession } from "@/hooks/useSession";
 import { AppSidebar, UsuarioSidebar } from "@/components/layout/app-sidebar";
 import { PayloadGradeTabular, PAYLOAD_TABULAR_VAZIO } from "@/lib/cockpit/codificacao-tabular";
 import { funcaoFiltroColuna } from "@/lib/cockpit/filtro-tanstack";
@@ -57,6 +58,15 @@ import type { ContextoExportacao } from "@/lib/exportacao/tipos";
 import { CurvaABC } from "@core/dominio";
 import { cn } from "@/lib/utils";
 
+export interface UsuarioSessaoCockpit {
+  readonly id?: string;
+  readonly nome?: string;
+  readonly usuario?: string;
+  readonly papel?: "COMPRADOR" | "GESTOR" | "ADMIN";
+  readonly papelRotulo?: string;
+  readonly allowedSupplierIds?: readonly number[] | null;
+}
+
 export interface CockpitPrincipalProps {
   /**
    * Linhas já prontas. Caminho direto, usado em teste e em telas que não fazem
@@ -78,7 +88,7 @@ export interface CockpitPrincipalProps {
   fornecedoresPermitidosInicial?: readonly number[] | null;
   filialFocoIdInicial?: number;
   /** Sessão resolvida no servidor: evita o rodapé "vazio" enquanto a página hidrata. */
-  usuarioSessao?: UsuarioSidebar | null;
+  usuarioSessao?: UsuarioSessaoCockpit | null;
 }
 
 const CONTAGENS_VAZIAS: ContagensStatusGrade = {
@@ -116,14 +126,37 @@ export function CockpitPrincipal({
   const tenantAtivo = useTenantAtivo();
   const nomesFiliaisTenant = useNomesFiliais();
 
+  // Sessão real do usuário autenticado (RBAC)
+  const { usuario: sessao } = useSession(usuarioSessao);
+
+  // Identidade e alçada de verdade (RBAC):
+  // Lê allowedSupplierIds da sessão real do usuário autenticado.
+  // Gestor/Admin: null (irrestrito). Comprador: carteira atribuída (ou [] -> falha fechada).
+  const papelAtivo = sessao?.papel ?? usuarioSessao?.papel;
+  const ehComprador = papelAtivo === "COMPRADOR";
+
+  const fornecedoresAtivos = useMemo<readonly number[] | null>(() => {
+    if (sessao) {
+      return sessao.allowedSupplierIds ?? (ehComprador ? [] : null);
+    }
+    if (usuarioSessao?.allowedSupplierIds !== undefined) {
+      return usuarioSessao.allowedSupplierIds ?? (ehComprador ? [] : null);
+    }
+    return fornecedoresPermitidosInicial ?? (ehComprador ? [] : null);
+  }, [sessao, usuarioSessao, fornecedoresPermitidosInicial, ehComprador]);
+
+  // Falha fechada: comprador sem carteira (allowedSupplierIds: [] ou sem fornecedores atribuídos)
+  // enxerga zero fornecedor (grade vazia com mensagem amigável), e NÃO o catálogo todo.
+  const ehCompradorSemCarteira = ehComprador && (fornecedoresAtivos === null || fornecedoresAtivos.length === 0);
+
   // 0. Grade: acionáveis agora, catálogo completo em segundo plano.
   const grade = useGradeProgressiva({
     gradeInicial: gradeInicial ?? PAYLOAD_TABULAR_VAZIO,
     contagensCatalogo: contagensCatalogo ?? CONTAGENS_VAZIAS,
     filialId: filialFocoIdInicial,
-    automatico: gradeInicial !== undefined,
+    automatico: gradeInicial !== undefined && !ehCompradorSemCarteira,
   });
-  const linhasBase = itensIniciais ?? grade.itens;
+  const linhasBase = ehCompradorSemCarteira ? [] : (itensIniciais ?? grade.itens);
 
   /**
    * 1. Carteira — a do usuário LOGADO, e mais nenhuma.
@@ -139,16 +172,18 @@ export function CockpitPrincipal({
    * comprador — depende do cadastro real, que existe em /api/admin/usuarios e
    * ainda não foi ligado aqui.
    */
-  const fornecedoresAtivos = fornecedoresPermitidosInicial;
-  const carteiraIrrestrita = fornecedoresPermitidosInicial === null;
+  const carteiraIrrestrita = fornecedoresAtivos === null;
   const rotuloCarteira = carteiraIrrestrita
     ? "Rede completa"
-    : `Minha carteira · ${fornecedoresPermitidosInicial?.length ?? 0} fornecedor(es)`;
+    : ehCompradorSemCarteira
+      ? "Sem fornecedores (bloqueada)"
+      : `Minha carteira · ${fornecedoresAtivos?.length ?? 0} fornecedor(es)`;
 
   // 2. Estado de Deltas / Ajustes do Comprador
   const [deltas, setDeltas] = useState<Record<string, ItemDeltaRascunho>>({});
 
-  // 3. Hook de Rascunho de Sessão em LocalStorage com Debounce
+  // 3. Hook de Rascunho de Sessão em LocalStorage com Debounce indexado pela sessão real
+  const userIdSessao = sessao?.id ?? usuarioSessao?.id ?? sessao?.usuario ?? "comprador";
   const {
     draftAvailable,
     isSaving,
@@ -159,7 +194,7 @@ export function CockpitPrincipal({
     // mesma para todo cliente, e dois clientes na mesma máquina misturavam o
     // que ainda não tinham enviado.
     tenantId: tenantAtivo.id,
-    userId: usuarioSessao?.nome ?? "anonimo",
+    userId: userIdSessao,
     deltas,
   });
 
@@ -220,10 +255,10 @@ export function CockpitPrincipal({
     limparFiltros,
     isPending,
   } = useFiltrosCockpit({
-    itens: itensComOverrides,
+    itens: ehCompradorSemCarteira ? [] : itensComOverrides,
     fornecedoresPermitidos: fornecedoresAtivos,
     lojaFocoIdInicial: filialFocoIdInicial,
-    contagensCatalogo: gradeInicial ? grade.contagens : undefined,
+    contagensCatalogo: gradeInicial ? (ehCompradorSemCarteira ? CONTAGENS_VAZIAS : grade.contagens) : undefined,
   });
 
   // 6. Callbacks de Ajuste de Pedido e Transferência
@@ -259,6 +294,18 @@ export function CockpitPrincipal({
 
   // 7. KPIs Consolidados do Cabeçalho
   const kpis = useMemo(() => {
+    if (ehCompradorSemCarteira) {
+      return {
+        totalSkus: 0,
+        pecasTotaisSugeridas: 0,
+        valorTotalSugerido: 0,
+        totalRupturas: 0,
+        rupturaMedida: false,
+        totalTransferencias: 0,
+        totalZumbis: 0,
+      };
+    }
+
     let valorTotalSugerido = 0;
     let pecasTotaisSugeridas = 0;
     let totalRupturas = 0;
@@ -304,7 +351,7 @@ export function CockpitPrincipal({
       totalTransferencias,
       totalZumbis,
     };
-  }, [itensComOverrides, gradeInicial, grade.contagens.total]);
+  }, [itensComOverrides, gradeInicial, grade.contagens.total, ehCompradorSemCarteira]);
 
   // 8. Lista de Lojas — do cadastro do TENANT, nunca de um adapter de cliente.
   // A interface é a mesma para todo mundo; quem muda é a configuração.
@@ -434,7 +481,13 @@ export function CockpitPrincipal({
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
       {/* 1. Menu Lateral Retrátil com Navegação e Configurações */}
-      <AppSidebar usuario={usuarioSessao} />
+      <AppSidebar
+        usuario={
+          usuarioSessao?.nome && usuarioSessao?.papelRotulo
+            ? { nome: usuarioSessao.nome, papelRotulo: usuarioSessao.papelRotulo }
+            : null
+        }
+      />
 
       <DialogExportacao
         aberto={dialogExportacaoAberto}
@@ -468,7 +521,7 @@ export function CockpitPrincipal({
 
             {/* Carteira do usuário da sessão — leitura, não escolha. */}
             <div className="flex items-center flex-wrap gap-2 text-xs">
-              <div className="flex items-center bg-white/10 rounded px-2.5 py-1 border border-white/20">
+              <div className="flex items-center bg-white/10 rounded px-2.5 py-1 border border-white/20 text-white">
                 <span className="text-slate-300 mr-2 font-medium">Carteira:</span>
                 <span className="font-semibold text-white">{rotuloCarteira}</span>
               </div>
@@ -500,6 +553,22 @@ export function CockpitPrincipal({
             </div>
           </div>
         </header>
+
+        {/* Alerta de Falha Fechada para Comprador sem Carteira */}
+        {ehCompradorSemCarteira && (
+          <div className="max-w-[1920px] mx-auto px-4 pt-3 w-full">
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm flex items-start gap-3">
+              <ShieldCheck className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-bold text-sm text-amber-900">Nenhum fornecedor vinculado à sua carteira</h3>
+                <p className="text-xs text-amber-800 mt-1">
+                  Sua conta de comprador está sem fornecedores associados à sua carteira homologada (falha fechada por segurança).
+                  Para visualizar produtos no Cockpit, solicite a um administrador a liberação da sua carteira em <strong>Configurações &gt; Usuários</strong>.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Banner de Rascunho se Houver Dados Locais */}
         {draftAvailable && (
@@ -752,8 +821,13 @@ export function CockpitPrincipal({
           <DataTableSection
             table={table}
             filteredCount={itensFiltrados.length}
-            totalCount={itensComOverrides.length}
+            totalCount={ehCompradorSemCarteira ? 0 : itensComOverrides.length}
             rowHeight={rowHeight}
+            emptyMessage={
+              ehCompradorSemCarteira
+                ? "Sua conta de comprador não possui fornecedores homologados na carteira. Solicite a liberação da sua alçada ao administrador."
+                : "Nenhum produto corresponde aos filtros selecionados."
+            }
             className="flex-1 min-h-[500px]"
           />
         </main>

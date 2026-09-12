@@ -13,7 +13,7 @@ import {
   RespostaCargaInventario,
 } from "../AdaptadorInventario";
 import { EstoqueFilial } from "@core/dominio";
-import { ClienteDaxPowerBI, ConfiguracaoClienteDax } from "./cliente-dax";
+import { ClienteDaxPowerBI, ConfiguracaoClienteDax, normalizarLinhaDax } from "./cliente-dax";
 import { GerenciadorCacheResiliente } from "./cache-resiliente";
 import {
   CONSULTA_DAX_FRESCOR,
@@ -39,6 +39,7 @@ import {
   mapearSimilaresDax,
   aplicarRupturaReconstruida,
   aplicarUltimoPedido,
+  extrairIdProduto,
 } from "./mapeador-dax";
 import {
   carregarSnapshotCarreiroLocal,
@@ -168,8 +169,20 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             }),
           ]);
 
+          // Constrói mapa de lotes detectados por histograma a partir de linhasHistorico (precedência ERP > Histograma > Vocabulário)
+          const lotesPorProdutoId = new Map<number, number>();
+          for (const linhaBruta of linhasHistorico) {
+            const linha = normalizarLinhaDax(linhaBruta);
+            const pId = extrairIdProduto(linha.Produto ?? linha.ACODPRODUTO ?? 0);
+            const lote = Number(linha.LoteDetectado ?? linha.LoteHistograma ?? 0);
+            if (pId > 0 && lote > 1) {
+              const atual = lotesPorProdutoId.get(pId) ?? 0;
+              if (lote > atual) lotesPorProdutoId.set(pId, lote);
+            }
+          }
+
           const produtos = aplicarUltimoPedido(
-            mapearProdutosDax(linhasAtributos),
+            mapearProdutosDax(linhasAtributos, { lotesPorProdutoId }),
             linhasUltimoPedido
           );
 

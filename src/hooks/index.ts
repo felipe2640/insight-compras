@@ -9,3 +9,6 @@ export {
   filtrarLinhasCockpit,
 } from "./useFiltrosCockpit";
 export type { UseFiltrosCockpitParams } from "./useFiltrosCockpit";
+export { useSession } from "./useSession";
+export type { UsuarioSessao, UseSessionReturn } from "./useSession";
+

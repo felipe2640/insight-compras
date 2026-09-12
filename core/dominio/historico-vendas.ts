@@ -33,6 +33,8 @@ export interface HistoricoVendasFilial {
    * (180d menos 90d), que é o termo de comparação da grade.
    */
   readonly notasFiscaisVenda180dias?: number;
+  /** Notas de venda em 12 meses (critério de elegibilidade). */
+  readonly notasFiscaisVenda12meses?: number;
   readonly notasFiscaisDevolucao90dias: number;
 
   /**
@@ -46,6 +48,12 @@ export interface HistoricoVendasFilial {
    * É o piso padrão da previsão de demanda.
    */
   readonly medianaLinhaVenda: number;
+
+  /**
+   * Lote detectado estatisticamente pelo histograma de quantidades vendidas por linha.
+   */
+  readonly loteDetectadoHistograma?: number;
+
 
   /** Dias com saldo zerado na janela de 90 dias. */
   readonly diasRuptura90dias: number;

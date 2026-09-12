@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
       papel: usuario.role,
       papelRotulo: rotuloPapel(usuario.role),
       tenantId: usuario.tenantId,
+      allowedSupplierIds: usuario.allowedSupplierIds,
       carteiraRestrita: usuario.allowedSupplierIds !== null,
     },
     provedor: idProvedorConfigurado(),

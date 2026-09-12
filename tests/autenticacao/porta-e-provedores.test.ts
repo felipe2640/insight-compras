@@ -4,6 +4,7 @@ import {
   normalizarFornecedores,
   normalizarPapel,
   ErroCredenciaisInvalidas,
+  ErroUsuarioDesativado,
   normalizarNomeUsuario,
   emailInternoDoUsuario,
 } from "@/lib/autenticacao/porta";
@@ -112,6 +113,58 @@ describe("provedor demo", () => {
     relogio += 13 * 3600 * 1000;
     expect(await p.validar(sessao.token, "t")).toBeNull();
   });
+
+  it("permite alterar senha com a senha atual correta e rejeita senha fraca ou errada", async () => {
+    const p = new ProvedorAutenticacaoDemo({ senha: "senhaAntiga123", segredo: "k" });
+    await expect(p.alterarSenha("demo-gestor", "senhaErrada", "novaSenha123")).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
+    await expect(p.alterarSenha("demo-gestor", "senhaAntiga123", "curta")).rejects.toThrow(/mínimo 8 caracteres/);
+
+    await p.alterarSenha("demo-gestor", "senhaAntiga123", "novaSenhaForte123");
+    // Login com a senha antiga deve falhar
+    await expect(p.entrar({ usuario: "gestor", senha: "senhaAntiga123", tenantId: "t" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
+    // Login com a nova senha deve funcionar
+    const sessao = await p.entrar({ usuario: "gestor", senha: "novaSenhaForte123", tenantId: "t" });
+    expect(sessao.usuario.id).toBe("demo-gestor");
+  });
+
+  it("desativação de usuário impede login e invalida token existente; reativação restaura acesso", async () => {
+    const p = new ProvedorAutenticacaoDemo({ senha: "segredo123", segredo: "k" });
+    const sessaoAtiva = await p.entrar({ usuario: "comprador", senha: "segredo123", tenantId: "carreiro" });
+    expect(await p.validar(sessaoAtiva.token, "carreiro")).not.toBeNull();
+
+    // Desativa a conta
+    await p.desativarUsuario("demo-comprador");
+
+    // Novo login rejeitado por conta desativada
+    await expect(p.entrar({ usuario: "comprador", senha: "segredo123", tenantId: "carreiro" })).rejects.toBeInstanceOf(ErroUsuarioDesativado);
+
+    // Token existente agora é invalidado (revogação imediata)
+    expect(await p.validar(sessaoAtiva.token, "carreiro")).toBeNull();
+
+    // Reativa a conta
+    await p.reativarUsuario("demo-comprador");
+    const novaSessao = await p.entrar({ usuario: "comprador", senha: "segredo123", tenantId: "carreiro" });
+    expect(novaSessao.usuario.id).toBe("demo-comprador");
+  });
+
+  it("conta órfã gestor.demo não existe no provedor demo e não autentica", async () => {
+    const p = new ProvedorAutenticacaoDemo({ senha: "demo", segredo: "k" });
+    const lista = await p.listarUsuarios("carreiro");
+    expect(lista.some((u) => u.usuario === "gestor.demo")).toBe(false);
+    await expect(p.entrar({ usuario: "gestor.demo", senha: "demo", tenantId: "carreiro" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
+  });
+
+  it("listarUsuarios('demonstracao') e listarUsuarios('demo') retornam usuários demo com sucesso", async () => {
+    const p = new ProvedorAutenticacaoDemo({ senha: "demo", segredo: "k" });
+    const listaDemonstracao = await p.listarUsuarios("demonstracao");
+    expect(listaDemonstracao.length).toBeGreaterThanOrEqual(3);
+    expect(listaDemonstracao.some((u) => u.usuario === "gestor")).toBe(true);
+    expect(listaDemonstracao.some((u) => u.usuario === "admin")).toBe(true);
+    expect(listaDemonstracao.some((u) => u.usuario === "comprador")).toBe(true);
+
+    const listaDemo = await p.listarUsuarios("demo");
+    expect(listaDemo.length).toBe(listaDemonstracao.length);
+  });
 });
 
 describe("provedor supabase (GoTrue via fetch simulado)", () => {
@@ -186,6 +239,63 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
   it("sem chave privilegiada, administrar falha claramente", async () => {
     const p = new ProvedorAutenticacaoSupabase({ url: cfg.url, chavePublica: "pub" }, fetchSimulado({}).fn);
     await expect(p.listarUsuarios("carreiro")).rejects.toThrow(/SERVICE_ROLE/);
+  });
+
+  it("alterarSenha no Supabase valida senha antiga na pública e atualiza na chave de serviço", async () => {
+    const { fn, chamadas } = fetchSimulado({
+      "admin/users/uuid-1": { status: 200, corpo: usuarioGoTrue },
+      "token?grant_type=password": { status: 200, corpo: { access_token: "at", user: usuarioGoTrue } },
+    });
+    const p = new ProvedorAutenticacaoSupabase(cfg, fn);
+    await p.alterarSenha("uuid-1", "senhaAntiga123", "novaSenhaSegura123");
+
+    // Chamou admin/users/uuid-1 GET para descobrir email
+    expect(chamadas[0].url).toContain("admin/users/uuid-1");
+    // Chamou token?grant_type=password com apikey pública
+    const hToken = chamadas[1].init.headers as Record<string, string>;
+    expect(hToken.apikey).toBe("pub");
+    // Chamou admin/users/uuid-1 PUT com chave de serviço
+    expect(chamadas[2].init.method).toBe("PUT");
+    const hUpdate = chamadas[2].init.headers as Record<string, string>;
+    expect(hUpdate.Authorization).toBe("Bearer srv");
+    expect(JSON.parse(String(chamadas[2].init.body))).toEqual({ password: "novaSenhaSegura123" });
+  });
+
+  it("desativarUsuario no Supabase aplica banimento e marca app_metadata.desativado", async () => {
+    const { fn, chamadas } = fetchSimulado({
+      "admin/users/uuid-1": { status: 200, corpo: usuarioGoTrue },
+    });
+    const p = new ProvedorAutenticacaoSupabase(cfg, fn);
+    await p.desativarUsuario("uuid-1");
+
+    const putChamada = chamadas.find((c) => c.init.method === "PUT");
+    expect(putChamada).toBeDefined();
+    const corpo = JSON.parse(String(putChamada!.init.body));
+    expect(corpo.ban_duration).toBe("876600h");
+    expect(corpo.app_metadata.desativado).toBe(true);
+  });
+
+  it("expurgarContaOrfaGestorDemo e listarUsuarios limpam e ignoram gestor.demo", async () => {
+    const usuarioOrfao = {
+      id: "uuid-orfao",
+      email: "gestor.demo@carreiro.invalid",
+      app_metadata: { usuario: "gestor.demo", papel: "GESTOR", tenant_id: "carreiro" },
+    };
+    const { fn, chamadas } = fetchSimulado({
+      "admin/users?page=1&per_page=1000": { status: 200, corpo: { users: [usuarioGoTrue, usuarioOrfao] } },
+      "admin/users/uuid-orfao": { status: 200, corpo: {} },
+    });
+    const p = new ProvedorAutenticacaoSupabase(cfg, fn);
+    const lista = await p.listarUsuarios("carreiro");
+
+    // gestor.demo não aparece na lista final
+    expect(lista.some((u) => u.usuario === "gestor.demo")).toBe(false);
+    expect(lista.length).toBe(1);
+    expect(lista[0].usuario).toBe("gestor");
+
+    // Enviou DELETE para o ID da conta órfã
+    const deleteChamada = chamadas.find((c) => c.init.method === "DELETE");
+    expect(deleteChamada?.url).toContain("admin/users/uuid-orfao");
   });
 });
 

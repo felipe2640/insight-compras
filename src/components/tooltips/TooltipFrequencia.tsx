@@ -24,6 +24,10 @@ const ESTILOS_CLASSIFICACAO: Record<ClassificacaoFrequencia, { badge: string; te
     badge: "bg-amber-100 text-amber-800 border-amber-300",
     texto: "Baixa (< 15%) - Intermitente",
   },
+  "Sem histórico": {
+    badge: "bg-slate-100 text-slate-700 border-slate-300",
+    texto: "Sem histórico na loja em foco",
+  },
 };
 
 export function TooltipFrequencia({
@@ -38,8 +42,10 @@ export function TooltipFrequencia({
   children,
 }: PropsTooltipFrequencia) {
 
-  const estilo = ESTILOS_CLASSIFICACAO[classificacao] ?? ESTILOS_CLASSIFICACAO["Baixa"];
-  const notasLiquidasCalculadas = notasVenda - notasDevolucao;
+  const estilo = ESTILOS_CLASSIFICACAO[classificacao] ?? ESTILOS_CLASSIFICACAO["Sem histórico"];
+  const notasLiquidasCalculadas =
+    notasLiquidas ??
+    (notasVenda !== null && notasDevolucao !== null ? notasVenda - notasDevolucao : null);
 
   return (
     <TooltipProvider>
@@ -56,15 +62,21 @@ export function TooltipFrequencia({
           <div className="mt-2 grid grid-cols-3 gap-1.5 text-center">
             <div className="rounded bg-emerald-50 p-1.5 border border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-800">
               <div className="text-[10px] font-medium text-emerald-700 dark:text-emerald-400">Vendas</div>
-              <div className="font-mono font-bold text-emerald-900 dark:text-emerald-200">{notasVenda}</div>
+              <div className="font-mono font-bold text-emerald-900 dark:text-emerald-200">
+                {notasVenda !== null ? notasVenda : "—"}
+              </div>
             </div>
             <div className="rounded bg-red-50 p-1.5 border border-red-200 dark:bg-red-950/40 dark:border-red-800">
               <div className="text-[10px] font-medium text-red-700 dark:text-red-400">Devoluções</div>
-              <div className="font-mono font-bold text-red-900 dark:text-red-200">{notasDevolucao}</div>
+              <div className="font-mono font-bold text-red-900 dark:text-red-200">
+                {notasDevolucao !== null ? notasDevolucao : "—"}
+              </div>
             </div>
             <div className="rounded bg-blue-50 p-1.5 border border-blue-200 dark:bg-blue-950/40 dark:border-blue-800">
               <div className="text-[10px] font-medium text-blue-700 dark:text-blue-400">Líquidas</div>
-              <div className="font-mono font-bold text-blue-900 dark:text-blue-200">{notasLiquidasCalculadas}</div>
+              <div className="font-mono font-bold text-blue-900 dark:text-blue-200">
+                {notasLiquidasCalculadas !== null ? notasLiquidasCalculadas : "—"}
+              </div>
             </div>
           </div>
 
@@ -72,13 +84,15 @@ export function TooltipFrequencia({
             <div className="flex justify-between">
               <span className="text-slate-500 dark:text-slate-400">Índice de Recorrência (90d):</span>
               <span className="font-mono font-bold text-slate-900 dark:text-white">
-                {frequenciaPercentual.toFixed(1).replace(".", ",")}%
+                {frequenciaPercentual !== null
+                  ? `${frequenciaPercentual.toFixed(1).replace(".", ",")}%`
+                  : "—"}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500 dark:text-slate-400">Volume Total Transacionado:</span>
               <span className="font-mono font-medium text-slate-700 dark:text-slate-300">
-                {totalPecasVendidas} peças
+                {totalPecasVendidas !== null ? `${totalPecasVendidas} peças` : "—"}
               </span>
             </div>
           </div>

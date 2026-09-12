@@ -56,7 +56,7 @@ export default async function PaginaAuditoriaGestor() {
               </span>
             </div>
             <span className="text-xs text-secundaria font-semibold">
-              Powered by iNSIGHT D
+              {tenant.assinatura?.texto || "Powered by iNSIGHT D"}
             </span>
           </div>
         </div>

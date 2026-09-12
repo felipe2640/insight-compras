@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { servicoAuditoriaPadrao } from "@/lib/auditoria";
 import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
+import { resolverTenantConfigurado } from "@config/tenants";
 
 export const dynamic = "force-dynamic";
 

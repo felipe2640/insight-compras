@@ -1,19 +1,50 @@
 /**
- * Tier 1: Cobertura de Features — Cockpit do Comprador & Matriz de Decisão (baseColumns)
- * Requisitos: ORIGINAL_REQUEST R2 & PROJECT.md
+ * Tier 1: Cobertura de Features — Cockpit do Comprador & Matriz de Decisão (colunas-cockpit)
+ * Requisitos: ORIGINAL_REQUEST R2, PROJECT.md & Unidade U2
  */
 
 import { describe, it, expect } from "vitest";
+import { criarColunasCockpit } from "@/components/cockpit";
+import { LinhaCockpitCompras } from "@/tipos/cockpit";
 import {
-  LinhaMatrizDecisaoE2E,
-  criarProdutoTeste,
-  criarEstoqueTeste,
-  criarHistoricoVendasTeste,
   EntradaNotaFiscalHojeDto,
   SimilarItemDto,
 } from "../harness/contexto-teste";
 
-describe("Tier 1 — Feature 1: Cockpit do Comprador & Matriz de Decisão (baseColumns)", () => {
+describe("Tier 1 — Feature 1: Cockpit do Comprador & Matriz de Decisão (colunas-cockpit)", () => {
+  // T1.1.0: Estrutura Canônica da Matriz de Decisão Viva
+  it("T1.1.0 — deve gerar a matriz de colunas completa da árvore viva com todos os indicadores", () => {
+    const colunas = criarColunasCockpit({
+      nomeLojaFoco: "Trairi",
+      nomeOutrasLojas: "Rede",
+    });
+
+    const ids = colunas.map((c) => c.id);
+
+    // Seleção e Identificação
+    expect(ids).toContain("select");
+    expect(ids).toContain("codigo");
+    expect(ids).toContain("descricao");
+    expect(ids).toContain("aplicacao");
+    expect(ids).toContain("marca");
+    expect(ids).toContain("subgrupo");
+
+    // Métricas de Venda, Consumo e Classificação
+    expect(ids).toContain("curvaAbcSistema");
+    expect(ids).toContain("consumoDiario");
+    expect(ids).toContain("frequencia");
+    expect(ids).toContain("ruptura");
+
+    // Cobertura Comparativa (migrada de baseColumns para a árvore viva)
+    expect(ids).toContain("cobertura");
+
+    // Estoques e Ações Operacionais
+    expect(ids).toContain("estoqueLojaFoco");
+    expect(ids).toContain("estoqueRede");
+    expect(ids).toContain("pedido");
+    expect(ids).toContain("transferencia");
+  });
+
   // T1.1.1: Diagnóstico de Ruptura
   it("T1.1.1 — deve calcular o percentual de ruptura e atribuir a severidade cromática correta", () => {
     // Caso 1: Ruptura Boa (<= 5%)
@@ -65,7 +96,7 @@ describe("Tier 1 — Feature 1: Cockpit do Comprador & Matriz de Decisão (baseC
     expect(freqBaixaPct).toBeLessThan(15);
   });
 
-  // T1.1.3: Coberturas Comparativas Triplas e Tendência
+  // T1.1.3: Coberturas Comparativas Triplas e Tendência na Coluna Cobertura
   it("T1.1.3 — deve calcular coberturas nas janelas de 30d, 90d e 180d e sinalizar tendência de aceleração", () => {
     const saldoEstoque = 12; // unidades
     const vendas30d = 12; // 12 un em 30d -> CMD = 0.40 un/dia
@@ -87,6 +118,17 @@ describe("Tier 1 — Feature 1: Cockpit do Comprador & Matriz de Decisão (baseC
     // Detecção de Aceleração Recente: CMD 30d é 100% maior que CMD 90d (aceleração > 25%)
     const isAceleracaoRecente = cmd30d > cmd90d * 1.25;
     expect(isAceleracaoRecente).toBe(true);
+
+    // Validação de acessor da coluna cobertura na árvore viva
+    const colunas = criarColunasCockpit();
+    const colunaCobertura = colunas.find((c) => c.id === "cobertura");
+    expect(colunaCobertura).toBeDefined();
+    if (colunaCobertura && "accessorFn" in colunaCobertura && colunaCobertura.accessorFn) {
+      const linhaMock = {
+        diasCobertura90d: 60,
+      } as LinhaCockpitCompras;
+      expect(colunaCobertura.accessorFn(linhaMock, 0)).toBe(60);
+    }
   });
 
   // T1.1.4: Detecção e Alerta de NF-e do Dia

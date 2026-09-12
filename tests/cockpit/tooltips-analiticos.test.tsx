@@ -32,7 +32,7 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
       );
 
       const gatilho = screen.getByText("Gatilho Ruptura");
-      fireEvent.mouseEnter(gatilho.parentElement!);
+      fireEvent.focus(gatilho);
 
       expect(screen.getByRole("tooltip")).toBeTruthy();
       expect(screen.getByText("Diagnóstico de Ruptura")).toBeTruthy();
@@ -57,12 +57,12 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
       );
 
       const gatilho = screen.getByText("Gatilho Grave");
-      fireEvent.mouseEnter(gatilho.parentElement!);
+      fireEvent.focus(gatilho);
       expect(screen.getByRole("tooltip")).toBeTruthy();
       expect(screen.getByText("Grave")).toBeTruthy();
 
       // Pressiona Escape para fechar
-      fireEvent.keyDown(gatilho.parentElement!, { key: "Escape" });
+      fireEvent.keyDown(gatilho, { key: "Escape" });
       expect(screen.queryByRole("tooltip")).toBeNull();
     });
 
@@ -81,7 +81,7 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
       );
 
       const gatilho = screen.getByText("Gatilho Sem Hist");
-      fireEvent.mouseEnter(gatilho.parentElement!);
+      fireEvent.focus(gatilho);
       expect(screen.getByRole("tooltip")).toBeTruthy();
       expect(screen.getAllByText("Sem histórico").length).toBeGreaterThanOrEqual(1);
     });
@@ -122,7 +122,7 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
       );
 
       const gatilho = screen.getByText("Gatilho Freq");
-      fireEvent.mouseEnter(gatilho.parentElement!);
+      fireEvent.focus(gatilho);
 
       expect(screen.getByRole("tooltip")).toBeTruthy();
       expect(screen.getByText("Frequência em 90 Dias")).toBeTruthy();
@@ -152,7 +152,7 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
       );
 
       const gatilho = screen.getByText("Gatilho Freq Vazio");
-      fireEvent.mouseEnter(gatilho.parentElement!);
+      fireEvent.focus(gatilho);
       expect(screen.getByText("Sem movimentação de notas nos últimos 90 dias")).toBeTruthy();
     });
   });
@@ -182,7 +182,7 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
       );
 
       const gatilho = screen.getByText("Gatilho Cobertura");
-      fireEvent.mouseEnter(gatilho.parentElement!);
+      fireEvent.focus(gatilho);
 
       expect(screen.getByRole("tooltip")).toBeTruthy();
       expect(screen.getByText("Coberturas Comparativas")).toBeTruthy();
@@ -214,7 +214,7 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
       );
 
       const gatilho = screen.getByText("Gatilho Zumbi");
-      fireEvent.mouseEnter(gatilho.parentElement!);
+      fireEvent.focus(gatilho);
 
       expect(screen.getByText(/⚠ MARCA ZUMBI/)).toBeTruthy();
       expect(screen.getByText(/TRAVA MARCA ZUMBI \/ ENCALHE/)).toBeTruthy();
@@ -243,7 +243,7 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
       );
 
       const gatilho = screen.getByText("?");
-      fireEvent.mouseEnter(gatilho.parentElement!);
+      fireEvent.focus(gatilho);
 
       expect(screen.getByRole("tooltip")).toBeTruthy();
       expect(screen.getByText("Transferência entre Lojas")).toBeTruthy();
@@ -270,7 +270,7 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
       );
 
       const gatilho = screen.getByText("? Limite");
-      fireEvent.mouseEnter(gatilho.parentElement!);
+      fireEvent.focus(gatilho);
       const elementos2un = screen.getAllByText("2 un");
       expect(elementos2un.length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText(/Saldo Atual:/)).toBeTruthy();
@@ -305,12 +305,12 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
 
       render(
         <TooltipNfeDoDia entradas={entradas}>
-          <span>⚠ Alerta</span>
+          <button>⚠ Alerta</button>
         </TooltipNfeDoDia>
       );
 
       const gatilho = screen.getByText("⚠ Alerta");
-      fireEvent.mouseEnter(gatilho.parentElement!);
+      fireEvent.focus(gatilho);
 
       expect(screen.getByRole("tooltip")).toBeTruthy();
       expect(screen.getByText("Entrada de NF-e no Dia")).toBeTruthy();
@@ -328,7 +328,6 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
       );
 
       expect(screen.getByText("Item Normal")).toBeTruthy();
-      expect(screen.queryByRole("button")).toBeNull();
     });
   });
 

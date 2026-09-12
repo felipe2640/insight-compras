@@ -11,8 +11,8 @@ import {
 } from "@/components/ui/tooltip";
 
 
-function formatarCobertura(dias: number | null, cmd: number): string {
-  if (dias === null || cmd <= 0 || !Number.isFinite(dias)) {
+function formatarCobertura(dias: number | null | undefined, cmd: number | null | undefined): string {
+  if (dias === null || dias === undefined || cmd === null || cmd === undefined || cmd <= 0 || !Number.isFinite(dias)) {
     return "Sem consumo";
   }
   if (dias >= 999) {
@@ -39,7 +39,7 @@ export function TooltipCobertura({
   children,
 }: PropsTooltipCobertura) {
 
-  const isZumbiEfetivo = isMarcaZumbi || (saldoEstoqueAtual > 0 && vendas180d === 0);
+  const isZumbiEfetivo = isMarcaZumbi || (vendas180d !== null && saldoEstoqueAtual > 0 && vendas180d === 0);
 
   return (
     <TooltipProvider>
@@ -81,22 +81,22 @@ export function TooltipCobertura({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-                <tr className={cmd30d > cmd90d * 1.25 ? "bg-emerald-50/50 dark:bg-emerald-950/20" : ""}>
+                <tr className={cmd30d !== null && cmd90d !== null && cmd30d > cmd90d * 1.25 ? "bg-emerald-50/50 dark:bg-emerald-950/20" : ""}>
                   <td className="p-1.5 font-sans font-medium text-slate-900 dark:text-slate-200">30d (Aceleração)</td>
-                  <td className="p-1.5 text-right">{vendas30d}</td>
-                  <td className="p-1.5 text-right">{cmd30d.toFixed(2).replace(".", ",")}</td>
+                  <td className="p-1.5 text-right">{vendas30d !== null ? vendas30d : "—"}</td>
+                  <td className="p-1.5 text-right">{cmd30d !== null ? cmd30d.toFixed(2).replace(".", ",") : "—"}</td>
                   <td className="p-1.5 text-right font-bold">{formatarCobertura(cobertura30dDias, cmd30d)}</td>
                 </tr>
                 <tr>
                   <td className="p-1.5 font-sans font-medium text-slate-900 dark:text-slate-200">90d (Giro Médio)</td>
-                  <td className="p-1.5 text-right">{vendas90d}</td>
-                  <td className="p-1.5 text-right">{cmd90d.toFixed(2).replace(".", ",")}</td>
+                  <td className="p-1.5 text-right">{vendas90d !== null ? vendas90d : "—"}</td>
+                  <td className="p-1.5 text-right">{cmd90d !== null ? cmd90d.toFixed(2).replace(".", ",") : "—"}</td>
                   <td className="p-1.5 text-right font-bold">{formatarCobertura(cobertura90dDias, cmd90d)}</td>
                 </tr>
                 <tr className={isZumbiEfetivo ? "bg-red-50 dark:bg-red-950/30" : ""}>
                   <td className="p-1.5 font-sans font-medium text-slate-900 dark:text-slate-200">180d (Defesa)</td>
-                  <td className="p-1.5 text-right">{vendas180d}</td>
-                  <td className="p-1.5 text-right">{cmd180d.toFixed(2).replace(".", ",")}</td>
+                  <td className="p-1.5 text-right">{vendas180d !== null ? vendas180d : "—"}</td>
+                  <td className="p-1.5 text-right">{cmd180d !== null ? cmd180d.toFixed(2).replace(".", ",") : "—"}</td>
                   <td className="p-1.5 text-right font-bold">{formatarCobertura(cobertura180dDias, cmd180d)}</td>
                 </tr>
               </tbody>
@@ -110,12 +110,12 @@ export function TooltipCobertura({
                 <span className="font-bold">TRAVA MARCA ZUMBI / ENCALHE:</span> Saldo positivo ({saldoEstoqueAtual} un)
                 sem nenhuma saída registrada nos últimos 180 dias. Compra bloqueada estritamente em zero para proteção de capital de giro.
               </div>
-            ) : cmd30d > cmd90d * 1.25 ? (
+            ) : cmd30d !== null && cmd90d !== null && cmd30d > cmd90d * 1.25 ? (
               <div className="rounded bg-emerald-50 p-1.5 text-[10px] text-emerald-900 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300">
                 <span className="font-bold">Tendência de ALTA / ACELERAÇÃO:</span> Saídas recentes (+
                 {Math.round(((cmd30d - cmd90d) / (cmd90d || 1)) * 100)}%) acima do giro médio. Risco iminente de desabastecimento se não reforçar estoque.
               </div>
-            ) : cmd30d < cmd90d * 0.75 && cmd30d > 0 ? (
+            ) : cmd30d !== null && cmd90d !== null && cmd30d < cmd90d * 0.75 && cmd30d > 0 ? (
               <div className="rounded bg-amber-50 p-1.5 text-[10px] text-amber-900 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300">
                 <span className="font-bold">Tendência de QUEDA / DESACELERAÇÃO:</span> Ritmo recente em desaceleração (-
                 {Math.round(((cmd90d - cmd30d) / (cmd90d || 1)) * 100)}%). Risco de sobrecompra se basear pedido apenas no histórico antigo.

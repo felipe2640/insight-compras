@@ -18,11 +18,10 @@ export default function RootLayout({
   // O middleware já resolveu o tenant (query > subdomínio > domínio > cookie >
   // TENANT_ATIVO) e o anunciou no cabeçalho. Sem cabeçalho — render fora do
   // middleware — vale a mesma regra de sempre: a variável de ambiente, e na
-  // falta dela a DEMONSTRAÇÃO. Aqui havia "carreiro" fixo no código, o que
-  // pintava a plataforma inteira com a marca de um cliente por padrão.
+  // falta dela a DEMONSTRAÇÃO.
   const tenantIdHeader = headers().get("x-tenant-id");
   const tenant = tenantIdHeader
-    ? obterConfiguracaoTenant(tenantIdHeader)
+    ? (obterConfiguracaoTenant(tenantIdHeader) || resolverTenantConfigurado())
     : resolverTenantConfigurado();
   const inlineCssVars = gerarStringCssVarsInline(tenant);
 

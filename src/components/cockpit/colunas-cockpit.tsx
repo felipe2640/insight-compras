@@ -15,7 +15,14 @@ import {
 import { DataGridColumnHeader } from "@/components/ui/data-grid";
 import { LinhaCockpitCompras } from "@/tipos/cockpit";
 import { cn } from "@/lib/utils";
-import { TooltipCriterio, TooltipFrequencia, TooltipRuptura, TooltipTransferencia } from "@/components/tooltips";
+import {
+  TooltipCriterio,
+  TooltipFrequencia,
+  TooltipRuptura,
+  TooltipTransferencia,
+  TooltipCobertura,
+  TooltipNfeDoDia,
+} from "@/components/tooltips";
 
 export interface OpcoesColunasCockpit {
   nomeLojaFoco?: string;
@@ -134,25 +141,15 @@ export function criarColunasCockpit({
             )}
 
             {temEntradaHoje && (
-              <TooltipProvider>
-                <Tooltip delayDuration={0}>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex text-amber-600 cursor-help" aria-label="Chegou hoje no estoque">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs text-xs">
-                    <p className="font-bold text-amber-500">NF-e de Entrada Hoje:</p>
-                    <ul className="mt-1 space-y-1">
-                      {item.entradasHoje.map((ent, i) => (
-                        <li key={i}>
-                          NF {ent.numeroNotaFiscal}: +{ent.quantidadeEntrada} un ({ent.fornecedorNome})
-                        </li>
-                      ))}
-                    </ul>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <TooltipNfeDoDia entradas={item.entradasHoje}>
+                <span
+                  className="inline-flex text-amber-600 cursor-help"
+                  aria-label="Chegou hoje no estoque"
+                  tabIndex={0}
+                >
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                </span>
+              </TooltipNfeDoDia>
             )}
           </div>
         );
@@ -392,16 +389,27 @@ export function criarColunasCockpit({
     // 11. Produtos Vend 90d
     {
       id: "produtosVend90d",
-      accessorFn: (row) => row.produtosVend90d,
+      accessorFn: (row) => row.produtosVend90d ?? undefined,
+      sortUndefined: "last",
       size: 105,
       header: ({ header }) => (
         <DataGridColumnHeader header={header} align="center" label="Produtos Vend 90d" />
       ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-          {formatarNumero(row.original.produtosVend90d ?? 0, 0)}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const val = row.original.produtosVend90d;
+        if (val == null) {
+          return (
+            <div className="flex justify-center">
+              <span className="font-mono text-xs text-slate-400">—</span>
+            </div>
+          );
+        }
+        return (
+          <span className="font-mono text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+            {formatarNumero(val, 0)}
+          </span>
+        );
+      },
       meta: { variante: "numero", label: "Produtos Vend 90d", align: "center" },
       enableSorting: true,
     },
@@ -409,16 +417,27 @@ export function criarColunasCockpit({
     // 12. Notas Líq. 90d
     {
       id: "notasLiquidas90d",
-      accessorFn: (row) => row.notasLiquidas90d,
+      accessorFn: (row) => row.notasLiquidas90d ?? undefined,
+      sortUndefined: "last",
       size: 95,
       header: ({ header }) => (
         <DataGridColumnHeader header={header} align="center" label="Notas Líq. 90d" />
       ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs font-semibold text-blue-700 dark:text-blue-400">
-          {formatarNumero(row.original.notasLiquidas90d, 0)}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const val = row.original.notasLiquidas90d;
+        if (val == null) {
+          return (
+            <div className="flex justify-center">
+              <span className="font-mono text-xs text-slate-400">—</span>
+            </div>
+          );
+        }
+        return (
+          <span className="font-mono text-xs font-semibold text-blue-700 dark:text-blue-400">
+            {formatarNumero(val, 0)}
+          </span>
+        );
+      },
       meta: { variante: "numero", label: "Notas Líq. 90d", align: "center" },
       enableSorting: true,
     },
@@ -426,16 +445,27 @@ export function criarColunasCockpit({
     // 13. Consumo Diário
     {
       id: "consumoDiario",
-      accessorFn: (row) => row.consumoDiario,
+      accessorFn: (row) => row.consumoDiario ?? undefined,
+      sortUndefined: "last",
       size: 95,
       header: ({ header }) => (
         <DataGridColumnHeader header={header} align="center" label="Consumo Diário" />
       ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs text-slate-800 dark:text-slate-200">
-          {(row.original.consumoDiario ?? 0).toFixed(4)}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const val = row.original.consumoDiario;
+        if (val == null) {
+          return (
+            <div className="flex justify-center">
+              <span className="font-mono text-xs text-slate-400">—</span>
+            </div>
+          );
+        }
+        return (
+          <span className="font-mono text-xs text-slate-800 dark:text-slate-200">
+            {val.toFixed(4)}
+          </span>
+        );
+      },
       meta: { variante: "numero", label: "Consumo Diário", align: "center" },
       enableSorting: true,
     },
@@ -443,16 +473,27 @@ export function criarColunasCockpit({
     // 14. Consumo Mensal
     {
       id: "consumoMensal",
-      accessorFn: (row) => row.consumoMensal,
+      accessorFn: (row) => row.consumoMensal ?? undefined,
+      sortUndefined: "last",
       size: 100,
       header: ({ header }) => (
         <DataGridColumnHeader header={header} align="center" label="Consumo Mensal" />
       ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs text-slate-800 dark:text-slate-200">
-          {(row.original.consumoMensal ?? 0).toFixed(2)}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const val = row.original.consumoMensal;
+        if (val == null) {
+          return (
+            <div className="flex justify-center">
+              <span className="font-mono text-xs text-slate-400">—</span>
+            </div>
+          );
+        }
+        return (
+          <span className="font-mono text-xs text-slate-800 dark:text-slate-200">
+            {val.toFixed(2)}
+          </span>
+        );
+      },
       meta: { variante: "numero", label: "Consumo Mensal", align: "center" },
       enableSorting: true,
     },
@@ -460,14 +501,17 @@ export function criarColunasCockpit({
     // 15. Venda a cada
     {
       id: "vendaACadaDias",
-      accessorFn: (row) => row.vendaACadaDias ?? 9999,
+      accessorFn: (row) => row.vendaACadaDias ?? undefined,
+      sortUndefined: "last",
       size: 95,
       header: ({ header }) => (
         <DataGridColumnHeader header={header} align="center" label="Venda a cada" />
       ),
       cell: ({ row }) => (
         <span className="font-mono text-xs text-slate-600 dark:text-slate-400">
-          {row.original.vendaACadaDias == null
+          {row.original.consumoDiario == null
+            ? "—"
+            : row.original.vendaACadaDias == null
             ? "Sem saída"
             : `${row.original.vendaACadaDias.toFixed(1)} d`}
         </span>
@@ -479,16 +523,27 @@ export function criarColunasCockpit({
     // 16. Consumo Últ. 30 Dias (qtd)
     {
       id: "consumoUltimos30DiasQtd",
-      accessorFn: (row) => row.consumoUltimos30DiasQtd,
+      accessorFn: (row) => row.consumoUltimos30DiasQtd ?? undefined,
+      sortUndefined: "last",
       size: 120,
       header: ({ header }) => (
         <DataGridColumnHeader header={header} align="center" label="Consumo Últ. 30d" />
       ),
-      cell: ({ row }) => (
-        <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
-          {formatarNumero(row.original.consumoUltimos30DiasQtd ?? 0, 0)}
-        </span>
-      ),
+      cell: ({ row }) => {
+        const val = row.original.consumoUltimos30DiasQtd;
+        if (val == null) {
+          return (
+            <div className="flex justify-center">
+              <span className="font-mono text-xs text-slate-400">—</span>
+            </div>
+          );
+        }
+        return (
+          <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+            {formatarNumero(val, 0)}
+          </span>
+        );
+      },
       meta: { variante: "numero", label: "Consumo Últ. 30 Dias (qtd)", align: "center" },
       enableSorting: true,
     },
@@ -594,10 +649,10 @@ export function criarColunasCockpit({
               titulo="Consumo pela quantidade vendida"
               classificacao={item.classificacaoConsumo}
               medidas={[
-                { rotulo: "Vendas líquidas 90d", valor: `${item.vendasLiquidas90d} un`, destaque: true },
-                { rotulo: "Vendas líquidas 30d", valor: `${item.vendasLiquidas30d} un` },
-                { rotulo: "Vendas líquidas 180d", valor: `${item.vendasLiquidas180d} un` },
-                { rotulo: "Peças vendidas 90d", valor: `${item.totalPecasVendidas90d} un` },
+                { rotulo: "Vendas líquidas 90d", valor: item.vendasLiquidas90d !== null ? `${item.vendasLiquidas90d} un` : null, destaque: true },
+                { rotulo: "Vendas líquidas 30d", valor: item.vendasLiquidas30d !== null ? `${item.vendasLiquidas30d} un` : null },
+                { rotulo: "Vendas líquidas 180d", valor: item.vendasLiquidas180d !== null ? `${item.vendasLiquidas180d} un` : null },
+                { rotulo: "Peças vendidas 90d", valor: item.totalPecasVendidas90d !== null ? `${item.totalPecasVendidas90d} un` : null },
               ]}
               faixas={[
                 { rotulo: "Alta", condicao: "100 un ou mais em 90d" },
@@ -665,7 +720,79 @@ export function criarColunasCockpit({
       enableSorting: true,
     },
 
-    // 21. Período ideal
+    // 21. Coberturas Comparativas (30d / 90d / 180d com TooltipCobertura)
+    {
+      id: "cobertura",
+      accessorFn: (row) => row.diasCobertura90d ?? undefined,
+      sortUndefined: "last",
+      size: 130,
+      header: ({ header }) => (
+        <DataGridColumnHeader header={header} align="center" label="Cobertura (dias)" />
+      ),
+      cell: ({ row }) => {
+        const item = row.original;
+        const iconeTendencia = item.isMarcaZumbi
+          ? "⚠"
+          : item.tendenciaCobertura === "ALTA"
+            ? "▲"
+            : item.tendenciaCobertura === "QUEDA"
+              ? "▼"
+              : "●";
+
+        const corTendencia = item.isMarcaZumbi
+          ? "text-red-600 dark:text-red-400 font-bold animate-pulse"
+          : item.tendenciaCobertura === "ALTA"
+            ? "text-emerald-600 dark:text-emerald-400 font-bold"
+            : item.tendenciaCobertura === "QUEDA"
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-slate-500";
+
+        const cobFormatada =
+          (item.consumoMedioDiario90d ?? 0) > 0 &&
+          item.diasCobertura90d !== null &&
+          item.diasCobertura90d !== undefined
+            ? `${Math.round(item.diasCobertura90d)}d`
+            : "—";
+
+        return (
+          <div className="flex justify-center">
+            <TooltipCobertura
+              saldoEstoqueAtual={item.estoqueLojaFoco}
+              vendas30d={item.vendasLiquidas30d}
+              cmd30d={item.consumoMedioDiario30d}
+              cobertura30dDias={item.diasCobertura30d}
+              vendas90d={item.vendasLiquidas90d}
+              cmd90d={item.consumoMedioDiario90d}
+              cobertura90dDias={item.diasCobertura90d}
+              vendas180d={item.vendasLiquidas180d}
+              cmd180d={item.consumoMedioDiario180d}
+              cobertura180dDias={item.diasCobertura180d}
+              tendencia={item.tendenciaCobertura}
+              isMarcaZumbi={item.isMarcaZumbi}
+            >
+              <button
+                type="button"
+                className={cn(
+                  "flex items-center gap-1 font-mono text-xs px-1.5 py-0.5 rounded border border-transparent hover:border-slate-300 dark:hover:border-slate-700 cursor-help",
+                  corTendencia
+                )}
+                aria-label={`Cobertura de estoque: ${cobFormatada}, Tendência: ${item.tendenciaCobertura}`}
+              >
+                <span>{cobFormatada}</span>
+                <span className="text-[10px]">{iconeTendencia}</span>
+                {item.isMarcaZumbi && (
+                  <span className="text-[9px] font-bold uppercase">Zumbi</span>
+                )}
+              </button>
+            </TooltipCobertura>
+          </div>
+        );
+      },
+      meta: { variante: "numero", label: "Cobertura (dias)", align: "center" },
+      enableSorting: true,
+    },
+
+    // 22. Período ideal
     {
       id: "periodoIdeal",
       accessorFn: (row) => row.periodoIdeal,
@@ -687,7 +814,8 @@ export function criarColunasCockpit({
     // 22. Hist vendas 90d
     {
       id: "histVendas90d",
-      accessorFn: (row) => row.histVendas90d,
+      accessorFn: (row) => row.histVendas90d ?? undefined,
+      sortUndefined: "last",
       size: 90,
       header: ({ header }) => (
         <DataGridColumnHeader header={header} align="center" label="Vendas 90d anteriores" />
@@ -695,7 +823,7 @@ export function criarColunasCockpit({
       cell: ({ row }) => (
         <div className="flex justify-center">
           <span className="font-mono text-xs text-slate-600 dark:text-slate-400">
-            {row.original.histVendas90d}
+            {row.original.histVendas90d != null ? row.original.histVendas90d : "—"}
           </span>
         </div>
       ),
@@ -706,7 +834,8 @@ export function criarColunasCockpit({
     // 23. Hist prod vend 90d
     {
       id: "histProdVend90d",
-      accessorFn: (row) => row.histProdVend90d,
+      accessorFn: (row) => row.histProdVend90d ?? undefined,
+      sortUndefined: "last",
       size: 95,
       header: ({ header }) => (
         <DataGridColumnHeader header={header} align="center" label="Hist prod vend" />
@@ -714,7 +843,7 @@ export function criarColunasCockpit({
       cell: ({ row }) => (
         <div className="flex justify-center">
           <span className="font-mono text-xs text-slate-600 dark:text-slate-400">
-            {row.original.histProdVend90d}
+            {row.original.histProdVend90d != null ? row.original.histProdVend90d : "—"}
           </span>
         </div>
       ),
@@ -725,7 +854,8 @@ export function criarColunasCockpit({
     // 24. Dias sem venda
     {
       id: "diasSemVenda",
-      accessorFn: (row) => row.diasSemVenda ?? 9999,
+      accessorFn: (row) => row.diasSemVenda ?? undefined,
+      sortUndefined: "last",
       size: 85,
       header: ({ header }) => (
         <DataGridColumnHeader header={header} align="center" label="Dias s/ venda" />

@@ -1,10 +1,9 @@
-/**
+﻿/**
  * Repositório e Serviço de Auditoria Imutável com Encadeamento Criptográfico SHA-256
  * Camada: Aplicação / Auditoria (src/lib/auditoria/repositorio-auditoria.ts)
  * 100% em Português do Brasil (pt-BR).
  */
 
-import { createHash } from "crypto";
 import {
   AuditoriaPedido,
   ClassificacaoDivergencia,
@@ -12,158 +11,82 @@ import {
   FiltrosConsultaAuditoria,
   ResumoKpisAuditoria,
 } from "./tipos";
-import { UsuarioAutenticado } from "../rbac/tipos";
+import { supabaseConfigurado } from "@/lib/aprendizado/supabase";
+import {
+  IdProvedorAuditoria,
+  ParametrosRegistroPedido,
+  RepositorioAuditoria,
+} from "./porta-repositorio";
+import { calcularHashRegistro, validarCadeiaAuditoria } from "./criptografia";
+import { RepositorioAuditoriaEmMemoria } from "./provedores/memoria";
+import { RepositorioAuditoriaSupabase } from "./provedores/supabase";
+
+export { calcularHashRegistro, validarCadeiaAuditoria } from "./criptografia";
+export type { RepositorioAuditoria, ParametrosRegistroPedido, IdProvedorAuditoria } from "./porta-repositorio";
+export { RepositorioAuditoriaEmMemoria } from "./provedores/memoria";
+export { RepositorioAuditoriaSupabase } from "./provedores/supabase";
 
 // ============================================================================
-// 1. INTEGRIDADE CRIPTOGRÁFICA (TAMPER-EVIDENT HASH CHAIN)
+// RESOLUÇÃO DE PROVEDOR E FÁBRICA
 // ============================================================================
 
-export function calcularHashRegistro(
-  dados: Omit<AuditoriaPedido, "hashIntegridade">
-): string {
-  const cargaUtil = JSON.stringify({
-    id: dados.id,
-    timestamp: dados.timestamp,
-    tenantId: dados.tenantId,
-    compradorId: dados.compradorId,
-    filialId: dados.filialId,
-    produtoId: dados.produtoId,
-    codigoSku: dados.codigoSku,
-    quantidadeSugerida: dados.quantidadeSugeridaSistema,
-    quantidadeDigitada: dados.quantidadeDigitadaComprador,
-    divergencia: dados.divergenciaQuantidade,
-    tipoAcao: dados.tipoAcao,
-    hashAnterior: dados.hashRegistroAnterior,
-  });
-
-  return createHash("sha256").update(cargaUtil).digest("hex");
+export function idProvedorAuditoria(): IdProvedorAuditoria {
+  const forcado = process.env.AUDITORIA_PROVIDER?.trim().toLowerCase();
+  if (forcado === "memoria") return "memoria";
+  if (forcado === "supabase") return "supabase";
+  return supabaseConfigurado() ? "supabase" : "memoria";
 }
 
-export function validarCadeiaAuditoria(registros: readonly AuditoriaPedido[]): {
-  valida: boolean;
-  indiceInvalido?: number;
-  motivo?: string;
-} {
-  for (let i = 0; i < registros.length; i++) {
-    const atual = registros[i];
+let repositorioPersonalizado: RepositorioAuditoria | null = null;
+let instanciaMemoria: RepositorioAuditoriaEmMemoria | null = null;
+let instanciaSupabase: RepositorioAuditoriaSupabase | null = null;
 
-    // Verifica integridade do próprio hash do registro
-    const { hashIntegridade, ...resto } = atual;
-    const hashEsperado = calcularHashRegistro(resto);
-    if (hashIntegridade !== hashEsperado) {
-      return {
-        valida: false,
-        indiceInvalido: i,
-        motivo: `Hash inválido no registro ${atual.id}. Conteúdo foi adulterado.`,
-      };
-    }
-
-    // Verifica encadeamento com o registro anterior
-    if (i > 0) {
-      const anterior = registros[i - 1];
-      if (atual.hashRegistroAnterior !== anterior.hashIntegridade) {
-        return {
-          valida: false,
-          indiceInvalido: i,
-          motivo: `Quebra de cadeia: o registro ${atual.id} não aponta para o hash do registro ${anterior.id}.`,
-        };
-      }
-    } else {
-      if (atual.hashRegistroAnterior !== "GENESIS_HASH") {
-        return {
-          valida: false,
-          indiceInvalido: 0,
-          motivo: "Registro inicial não possui o hash gênesis correto.",
-        };
-      }
-    }
+export function obterRepositorioAuditoria(): RepositorioAuditoria {
+  if (repositorioPersonalizado) {
+    return repositorioPersonalizado;
   }
 
-  return { valida: true };
+  const id = idProvedorAuditoria();
+  if (id === "supabase") {
+    return (instanciaSupabase ??= new RepositorioAuditoriaSupabase());
+  }
+
+  return (instanciaMemoria ??= new RepositorioAuditoriaEmMemoria(true));
+}
+
+export function definirRepositorioAuditoria(repo: RepositorioAuditoria | null): void {
+  repositorioPersonalizado = repo;
+}
+
+export function reiniciarRepositorioAuditoria(): void {
+  repositorioPersonalizado = null;
+  instanciaMemoria = null;
+  instanciaSupabase = null;
 }
 
 // ============================================================================
-// 2. REPOSITÓRIO APPEND-ONLY IMUTÁVEL
+// SERVIÇO DE AUDITORIA E CÁLCULO DE KPIS
 // ============================================================================
-
-export interface RepositorioAuditoria {
-  adicionarRegistro(registro: AuditoriaPedido): Promise<void>;
-  obterUltimoRegistro(tenantId: string): Promise<AuditoriaPedido | null>;
-  consultar(filtros: FiltrosConsultaAuditoria): Promise<readonly AuditoriaPedido[]>;
-  obterTodos(tenantId: string): Promise<readonly AuditoriaPedido[]>;
-  limpar(tenantId?: string): void;
-}
-
-export class RepositorioAuditoriaEmMemoria implements RepositorioAuditoria {
-  private readonly registrosPorTenant = new Map<string, AuditoriaPedido[]>();
-
-  public async adicionarRegistro(registro: AuditoriaPedido): Promise<void> {
-    // Imutabilidade estrita: congela o objeto para impedir mutações em tempo de execução
-    const registroCongelado = Object.freeze({ ...registro });
-
-    const lista = this.registrosPorTenant.get(registro.tenantId) ?? [];
-    lista.push(registroCongelado);
-    this.registrosPorTenant.set(registro.tenantId, lista);
-  }
-
-  public async obterUltimoRegistro(tenantId: string): Promise<AuditoriaPedido | null> {
-    const lista = this.registrosPorTenant.get(tenantId);
-    if (!lista || lista.length === 0) return null;
-    return lista[lista.length - 1];
-  }
-
-  public async consultar(filtros: FiltrosConsultaAuditoria): Promise<readonly AuditoriaPedido[]> {
-    const lista = this.registrosPorTenant.get(filtros.tenantId) ?? [];
-
-    return lista
-      .filter((reg) => {
-        if (filtros.compradorId && reg.compradorId !== filtros.compradorId) return false;
-        if (filtros.fornecedorId && reg.fornecedorId !== filtros.fornecedorId) return false;
-        if (filtros.filialId && reg.filialId !== filtros.filialId) return false;
-        if (filtros.apenasSobrecompras && reg.classificacaoDivergencia !== "SOBRECOMPRA") return false;
-        if (filtros.dataInicio && reg.timestamp < filtros.dataInicio) return false;
-        if (filtros.dataFim && reg.timestamp > filtros.dataFim) return false;
-        return true;
-      })
-      .slice(0, filtros.limite ?? 1000);
-  }
-
-  public async obterTodos(tenantId: string): Promise<readonly AuditoriaPedido[]> {
-    return this.registrosPorTenant.get(tenantId) ?? [];
-  }
-
-  public limpar(tenantId?: string): void {
-    if (tenantId) {
-      this.registrosPorTenant.delete(tenantId);
-    } else {
-      this.registrosPorTenant.clear();
-    }
-  }
-}
-
-// ============================================================================
-// 3. SERVIÇO DE AUDITORIA E CÁLCULO DE KPIS
-// ============================================================================
-
-export interface ParametrosRegistroPedido {
-  readonly usuario: UsuarioAutenticado;
-  readonly produtoId: number;
-  readonly codigoSku: string;
-  readonly descricaoProduto?: string;
-  readonly fornecedorId: number;
-  readonly nomeFornecedor?: string;
-  readonly filialId: number;
-  readonly filialNome?: string;
-  readonly quantidadeSugerida: number;
-  readonly quantidadeDigitada: number;
-  readonly precoCusto: number;
-  readonly justificativaOverride?: string | null;
-}
 
 export class ServicoAuditoria {
-  constructor(private readonly repositorio: RepositorioAuditoria) {}
+  constructor(
+    private readonly repositorioOuFabrica?:
+      | RepositorioAuditoria
+      | (() => RepositorioAuditoria)
+  ) {}
+
+  private obterRepositorio(): RepositorioAuditoria {
+    if (typeof this.repositorioOuFabrica === "function") {
+      return this.repositorioOuFabrica();
+    }
+    if (this.repositorioOuFabrica) {
+      return this.repositorioOuFabrica;
+    }
+    return obterRepositorioAuditoria();
+  }
 
   public async registrarDecisao(params: ParametrosRegistroPedido): Promise<AuditoriaPedido> {
+    const repo = this.obterRepositorio();
     const {
       usuario,
       produtoId,
@@ -209,7 +132,7 @@ export class ServicoAuditoria {
     }
 
     // Obtém hash do registro anterior para encadeamento
-    const ultimoRegistro = await this.repositorio.obterUltimoRegistro(usuario.tenantId);
+    const ultimoRegistro = await repo.obterUltimoRegistro(usuario.tenantId);
     const hashAnterior = ultimoRegistro ? ultimoRegistro.hashIntegridade : "GENESIS_HASH";
 
     const id = `AUD-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
@@ -249,18 +172,18 @@ export class ServicoAuditoria {
       hashIntegridade,
     });
 
-    await this.repositorio.adicionarRegistro(registroCompleto);
+    await repo.adicionarRegistro(registroCompleto);
     return registroCompleto;
   }
 
   public async consultarTrilha(
     filtros: FiltrosConsultaAuditoria
   ): Promise<readonly AuditoriaPedido[]> {
-    return this.repositorio.consultar(filtros);
+    return this.obterRepositorio().consultar(filtros);
   }
 
   public async calcularKpisGerenciais(tenantId: string): Promise<ResumoKpisAuditoria> {
-    const todos = await this.repositorio.obterTodos(tenantId);
+    const todos = await this.obterRepositorio().obterTodos(tenantId);
     const total = todos.length;
     if (total === 0) {
       return {
@@ -308,8 +231,15 @@ export class ServicoAuditoria {
 /**
  * Instância singleton compartilhada de repositório e serviço de auditoria para a aplicação.
  */
-export const repositorioAuditoriaPadrao = new RepositorioAuditoriaEmMemoria();
+export const repositorioAuditoriaPadrao: RepositorioAuditoria = {
+  get id() {
+    return obterRepositorioAuditoria().id;
+  },
+  adicionarRegistro: (r) => obterRepositorioAuditoria().adicionarRegistro(r),
+  obterUltimoRegistro: (t) => obterRepositorioAuditoria().obterUltimoRegistro(t),
+  consultar: (f) => obterRepositorioAuditoria().consultar(f),
+  obterTodos: (t) => obterRepositorioAuditoria().obterTodos(t),
+  limpar: (t) => obterRepositorioAuditoria().limpar(t),
+};
+
 export const servicoAuditoriaPadrao = new ServicoAuditoria(repositorioAuditoriaPadrao);
-
-
-

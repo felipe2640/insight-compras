@@ -1,34 +1,46 @@
 /**
- * Provedor DEMO — sem nuvem. Usuários fixos, token assinado localmente (HMAC).
+ * Provedor DEMO — sem nuvem. Usuários configuráveis em memória, token assinado localmente (HMAC).
  * Camada: Aplicação (src/lib/autenticacao/provedores). Edge-safe (WebCrypto).
  *
  * Para quê: testes automatizados, ambiente sem credenciais e demonstração
- * offline. NÃO é para produção: a senha é única e vem de DEMO_SENHA.
+ * offline. NÃO é para produção: a senha padrão vem de DEMO_SENHA.
+ *
+ * Implementa ProvedorAutenticacao e AdministradorUsuarios.
  */
 
 import type { UsuarioAutenticado, PapelUsuario } from "@/lib/rbac/tipos";
 import {
+  AdministradorUsuarios,
   CredenciaisLogin,
   ErroCredenciaisInvalidas,
   ErroProvedorIndisponivel,
+  ErroUsuarioDesativado,
+  NovoUsuario,
   ProvedorAutenticacao,
   SessaoAutenticada,
+  UsuarioCadastrado,
   montarUsuarioAutenticado,
+  normalizarNomeUsuario,
+  normalizarFornecedores,
 } from "../porta";
 import { base64UrlCodificar, base64UrlDecodificar } from "../sessao";
+import { resolverTenantConfigurado } from "@config/tenants";
 
-interface UsuarioDemo {
+export interface UsuarioDemo {
   readonly id: string;
   readonly usuario: string;
   readonly nome: string;
   readonly papel: PapelUsuario;
   readonly fornecedores: readonly number[] | null;
+  readonly tenantId?: string;
+  readonly ativo?: boolean;
+  readonly criadoEm?: string;
 }
 
 export const USUARIOS_DEMO: readonly UsuarioDemo[] = [
-  { id: "demo-gestor", usuario: "gestor", nome: "Gestor Demonstração", papel: "GESTOR", fornecedores: null },
-  { id: "demo-admin", usuario: "admin", nome: "Administrador Demonstração", papel: "ADMIN", fornecedores: null },
-  { id: "demo-comprador", usuario: "comprador", nome: "Comprador Demonstração", papel: "COMPRADOR", fornecedores: null },
+  { id: "demo-gestor", usuario: "gestor", nome: "Gestor Demonstração", papel: "GESTOR", fornecedores: null, ativo: true },
+  { id: "demo-admin", usuario: "admin", nome: "Administrador Demonstração", papel: "ADMIN", fornecedores: null, ativo: true },
+  { id: "demo-comprador", usuario: "comprador", nome: "Comprador Demonstração", papel: "COMPRADOR", fornecedores: null, ativo: true },
 ];
 
 const DURACAO_SESSAO_MS = 12 * 3600 * 1000;
@@ -42,6 +54,18 @@ interface CargaToken {
   readonly tenantId: string;
   readonly fornecedores: readonly number[] | null;
   readonly exp: number;
+}
+
+interface UsuarioDemoInterno {
+  id: string;
+  usuario: string;
+  nome: string;
+  papel: PapelUsuario;
+  fornecedores: readonly number[] | null;
+  tenantId: string;
+  ativo: boolean;
+  criadoEm: string;
+  senha: string;
 }
 
 async function assinar(segredo: string, dados: string): Promise<string> {
@@ -70,18 +94,44 @@ export interface OpcoesProvedorDemo {
   readonly agora?: () => number;
 }
 
-export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao {
+export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao, AdministradorUsuarios {
   readonly id = "demo" as const;
-  private readonly senha: string;
+  private readonly senhaPadrao: string;
   private readonly segredo: string;
-  private readonly usuarios: readonly UsuarioDemo[];
   private readonly agora: () => number;
+  private readonly usuariosInternos = new Map<string, UsuarioDemoInterno>();
 
   constructor(opcoes: OpcoesProvedorDemo = {}) {
-    this.senha = opcoes.senha ?? process.env.DEMO_SENHA ?? "demo";
+    this.senhaPadrao = opcoes.senha ?? process.env.DEMO_SENHA ?? "demo";
     this.segredo = opcoes.segredo ?? process.env.AUTH_SECRET ?? SEGREDO_PADRAO_DEV;
-    this.usuarios = opcoes.usuarios ?? USUARIOS_DEMO;
     this.agora = opcoes.agora ?? (() => Date.now());
+
+    const baseUsuarios = opcoes.usuarios ?? USUARIOS_DEMO;
+    for (const u of baseUsuarios) {
+      this.usuariosInternos.set(u.id, {
+        id: u.id,
+        usuario: u.usuario,
+        nome: u.nome,
+        papel: u.papel,
+        fornecedores: u.fornecedores,
+        tenantId: u.tenantId ?? resolverTenantConfigurado().id,
+        ativo: u.ativo ?? true,
+        criadoEm: u.criadoEm ?? "2026-09-01T00:00:00.000Z",
+        senha: this.senhaPadrao,
+      });
+    }
+  }
+
+  private buscarUsuarioPorIdentificador(idOuNome: string): UsuarioDemoInterno | undefined {
+    const busca = idOuNome.trim().toLowerCase();
+    const porId = this.usuariosInternos.get(idOuNome);
+    if (porId) return porId;
+    for (const u of this.usuariosInternos.values()) {
+      if (u.usuario.toLowerCase() === busca || u.id.toLowerCase() === busca) {
+        return u;
+      }
+    }
+    return undefined;
   }
 
   async entrar(credenciais: CredenciaisLogin): Promise<SessaoAutenticada> {
@@ -105,16 +155,34 @@ export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao {
     }
 
     const nome = String(credenciais.usuario ?? "").trim().toLowerCase();
-    const usuario = this.usuarios.find((u) => u.usuario === nome);
-    if (!usuario || credenciais.senha !== this.senha) {
+    const usuario = this.buscarUsuarioPorIdentificador(nome);
+    if (!usuario || credenciais.senha !== usuario.senha) {
       throw new ErroCredenciaisInvalidas();
     }
+    if (!usuario.ativo) {
+      throw new ErroUsuarioDesativado();
+    }
     const exp = this.agora() + DURACAO_SESSAO_MS;
-    const carga: CargaToken = { sub: usuario.id, ...usuario, tenantId: credenciais.tenantId, exp };
+    const carga: CargaToken = {
+      sub: usuario.id,
+      usuario: usuario.usuario,
+      nome: usuario.nome,
+      papel: usuario.papel,
+      tenantId: credenciais.tenantId,
+      fornecedores: usuario.fornecedores,
+      exp,
+    };
     const cargaCodificada = base64UrlCodificar(JSON.stringify(carga));
     const token = `${cargaCodificada}.${await assinar(this.segredo, cargaCodificada)}`;
     const usuarioAutenticado = montarUsuarioAutenticado(
-      { id: usuario.id, usuario: usuario.usuario, nome: usuario.nome, papel: usuario.papel, tenantId: credenciais.tenantId, fornecedores: usuario.fornecedores },
+      {
+        id: usuario.id,
+        usuario: usuario.usuario,
+        nome: usuario.nome,
+        papel: usuario.papel,
+        tenantId: credenciais.tenantId,
+        fornecedores: usuario.fornecedores,
+      },
       credenciais.tenantId
     )!;
     return { provedor: "demo", usuario: usuarioAutenticado, token, tokenRenovacao: null, expiraEm: exp };
@@ -134,8 +202,22 @@ export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao {
       return null;
     }
     if (typeof carga.exp !== "number" || carga.exp <= this.agora()) return null;
+
+    const usuario = this.buscarUsuarioPorIdentificador(carga.sub);
+    // Se o usuário foi desativado ou removido, o token não valida mais (revogação imediata)
+    if (usuario && !usuario.ativo) {
+      return null;
+    }
+
     return montarUsuarioAutenticado(
-      { id: carga.sub, usuario: carga.usuario, nome: carga.nome, papel: carga.papel, tenantId: carga.tenantId, fornecedores: carga.fornecedores },
+      {
+        id: carga.sub,
+        usuario: carga.usuario,
+        nome: carga.nome,
+        papel: carga.papel,
+        tenantId: carga.tenantId,
+        fornecedores: carga.fornecedores,
+      },
       tenantId
     );
   }
@@ -146,5 +228,100 @@ export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao {
 
   async sair(): Promise<void> {
     // token sem estado: expira sozinho
+  }
+
+  async alterarSenha(usuarioId: string, senhaAtual: string, novaSenha: string): Promise<void> {
+    if (!novaSenha || novaSenha.length < 8) {
+      throw new Error("A nova senha deve conter no mínimo 8 caracteres.");
+    }
+    const usuario = this.buscarUsuarioPorIdentificador(usuarioId);
+    if (!usuario) {
+      throw new ErroCredenciaisInvalidas("Usuário não encontrado.");
+    }
+    if (usuario.senha !== senhaAtual) {
+      throw new ErroCredenciaisInvalidas("Senha atual incorreta.");
+    }
+    usuario.senha = novaSenha;
+  }
+
+  async desativarUsuario(usuarioId: string): Promise<void> {
+    const usuario = this.buscarUsuarioPorIdentificador(usuarioId);
+    if (!usuario) {
+      throw new Error("Usuário não encontrado.");
+    }
+    usuario.ativo = false;
+  }
+
+  async reativarUsuario(usuarioId: string): Promise<void> {
+    const usuario = this.buscarUsuarioPorIdentificador(usuarioId);
+    if (!usuario) {
+      throw new Error("Usuário não encontrado.");
+    }
+    usuario.ativo = true;
+  }
+
+  async criarUsuario(novo: NovoUsuario): Promise<UsuarioCadastrado> {
+    const usuarioNormalizado = normalizarNomeUsuario(novo.usuario);
+    if (!usuarioNormalizado) {
+      throw new Error(
+        "nome de usuário inválido: use de 3 a 30 caracteres, minúsculas, números, ponto, hífen ou sublinhado."
+      );
+    }
+    if (!novo.senha || novo.senha.length < 8) {
+      throw new Error("A senha deve conter no mínimo 8 caracteres.");
+    }
+    const existente = this.buscarUsuarioPorIdentificador(usuarioNormalizado);
+    if (existente) {
+      throw new Error(`Usuário "${usuarioNormalizado}" já cadastrado.`);
+    }
+
+    const id = `demo-${usuarioNormalizado}-${Date.now()}`;
+    const criadoEm = new Date(this.agora()).toISOString();
+    const novoInterno: UsuarioDemoInterno = {
+      id,
+      usuario: usuarioNormalizado,
+      nome: novo.nome.trim() || usuarioNormalizado,
+      papel: novo.papel,
+      tenantId: novo.tenantId,
+      fornecedores: normalizarFornecedores(novo.fornecedores),
+      ativo: true,
+      criadoEm,
+      senha: novo.senha,
+    };
+    this.usuariosInternos.set(id, novoInterno);
+
+    return {
+      id: novoInterno.id,
+      usuario: novoInterno.usuario,
+      nome: novoInterno.nome,
+      papel: novoInterno.papel,
+      tenantId: novoInterno.tenantId,
+      fornecedores: novoInterno.fornecedores,
+      criadoEm: novoInterno.criadoEm,
+      ativo: novoInterno.ativo,
+    };
+  }
+
+  async listarUsuarios(tenantId: string): Promise<UsuarioCadastrado[]> {
+    const tenantConfiguradoId = resolverTenantConfigurado().id;
+    return Array.from(this.usuariosInternos.values())
+      .filter(
+        (u) =>
+          !tenantId ||
+          u.tenantId === tenantId ||
+          tenantId === tenantConfiguradoId ||
+          tenantId === "demonstracao" ||
+          tenantId === "demo"
+      )
+      .map((u) => ({
+        id: u.id,
+        usuario: u.usuario,
+        nome: u.nome,
+        papel: u.papel,
+        tenantId: u.tenantId,
+        fornecedores: u.fornecedores,
+        criadoEm: u.criadoEm,
+        ativo: u.ativo,
+      }));
   }
 }

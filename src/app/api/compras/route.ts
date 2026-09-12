@@ -37,6 +37,44 @@ export async function GET(request: NextRequest) {
     const secaoId = secaoQuery ? parseInt(secaoQuery, 10) : undefined;
     const filialId = filialQuery ? parseInt(filialQuery, 10) : 1;
 
+    // 2.1 Falha fechada no servidor para comprador sem carteira homologada (recebe lista vazia)
+    const qtdFornecedoresCarteira = !usuario.allowedSupplierIds
+      ? 0
+      : Array.isArray(usuario.allowedSupplierIds)
+      ? usuario.allowedSupplierIds.length
+      : (usuario.allowedSupplierIds as ReadonlySet<number>).size;
+    if (usuario.role === "COMPRADOR" && (!usuario.allowedSupplierIds || qtdFornecedoresCarteira === 0)) {
+      if (fornecedoresSolicitados && fornecedoresSolicitados.length > 0) {
+        return NextResponse.json(
+          {
+            sucesso: false,
+            erro: "Acesso Negado à Carteira Solicitada",
+            mensagem: "Comprador sem nenhum fornecedor associado à sua carteira.",
+          },
+          { status: 403 }
+        );
+      }
+      const escopo = searchParams.get("escopo") === "acionaveis" ? "acionaveis" : "todos";
+      const tabular = searchParams.get("formato") === "tabular";
+      const tempoExecucaoMs = Date.now() - inicio;
+      const respostaVazia = NextResponse.json({
+        sucesso: true,
+        total: 0,
+        escopo,
+        contagens: { acionaveis: 0, monitorar: 0, saudavel: 0, excesso: 0, zerado: 0 },
+        filialFocoId: filialId,
+        tempoExecucaoMs,
+        provedorDados: "VAZIO",
+        ...(tabular
+          ? { grade: codificarGradeTabular([]) }
+          : { dados: [] }),
+      });
+      for (const [chave, valor] of Object.entries(CABECALHOS_SEGURANCA_HTTP)) {
+        respostaVazia.headers.set(chave, valor);
+      }
+      return respostaVazia;
+    }
+
     // 3. Aplicação do Guardrail Server-Side (RBAC) - Lança 403 se violar carteira
     const filtroValidado = aplicarGuardrailInventarioServerSide(usuario, {
       fornecedoresPermitidos: fornecedoresSolicitados,

@@ -93,3 +93,77 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ erro: "falha ao criar usuário" }, { status: 500 });
   }
 }
+
+const esquemaStatus = z.object({
+  id: z.string().min(1),
+  acao: z.enum(["desativar", "reativar"]),
+});
+
+export async function PATCH(request: NextRequest) {
+  const solicitante = await obterUsuarioDaRequisicao(request);
+  if (!solicitante) return respostaNaoAutenticado();
+  if (!ehAdministrador(solicitante)) return respostaSemPermissao();
+
+  let corpo: z.infer<typeof esquemaStatus>;
+  try {
+    corpo = esquemaStatus.parse(await request.json());
+  } catch {
+    return NextResponse.json(
+      { erro: "Parâmetros inválidos. Informe o id do usuário e a ação ('desativar' ou 'reativar')." },
+      { status: 400 }
+    );
+  }
+
+  if (corpo.id === solicitante.id && corpo.acao === "desativar") {
+    return NextResponse.json(
+      { erro: "Você não pode desativar a sua própria conta de administrador." },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const admin = obterAdministradorUsuarios();
+    if (corpo.acao === "desativar") {
+      await admin.desativarUsuario(corpo.id);
+    } else {
+      await admin.reativarUsuario(corpo.id);
+    }
+    return NextResponse.json({ sucesso: true, acao: corpo.acao });
+  } catch (erro) {
+    if (erro instanceof ErroProvedorIndisponivel) {
+      return NextResponse.json({ erro: erro.message }, { status: 503 });
+    }
+    console.error(`[admin/usuarios] falha ao ${corpo.acao}:`, erro);
+    return NextResponse.json({ erro: `falha ao ${corpo.acao} usuário` }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const solicitante = await obterUsuarioDaRequisicao(request);
+  if (!solicitante) return respostaNaoAutenticado();
+  if (!ehAdministrador(solicitante)) return respostaSemPermissao();
+
+  const id = request.nextUrl.searchParams.get("id");
+  if (!id) {
+    return NextResponse.json({ erro: "Parâmetro 'id' do usuário é obrigatório." }, { status: 400 });
+  }
+
+  if (id === solicitante.id) {
+    return NextResponse.json(
+      { erro: "Você não pode desativar a sua própria conta de administrador." },
+      { status: 400 }
+    );
+  }
+
+  try {
+    await obterAdministradorUsuarios().desativarUsuario(id);
+    return NextResponse.json({ sucesso: true, desativado: id });
+  } catch (erro) {
+    if (erro instanceof ErroProvedorIndisponivel) {
+      return NextResponse.json({ erro: erro.message }, { status: 503 });
+    }
+    console.error("[admin/usuarios] falha ao desativar:", erro);
+    return NextResponse.json({ erro: "falha ao desativar usuário" }, { status: 500 });
+  }
+}
+

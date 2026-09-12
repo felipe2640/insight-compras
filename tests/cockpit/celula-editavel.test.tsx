@@ -39,7 +39,7 @@ describe("Cockpit — EditableCell (Célula Editável com Múltiplos e Teclado)"
     expect(onCommit).toHaveBeenCalledWith(
       "AM-MON-001",
       6,
-      expect.stringContaining("par (múltiplo de 2 un)")
+      expect.stringMatching(/múltiplo de embalagem fechada \(2 un\)|par \(múltiplo de 2 un\)/)
     );
   });
 

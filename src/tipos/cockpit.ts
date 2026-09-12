@@ -15,7 +15,7 @@ export type { EntradaNFeDoDia, ItemSimilarIntercambiavel };
 // ============================================================================
 
 export type SeveridadeRuptura = "Boa" | "Atenção" | "Grave" | "Sem histórico";
-export type ClassificacaoFrequencia = "Alta" | "Média" | "Baixa";
+export type ClassificacaoFrequencia = "Alta" | "Média" | "Baixa" | "Sem histórico";
 export type TendenciaCobertura = "ALTA" | "QUEDA" | "ESTAVEL" | "ZUMBI";
 
 /**
@@ -64,27 +64,29 @@ export interface LinhaCockpitMatriz {
   readonly vendaPerdidaEstimadaReais: number;
 
   // Frequência em 90 dias
-  readonly notasVenda90d: number;
-  readonly notasDevolucao90d: number;
-  readonly notasLiquidas90d: number;
-  readonly frequenciaPercentual90d: number;
+  /** null = sem histórico na loja em foco (não medido). */
+  readonly notasVenda90d: number | null;
+  readonly notasDevolucao90d: number | null;
+  readonly notasLiquidas90d: number | null;
+  readonly frequenciaPercentual90d: number | null;
   readonly classificacaoFrequencia: ClassificacaoFrequencia;
-  readonly totalPecasVendidas90d: number;
+  readonly totalPecasVendidas90d: number | null;
   readonly extratoFrequencia90d: readonly ExtratoMovimentacaoFrequencia[];
 
   // Coberturas Comparativas (30d / 90d / 180d)
-  readonly vendasLiquidas30d: number;
-  readonly consumoMedioDiario30d: number;
+  /** null = sem histórico na loja em foco (não medido). */
+  readonly vendasLiquidas30d: number | null;
+  readonly consumoMedioDiario30d: number | null;
   /** null = sem consumo na janela, cobertura não calculável. */
   readonly diasCobertura30d: number | null;
 
-  readonly vendasLiquidas90d: number;
-  readonly consumoMedioDiario90d: number;
+  readonly vendasLiquidas90d: number | null;
+  readonly consumoMedioDiario90d: number | null;
   /** null = sem consumo na janela, cobertura não calculável. */
   readonly diasCobertura90d: number | null;
 
-  readonly vendasLiquidas180d: number;
-  readonly consumoMedioDiario180d: number;
+  readonly vendasLiquidas180d: number | null;
+  readonly consumoMedioDiario180d: number | null;
   /** null = sem consumo na janela, cobertura não calculável. */
   readonly diasCobertura180d: number | null;
 
@@ -144,11 +146,11 @@ export interface LinhaCockpitMatriz {
   /** Última solicitação de compra. Nível de produto: a fonte não separa por loja. */
   readonly dtUltimoPedido?: string | null;
   readonly curvaAbcSistema?: string;
-  readonly produtosVend90d?: number;
-  readonly consumoDiario?: number;
-  readonly consumoMensal?: number;
+  readonly produtosVend90d?: number | null;
+  readonly consumoDiario?: number | null;
+  readonly consumoMensal?: number | null;
   readonly vendaACadaDias?: number | null;
-  readonly consumoUltimos30DiasQtd?: number;
+  readonly consumoUltimos30DiasQtd?: number | null;
   readonly consumoUltimos30DiasDetalhes?: readonly ExtratoMovimentacaoFrequencia[];
   readonly giroUltimaVenda?: string;
   readonly frequencia?: string;
@@ -182,19 +184,19 @@ export interface PropsTooltipRuptura {
   readonly classificacao: SeveridadeRuptura;
   readonly dataUltimoZeramento: string | null;
   readonly vendaPerdidaEstimadaReais: number;
-  readonly consumoDiarioReferencia?: number;
+  readonly consumoDiarioReferencia?: number | null;
   readonly precoVenda?: number;
   readonly delayDuration?: number;
   readonly children: React.ReactNode;
 }
 
 export interface PropsTooltipFrequencia {
-  readonly notasVenda: number;
-  readonly notasDevolucao: number;
-  readonly notasLiquidas: number;
-  readonly frequenciaPercentual: number;
+  readonly notasVenda: number | null;
+  readonly notasDevolucao: number | null;
+  readonly notasLiquidas: number | null;
+  readonly frequenciaPercentual: number | null;
   readonly classificacao: ClassificacaoFrequencia;
-  readonly totalPecasVendidas: number;
+  readonly totalPecasVendidas: number | null;
   readonly extratoMovimentacoes?: readonly ExtratoMovimentacaoFrequencia[];
   readonly delayDuration?: number;
   readonly children: React.ReactNode;
@@ -203,14 +205,14 @@ export interface PropsTooltipFrequencia {
 export interface PropsTooltipCobertura {
   readonly saldoEstoqueAtual: number;
   readonly leadTimeDias?: number;
-  readonly vendas30d: number;
-  readonly cmd30d: number;
+  readonly vendas30d: number | null;
+  readonly cmd30d: number | null;
   readonly cobertura30dDias: number | null;
-  readonly vendas90d: number;
-  readonly cmd90d: number;
+  readonly vendas90d: number | null;
+  readonly cmd90d: number | null;
   readonly cobertura90dDias: number | null;
-  readonly vendas180d: number;
-  readonly cmd180d: number;
+  readonly vendas180d: number | null;
+  readonly cmd180d: number | null;
   readonly cobertura180dDias: number | null;
   readonly tendencia: TendenciaCobertura;
   readonly isMarcaZumbi: boolean;
