@@ -13,6 +13,7 @@ import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autentic
 import {
   atualizarStatusPedido,
   historicoDisponivel,
+  historicoPersistido,
   listarItensDoPedido,
   listarPedidosExportados,
   obterPedidoPorId,
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
         listarItensDoPedido(usuario.tenantId, id),
         obterPedidoPorId(usuario.tenantId, id),
       ]);
-      return NextResponse.json({ configurado: true, pedido, itens });
+      return NextResponse.json({ configurado: historicoPersistido(), pedido, itens });
     } catch (erro) {
       console.error("[pedidos] falha ao abrir pedido:", erro);
       return NextResponse.json({ erro: "falha ao abrir o pedido" }, { status: 500 });
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
     status,
   });
 
-  return NextResponse.json({ configurado: true, dias, pedidos });
+  return NextResponse.json({ configurado: historicoPersistido(), dias, pedidos });
 }
 
 export async function PATCH(request: NextRequest) {

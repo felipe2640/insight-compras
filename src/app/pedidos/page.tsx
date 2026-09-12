@@ -27,6 +27,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { cn } from "@/lib/utils";
 import { Pedido, ItemPedido, StatusPedido } from "@/lib/pedidos/tipos";
 import { ROTULOS_STATUS, obterProximoStatus } from "@/lib/pedidos/ciclo-vida";
+import { useNomesFiliais } from "@/lib/cockpit/contexto-tenant";
 
 const dinheiro = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -61,6 +62,9 @@ function badgeStatus(status: StatusPedido) {
 }
 
 export default function PaginaPedidos() {
+  // Nome da loja do CADASTRO do tenant. A coluna dizia "Loja 1", "Loja 2" —
+  // número de filial não é como o comprador chama a loja dele.
+  const nomesFiliais = useNomesFiliais();
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [configurado, setConfigurado] = useState(true);
   const [dias, setDias] = useState(30);
@@ -203,7 +207,9 @@ export default function PaginaPedidos() {
           {!configurado && (
             <p className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              Histórico não configurado no Supabase. Operando em modo demonstração local.
+              Sem banco configurado: este histórico vive só na memória do servidor e
+              se perde no próximo reinício ou deploy. Configure o Supabase para
+              que o ciclo de vida dos pedidos seja preservado.
             </p>
           )}
 
@@ -403,7 +409,7 @@ export default function PaginaPedidos() {
                           </td>
                           <td className="px-3 py-2 text-slate-700">{p.usuario ?? "—"}</td>
                           <td className="px-3 py-2 text-slate-700">
-                            {p.filialId ? `Loja ${p.filialId}` : "—"}
+                            {p.filialId ? nomesFiliais[p.filialId] ?? `Loja ${p.filialId}` : "—"}
                           </td>
                           <td className="px-3 py-2">
                             <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">

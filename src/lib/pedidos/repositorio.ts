@@ -5,6 +5,7 @@
  */
 
 import { supabaseConfigurado } from "@/lib/aprendizado/supabase";
+import { resolverTenantConfigurado } from "@config/tenants";
 import {
   FiltrosListagemPedidos,
   IdProvedorPedidos,
@@ -41,8 +42,29 @@ export function idProvedorPedidos(): IdProvedorPedidos {
   return supabaseConfigurado() ? "supabase" : "memoria";
 }
 
+/**
+ * Registros de demonstração: só para o tenant de DEMONSTRAÇÃO.
+ *
+ * O provedor em memória é o que atende quando não há banco configurado — e
+ * isso acontece por OMISSÃO, bastando faltar a variável do Supabase no
+ * ambiente. Semeado incondicionalmente, ele enchia a instalação de um cliente
+ * REAL com pedidos de compra inventados, com SKU, fornecedor e valor.
+ *
+ * Medido com TENANT_ATIVO=carreiro e sem Supabase: a tela trazia "Carlos
+ * Comprador" e "Ana Suprimentos" operando em "Loja Central 01" e "Filial Norte
+ * 02" — pessoas e lojas que não existem na rede — com justificativas escritas
+ * e valores em reais, e os indicadores do topo calculados em cima disso.
+ *
+ * A regra é a mesma da fonte de dados: quem declara `fonteDados: "sintetica"`
+ * recebe conteúdo sintético; cliente real começa vazio, que é a verdade.
+ */
+function deveSemearDemonstracao(): boolean {
+  return resolverTenantConfigurado().fonteDados === "sintetica";
+}
+
 let repositorioPersonalizado: RepositorioPedidos | null = null;
 let instanciaMemoria: RepositorioPedidosMemoria | null = null;
+let memoriaSemeada: boolean | null = null;
 let instanciaSupabase: RepositorioPedidosSupabase | null = null;
 
 export function obterRepositorioPedidos(): RepositorioPedidos {
@@ -55,7 +77,12 @@ export function obterRepositorioPedidos(): RepositorioPedidos {
     return (instanciaSupabase ??= new RepositorioPedidosSupabase());
   }
 
-  return (instanciaMemoria ??= new RepositorioPedidosMemoria(true));
+  const semear = deveSemearDemonstracao();
+  if (!instanciaMemoria || memoriaSemeada !== semear) {
+    instanciaMemoria = new RepositorioPedidosMemoria(semear);
+    memoriaSemeada = semear;
+  }
+  return instanciaMemoria;
 }
 
 export function definirRepositorioPedidos(repo: RepositorioPedidos | null): void {
@@ -73,8 +100,27 @@ export function reiniciarRepositorioPedidos(): void {
  * Sempre disponível: em produção conecta ao Supabase; em demonstração/desenvolvimento
  * utiliza o provedor em memória como fallback gracioso.
  */
+/**
+ * Existe histórico para consultar? Sempre sim — o provedor em memória atende.
+ *
+ * Não confunda com PERSISTIDO: use `historicoPersistido()` para saber se o que
+ * o comprador registrar sobrevive ao próximo deploy.
+ */
 export function historicoDisponivel(): boolean {
   return true;
+}
+
+/**
+ * O histórico sobrevive a um reinício?
+ *
+ * Só com banco configurado. Sem ele, o provedor em memória some a cada deploy
+ * ou reciclagem de função — e a tela precisa dizer isso. Antes ela tinha o
+ * aviso pronto, mas ele nunca aparecia: a rota respondia `configurado: true`
+ * de qualquer jeito, e o comprador não tinha como saber que o pedido que ele
+ * acabou de avançar de estado ia evaporar.
+ */
+export function historicoPersistido(): boolean {
+  return idProvedorPedidos() === "supabase";
 }
 
 export function modoHistorico(): IdProvedorPedidos {

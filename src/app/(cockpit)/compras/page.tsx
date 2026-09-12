@@ -6,6 +6,7 @@ import { CockpitPrincipal } from "@/components/cockpit/CockpitPrincipal";
 import { obterUsuarioAtual, rotuloPapel } from "@/lib/autenticacao/servidor";
 import { codificarGradeTabular } from "@/lib/cockpit/codificacao-tabular";
 import { contarStatusGrade, separarAcionaveis } from "@/lib/cockpit/escopo-grade";
+import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 
 // A página lê a sessão (cookies), portanto é dinâmica por requisição; o cache de dados fica no adapter.
 export const dynamic = "force-dynamic";
@@ -13,6 +14,15 @@ export const dynamic = "force-dynamic";
 async function CarregarDadosCockpit() {
   const usuario = await obterUsuarioAtual();
   const adaptador = obterAdaptadorInventario();
+
+  /**
+   * Loja que abre em foco: do CADASTRO do cliente.
+   *
+   * Estava 1 fixo nos três pontos desta página, embora `filialFocoPadraoId`
+   * exista no tenant justamente para isto. Uma rede cuja matriz não seja a
+   * filial 1 abria o cockpit na loja errada, e o cadastro dizia outra coisa.
+   */
+  const filialFoco = obterTenantAtivo().parametrosMotor.filialFocoPadraoId;
 
   // Falha fechada: Comprador sem carteira enxerga ZERO fornecedores (grade vazia).
   // Gestor e admin continuam irrestritos (null).
@@ -46,14 +56,14 @@ async function CarregarDadosCockpit() {
       }
     : await adaptador.carregarInventarioCompleto({
         fornecedoresPermitidos,
-        filialId: 1,
+        filialId: filialFoco,
         // O comprador decide sobre o que tem saldo ou saiu recentemente. Trazer o
         // catálogo inteiro enche a grade de item morto e atrasa a carga.
         apenasComEstoqueOuVenda: true,
       });
 
   // Parâmetros calibrados do tenant (Carreiro: fator 0,90 do backtest).
-  const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(1));
+  const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(filialFoco));
 
   // A página entrega APENAS o que pede decisão hoje. O catálogo inteiro (19 mil
   // itens) chega em segundo plano pela /api/compras: mandá-lo aqui significava
@@ -64,7 +74,7 @@ async function CarregarDadosCockpit() {
     <CockpitPrincipal
       gradeInicial={codificarGradeTabular(acionaveis)}
       contagensCatalogo={contarStatusGrade(linhas)}
-      filialFocoIdInicial={1}
+      filialFocoIdInicial={filialFoco}
       fornecedoresPermitidosInicial={fornecedoresPermitidos}
       usuarioSessao={
         usuario
