@@ -1,0 +1,28 @@
+[project]
+name = "previsao-ia"
+version = "0.1.0"
+description = "Pipeline de IA e Previsão de Demanda para Autopeças"
+requires-python = ">=3.12, <3.13"
+dependencies = [
+    "numpy",
+    "pandas",
+    "pyarrow",
+    "python-dotenv",
+    "supabase",
+    "tabulate",
+    "torch",
+    "transformers",
+    "accelerate",
+    "scipy",
+    "tqdm",
+    "chronos-forecasting>=2.3.2",
+    "statsforecast>=2.0.1",
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

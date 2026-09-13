@@ -1,0 +1,19 @@
+EVALUATE
+VAR Periodo =
+    FILTER(
+        ALL('dCalendario'[Data]),
+        'dCalendario'[Data] >= DATE(2024, 9, 1)
+            && 'dCalendario'[Data] <= DATE(2026, 9, 12)
+    )
+RETURN
+FILTER(
+    SUMMARIZECOLUMNS(
+        'CADEMP'[ANOMEFANTASIA],
+        'PRODUTOS'[ACODPRODUTO],
+        'dCalendario'[Data],
+        Periodo,
+        "QtdVenda", CALCULATE([Quantidade Vendida Produto], KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"))
+    ),
+    [QtdVenda] <> 0
+)
+ORDER BY 'CADEMP'[ANOMEFANTASIA], 'PRODUTOS'[ACODPRODUTO], 'dCalendario'[Data]

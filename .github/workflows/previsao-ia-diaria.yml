@@ -1,0 +1,50 @@
+name: Pipeline Diário de Previsão de Demanda IA
+
+on:
+  schedule:
+    # Executa todo dia às 08:00 UTC (05:00 da manhã no horário de Brasília)
+    - cron: '0 8 * * *'
+  workflow_dispatch: # Permite acionar manualmente com um clique na interface do GitHub
+
+jobs:
+  inferencia-ia:
+    name: Previsão IA - ${{ matrix.tenant }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        tenant: [carreiro] # Para novos clientes, basta adicionar na lista: [carreiro, cliente_b, ...]
+
+    steps:
+      - name: Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar Gerenciador uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Instalar Dependências do Modelo
+        working-directory: ./scripts/previsao-ia
+        run: |
+          uv sync --frozen
+
+      - name: Executar Extração e Inferência de IA
+        working-directory: ./scripts/previsao-ia
+        env:
+          TENANT_ATIVO: ${{ matrix.tenant }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          POWERBI_WORKSPACE_ID: ${{ secrets.POWERBI_WORKSPACE_ID }}
+          POWERBI_DATASET_ID: ${{ secrets.POWERBI_DATASET_ID }}
+        run: |
+          uv run python pipeline_diario.py --extrair --fonte fabric

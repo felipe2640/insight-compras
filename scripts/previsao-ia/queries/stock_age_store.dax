@@ -1,0 +1,13 @@
+EVALUATE
+FILTER(
+    SUMMARIZECOLUMNS(
+        'CADEMP'[ANOMEFANTASIA],
+        'Dim_Faixa_Idade_Estoque'[Faixa],
+        "EstoqueValor", [Estoque Valor Imobilizado por Faixa Idade],
+        "EstoqueQtd", [Estoque Qtd Unidades por Faixa Idade],
+        "Produtos", [Estoque Qtd Produtos por Faixa Idade]
+    ),
+    NOT ISBLANK('CADEMP'[ANOMEFANTASIA])
+)
+ORDER BY 'CADEMP'[ANOMEFANTASIA], 'Dim_Faixa_Idade_Estoque'[Faixa]
+

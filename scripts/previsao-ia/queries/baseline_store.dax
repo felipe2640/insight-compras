@@ -1,0 +1,19 @@
+EVALUATE
+VAR AsOf = DATE(2026, 9, 2)
+VAR Periodo12m =
+    FILTER(
+        ALL('dCalendario'[Data]),
+        'dCalendario'[Data] > EDATE(AsOf, -12) && 'dCalendario'[Data] <= AsOf
+    )
+RETURN
+SUMMARIZECOLUMNS(
+    'CADEMP'[ANOMEFANTASIA],
+    Periodo12m,
+    "Receita12m", CALCULATE([Receita Liquida], KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")),
+    "QtdVendida12m", CALCULATE([Quantidade Vendida Produto], KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")),
+    "Compras12m", [Valor Comprado Produto],
+    "QtdComprada12m", [Quantidade Comprada Produto],
+    "EstoqueValor", [Estoque Valor Imobilizado (Base)],
+    "EstoqueQtd", [Estoque Qtd Atual (Base)]
+)
+ORDER BY 'CADEMP'[ANOMEFANTASIA]
