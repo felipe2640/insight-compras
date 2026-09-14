@@ -39,25 +39,30 @@ class ExtratorFabric(ExtratorDadosBase):
             'Authorization': f'Bearer {token}',
             'Content-Type': 'application/json'
         })
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            results = data.get('results', [])
-            if not results:
-                return []
-            tables = results[0].get('tables', [])
-            if not tables:
-                return []
-            raw_rows = tables[0].get('rows', [])
-            
-            # Limpar nomes de colunas com colchetes
-            rows_limpas = []
-            for r in raw_rows:
-                limpa = {}
-                for k, v in r.items():
-                    nome = k.rsplit('[', 1)[1][:-1] if ('[' in k and k.endswith(']')) else k.strip('[]')
-                    limpa[nome] = v
-                rows_limpas.append(limpa)
-            return rows_limpas
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+        except urllib.error.HTTPError as e:
+            corpo_erro = e.read().decode('utf-8', errors='replace')
+            raise RuntimeError(f"[{self.nome_fonte}] Erro na API REST do Fabric (HTTP {e.code}): {corpo_erro}")
+
+        results = data.get('results', [])
+        if not results:
+            return []
+        tables = results[0].get('tables', [])
+        if not tables:
+            return []
+        raw_rows = tables[0].get('rows', [])
+        
+        # Limpar nomes de colunas com colchetes
+        rows_limpas = []
+        for r in raw_rows:
+            limpa = {}
+            for k, v in r.items():
+                nome = k.rsplit('[', 1)[1][:-1] if ('[' in k and k.endswith(']')) else k.strip('[]')
+                limpa[nome] = v
+            rows_limpas.append(limpa)
+        return rows_limpas
 
     def extrair(self, config: Dict[str, Any]) -> Tuple[pd.DataFrame, pd.DataFrame]:
         tenant_id = config.get('azure_tenant_id') or os.getenv('AZURE_TENANT_ID') or os.getenv('POWERBI_TENANT_ID')
@@ -78,16 +83,15 @@ class ExtratorFabric(ExtratorDadosBase):
 
             dax_vendas = """
             EVALUATE
-            SELECTCOLUMNS(
+            SUMMARIZECOLUMNS(
+                'CADEMP'[ANOMEFANTASIA],
+                'PRODUTOS'[ACODPRODUTO],
+                'dCalendario'[Data],
                 FILTER(
-                    MOVIMENTOS,
-                    MOVIMENTOS[TIPOMOVIMENTO] = "S" &&
-                    MOVIMENTOS[DATA] >= TODAY() - 365
+                    ALL('dCalendario'[Data]),
+                    'dCalendario'[Data] >= TODAY() - 365 && 'dCalendario'[Data] <= TODAY()
                 ),
-                "Loja", RELATED(CADEMP[ANOMEFANTASIA]),
-                "SKU", MOVIMENTOS[ACODPRODUTO],
-                "Data", MOVIMENTOS[DATA],
-                "QtdVenda", MOVIMENTOS[QTDMOVIMENTADA]
+                "QtdVenda", CALCULATE([Quantidade Vendida Produto], KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"))
             )
             """
             rows_vendas = self._executar_dax_fabric(token, workspace_id, dataset_id, dax_vendas)
@@ -96,9 +100,9 @@ class ExtratorFabric(ExtratorDadosBase):
             dax_produtos = """
             EVALUATE
             SELECTCOLUMNS(
-                PRODUTOS,
-                "SKU", PRODUTOS[ACODPRODUTO],
-                "Descricao", PRODUTOS[ADESCRICAO]
+                'PRODUTOS',
+                "SKU", 'PRODUTOS'[ACODPRODUTO],
+                "Descricao", 'PRODUTOS'[ADESCRICAO]
             )
             """
             rows_produtos = self._executar_dax_fabric(token, workspace_id, dataset_id, dax_produtos)
