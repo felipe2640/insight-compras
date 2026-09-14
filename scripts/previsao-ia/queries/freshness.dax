@@ -1,0 +1,8 @@
+EVALUATE
+ROW(
+    "UltimaDataNota", MAX('NOTAS'[DENTSAID]),
+    "UltimaDataVendaValida", MAXX(FILTER(ALL('dCalendario'[Data]), [Receita Liquida] > 0), 'dCalendario'[Data]),
+    "UltimaAtualizacaoProduto", MAX('PRODUTOS'[DULT_ATLZ]),
+    "UltimoMovimento", MAX('MOVESTOQ'[DATA_HORA])
+)
+

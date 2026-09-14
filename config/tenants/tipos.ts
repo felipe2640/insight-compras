@@ -141,6 +141,51 @@ export interface ConfiguracaoTenant {
    * separadores próprios; o motor de exportação é comum, o layout é daqui.
    */
   readonly exportacao: ConfiguracaoExportacaoTenant;
+  /**
+   * Configuração do fluxo e ciclo de compras do ERP do cliente.
+   * Rastreia: Solicitação de Balcão -> Cotação -> Pedido de Compra -> Entrada NF.
+   */
+  readonly processoCompra?: ConfiguracaoProcessoCompraTenant;
+}
+
+/** Motivo de recusa cadastrado ou selecionável para solicitações de compra */
+export interface MotivoRecusaCompraTenant {
+  readonly codigo: string;
+  readonly rotulo: string;
+  readonly descricao: string;
+  readonly categoria: "preco" | "disponibilidade" | "operacional" | "cliente" | "estrategico";
+  readonly acaoRecomendada?: string;
+}
+
+/** Etapas habilitadas no ciclo de compras do cliente */
+export interface EtapasFluxoCompraTenant {
+  readonly solicitacao: boolean;
+  readonly cotacao: boolean;
+  readonly pedido: boolean;
+  readonly notaEntrada: boolean;
+}
+
+/** Mapeamento de tabelas do ERP / Semantic Model que compõem o ciclo */
+export interface TabelasProcessoCompraERP {
+  readonly solicitacoes: string;
+  readonly solicitacoesEventos: string;
+  readonly cotacoes: string;
+  readonly cotacoesItens: string;
+  readonly cotacoesFornecedores: string;
+  readonly ligacaoPedidoSolicitacao: string;
+  readonly pedidos: string;
+  readonly notas: string;
+}
+
+/** Configuração integral do processo de compra por tenant */
+export interface ConfiguracaoProcessoCompraTenant {
+  readonly habilitado: boolean;
+  readonly tipoERP: "connectsoft-shopcash" | "generico" | "outro";
+  readonly etapas: EtapasFluxoCompraTenant;
+  readonly tabelasERP: TabelasProcessoCompraERP;
+  readonly motivosRecusa: readonly MotivoRecusaCompraTenant[];
+  readonly statusAprovacaoSolicitacao: Readonly<Record<string, string>>;
+  readonly statusCotacao: Readonly<Record<string, string>>;
 }
 
 /**

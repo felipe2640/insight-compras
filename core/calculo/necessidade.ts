@@ -169,6 +169,12 @@ export interface ParametrosCalculoNecessidade {
   readonly margemRealizada?: number | null;
   /** Margem alvo do item. Se ausente, usa a padrão do tenant. */
   readonly margemAlvo?: number | null;
+  /** Projeção de demanda calculada por IA homologada (Chronos-Bolt/Small/Tiny). */
+  readonly previsaoDemandaIA?: {
+    readonly demandaP50: number;
+    readonly demandaP80: number;
+    readonly modelo?: string;
+  } | null;
 }
 
 export interface ResultadoCalculoNecessidade {
@@ -399,6 +405,7 @@ export function calcularNecessidadeItem(
     sinalGovernanca = null,
     margemRealizada = null,
     margemAlvo = null,
+    previsaoDemandaIA = null,
   } = parametros;
 
   const saldo = Math.max(0, saldoFisico);
@@ -438,13 +445,20 @@ export function calcularNecessidadeItem(
     estoqueMinimoCadastrado
   );
 
-  const { demandaHorizonte, pisoAplicado, previsaoBruta } = calcularPrevisaoDemanda(
+  let { demandaHorizonte, pisoAplicado, previsaoBruta } = calcularPrevisaoDemanda(
     consumoDiario,
     horizonteDias,
     margemSeguranca,
     loteMultiplo,
     piso
   );
+
+  // Se houver projeção de demanda gerada por modelo de IA homologado
+  if (previsaoDemandaIA && previsaoDemandaIA.demandaP80 > 0) {
+    const demandaIaLote = arredondarParaLote(previsaoDemandaIA.demandaP80, loteMultiplo);
+    demandaHorizonte = demandaIaLote;
+    previsaoBruta = Math.max(demandaHorizonte, pisoAplicado);
+  }
 
   const previsaoCalibrada = calibrarPrevisao(previsaoBruta, parametrosMotor.fatorCalibracao);
 

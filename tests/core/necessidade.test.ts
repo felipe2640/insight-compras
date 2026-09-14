@@ -199,4 +199,47 @@ describe("Motor de Necessidade de Compra", () => {
       expect(calcularPontoDePedido(1, 7, 10)).toBe(17);
     });
   });
+
+  describe("integração com previsão probabilística por IA", () => {
+    it("substitui a taxa estática pela projeção p80 do modelo mantendo calibração e lote", () => {
+      const comIa = calcularNecessidadeItem({
+        consumoDiario: 1,
+        perfilGiro: "ALTO_GIRO",
+        saldoFisico: 5,
+        quantidadeJaPedida: 0,
+        loteMultiplo: 5,
+        medianaLinhaVenda: 0,
+        parametrosMotor: {
+          ...PARAMETROS_MOTOR_PADRAO,
+          fatorCalibracao: 0.90,
+        },
+        previsaoDemandaIA: {
+          demandaP50: 18,
+          demandaP80: 23,
+          modelo: "Chronos-Bolt (Small)",
+        },
+      });
+
+      expect(comIa.demandaHorizonte).toBe(25);
+      expect(comIa.previsaoBruta).toBe(25);
+      // Calibração do cliente de 0.90 -> ceil(25 * 0.90) = 23
+      expect(comIa.previsaoCalibrada).toBe(23);
+      // Necessidade líquida: 23 - saldo(5) = 18
+      expect(comIa.necessidadeLiquida).toBe(18);
+    });
+
+    it("ignora previsão de IA se o produto não tiver histórico comprovado", () => {
+      const res = calcularNecessidadeItem({
+        consumoDiario: 0,
+        perfilGiro: "SEM_HISTORICO_SUFICIENTE",
+        saldoFisico: 0,
+        quantidadeJaPedida: 0,
+        previsaoDemandaIA: {
+          demandaP50: 10,
+          demandaP80: 15,
+        },
+      });
+      expect(res.necessidadeLiquida).toBe(0);
+    });
+  });
 });
