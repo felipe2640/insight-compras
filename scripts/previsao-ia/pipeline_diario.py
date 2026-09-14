@@ -107,28 +107,28 @@ def executar_pipeline(modelo_nome: str = None, fonte_tipo: str = 'fabric', extra
         if p_col_sku in df_produtos.columns and p_col_desc in df_produtos.columns:
             mapa_descricoes = dict(zip(df_produtos[p_col_sku].astype(str), df_produtos[p_col_desc].fillna('')))
 
-    data_max = df_vendas['Data'].max()
-    data_min = max(df_vendas['Data'].min(), data_max - pd.Timedelta(days=365))
+    data_max = df_vendas[col_data].max()
+    data_min = max(df_vendas[col_data].min(), data_max - pd.Timedelta(days=365))
     datas = pd.date_range(data_min, data_max, freq='D')
     mapa_datas = {d: i for i, d in enumerate(datas)}
     n_dias = len(datas)
 
     print(f'[Pipeline] Filtrando janela de contexto dos últimos 365 dias ({data_min.date()} até {data_max.date()})...')
-    df_recente = df_vendas[df_vendas['Data'] >= data_min]
+    df_recente = df_vendas[df_vendas[col_data] >= data_min]
 
     series_ativas = []
     chaves_series = []
 
-    grupos = df_recente.groupby(['ANOMEFANTASIA', 'ACODPRODUTO'])
+    grupos = df_recente.groupby([col_loja, col_sku])
     for (loja, sku), group in grupos:
         filial_id = MAPA_LOJA_FILIAL.get(loja)
         if filial_id is None:
             continue
         vetor = np.zeros(n_dias, dtype=np.float32)
         for _, row in group.iterrows():
-            d = row['Data']
+            d = row[col_data]
             if d in mapa_datas:
-                vetor[mapa_datas[d]] += float(row['QtdVenda'])
+                vetor[mapa_datas[d]] += float(row[col_qtd])
         
         if np.sum(vetor) > 0:
             series_ativas.append(vetor)
