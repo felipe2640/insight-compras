@@ -22,11 +22,21 @@ export * from "./demonstracao";
  */
 export const TENANT_PADRAO: ConfiguracaoTenant = TENANT_DEMONSTRACAO;
 
-/** Mapa de Tenants indexados por slug / identificador */
-export const CATALOGO_TENANTS: Readonly<Record<string, ConfiguracaoTenant>> = {
+const registroTenants: Record<string, ConfiguracaoTenant> = {
   demonstracao: TENANT_DEMONSTRACAO,
   carreiro: TENANT_CARREIRO,
 };
+
+/** Mapa de Tenants indexados por slug / identificador */
+export const CATALOGO_TENANTS: Readonly<Record<string, ConfiguracaoTenant>> = registroTenants;
+
+/**
+ * Registra um novo tenant no catálogo dinamicamente.
+ * Permite plugar novos clientes em tempo de execução ou em testes sem alterar código interno.
+ */
+export function registrarTenant(tenant: ConfiguracaoTenant): void {
+  registroTenants[tenant.id.trim().toLowerCase()] = tenant;
+}
 
 /**
  * Resolve a configuração de tenant a partir de um identificador (id, slug, subdomínio ou custom domain).

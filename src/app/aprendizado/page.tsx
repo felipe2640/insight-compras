@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function PaginaAprendizado() {
   const usuario = await obterUsuarioAtual();
-  const tenant = obterTenantAtivo();
+  const tenant = obterTenantAtivo(usuario?.tenantId);
   const nomesFiliais = montarNomesFiliais(tenant);
 
   return (

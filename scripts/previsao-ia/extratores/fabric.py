@@ -105,6 +105,17 @@ class ExtratorFabric(ExtratorDadosBase):
             df_produtos = pd.DataFrame(rows_produtos)
         else:
             # Fallback local para os dados já extraídos em parquet
+            if not caminho_vendas_local.exists():
+                faltantes = []
+                if not tenant_id: faltantes.append('AZURE_TENANT_ID')
+                if not client_id: faltantes.append('AZURE_CLIENT_ID')
+                if not client_secret: faltantes.append('AZURE_CLIENT_SECRET')
+                if not workspace_id: faltantes.append('POWERBI_WORKSPACE_ID')
+                if not dataset_id: faltantes.append('POWERBI_DATASET_ID')
+                raise RuntimeError(
+                    f"[{self.nome_fonte}] Credenciais ausentes no ambiente de execução: {', '.join(faltantes)}. "
+                    "Cadastre estas variáveis em Settings > Secrets and variables > Actions no GitHub para que a extração funcione."
+                )
             print(f'[{self.nome_fonte}] Carregando cache parquet local...')
             df_vendas = pd.read_parquet(caminho_vendas_local)
             df_produtos = pd.read_parquet(caminho_produtos_local)

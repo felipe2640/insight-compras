@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 async function montarProposta(request: NextRequest, usuario: UsuarioAutenticado) {
-  const tenant = obterTenantAtivo();
+  const tenant = obterTenantAtivo(usuario.tenantId);
   const { searchParams } = new URL(request.url);
   const dias = Math.min(365, Math.max(7, parseInt(searchParams.get("dias") ?? "60", 10) || 60));
 

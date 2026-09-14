@@ -1,4 +1,5 @@
 import React from "react";
+import { headers } from "next/headers";
 import { obterAdaptadorInventario, RespostaCargaInventario } from "@adapters/index";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
 import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
@@ -13,16 +14,17 @@ export const dynamic = "force-dynamic";
 
 async function CarregarDadosCockpit() {
   const usuario = await obterUsuarioAtual();
-  const adaptador = obterAdaptadorInventario();
+  const tenantIdHeader = headers().get("x-tenant-id");
+  const tenantId = tenantIdHeader ?? usuario?.tenantId;
+  const tenant = obterTenantAtivo(tenantId);
+  const adaptador = obterAdaptadorInventario({ tenant });
 
   /**
    * Loja que abre em foco: do CADASTRO do cliente.
    *
-   * Estava 1 fixo nos três pontos desta página, embora `filialFocoPadraoId`
-   * exista no tenant justamente para isto. Uma rede cuja matriz não seja a
-   * filial 1 abria o cockpit na loja errada, e o cadastro dizia outra coisa.
+   * Obtida dinamicamente da configuração do tenant resolvido na requisição.
    */
-  const filialFoco = obterTenantAtivo().parametrosMotor.filialFocoPadraoId;
+  const filialFoco = tenant.parametrosMotor.filialFocoPadraoId;
 
   // Falha fechada: Comprador sem carteira enxerga ZERO fornecedores (grade vazia).
   // Gestor e admin continuam irrestritos (null).
@@ -62,8 +64,8 @@ async function CarregarDadosCockpit() {
         apenasComEstoqueOuVenda: true,
       });
 
-  // Parâmetros calibrados do tenant (Carreiro: fator 0,90 do backtest).
-  const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(filialFoco));
+  // Parâmetros calibrados do tenant (obtidos dinamicamente da configuração).
+  const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(filialFoco, tenant));
 
   // A página entrega APENAS o que pede decisão hoje. O catálogo inteiro (19 mil
   // itens) chega em segundo plano pela /api/compras: mandá-lo aqui significava

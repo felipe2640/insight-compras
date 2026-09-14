@@ -5,6 +5,12 @@ on:
     # Executa todo dia às 08:00 UTC (05:00 da manhã no horário de Brasília)
     - cron: '0 8 * * *'
   workflow_dispatch: # Permite acionar manualmente com um clique na interface do GitHub
+  push:
+    branches:
+      - feat/previsao-demanda-ia
+    paths:
+      - 'scripts/previsao-ia/**'
+      - '.github/workflows/previsao-ia-diaria.yml'
 
 jobs:
   inferencia-ia:
