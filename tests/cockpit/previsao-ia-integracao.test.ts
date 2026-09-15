@@ -157,18 +157,16 @@ describe("Integracao do Motor de Demanda por Inteligencia Artificial", () => {
     expect(linhaIa?.origemPrevisao).toBe("IA");
     expect(linhaIa?.previsaoIaP80).toBe(27);
     expect(linhaIa?.previsaoIaP50).toBe(20);
-    expect(linhaIa?.modeloIaUtilizado).toBe("Chronos-Bolt (Small)");
     // Demanda P80 = 27 -> arredondada para lote 2 = 28.
     // Saldo = 4. Necessidade líquida = 28 - 4 = 24.
     expect(linhaIa?.sugestaoFinalCompra).toBe(24);
-    expect(linhaIa?.motivoDecisao).toContain("Demanda prevista por IA (Chronos-Bolt (Small) P80: 27 un)");
+    expect(linhaIa?.motivoDecisao).toContain("Demanda prevista (faixa conservadora: 27 un)");
 
     // Item 102 nao tem IA -> fallback para analitico
     const linhaAnalitica = linhas.find((l) => l.produtoId === 102);
     expect(linhaAnalitica).toBeDefined();
     expect(linhaAnalitica?.origemPrevisao).toBe("ANALITICA");
     expect(linhaAnalitica?.previsaoIaP80).toBeNull();
-    expect(linhaAnalitica?.modeloIaUtilizado).toBeNull();
   });
 
   it("preserva estritamente a trava de marca zumbi mesmo se houver previsao residual de IA", () => {

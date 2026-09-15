@@ -127,8 +127,8 @@ export function BotoesExportacao({
             className={cn(
               "flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors",
               vazio
-                ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
-                : "border-secundaria bg-secundaria text-slate-900 hover:bg-secundaria-hover"
+                ? "cursor-not-allowed border-white/20 bg-white/10 text-white/60"
+                : "border-white bg-white text-primaria shadow-sm hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-primaria"
             )}
           >
             {gerando === modelo.id ? (
@@ -140,12 +140,12 @@ export function BotoesExportacao({
             <span
               className={cn(
                 "rounded px-1 text-[10px] font-bold",
-                vazio ? "bg-slate-200 text-slate-500" : "bg-slate-900/15"
+                vazio ? "bg-white/10 text-white/60" : "bg-primaria/10 text-primaria"
               )}
             >
               {quantas}
             </span>
-            <span className="text-[10px] uppercase opacity-70">{modelo.formato}</span>
+            <span className="text-[10px] font-semibold uppercase">{modelo.formato}</span>
           </button>
         );
       })}
@@ -154,7 +154,7 @@ export function BotoesExportacao({
         type="button"
         onClick={onAbrirConfiguracao}
         title="Escolher colunas, formato e salvar um modelo novo"
-        className="flex items-center gap-1.5 rounded-lg border border-dashed border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
+        className="flex items-center gap-1.5 rounded-lg border border-dashed border-white/80 px-2.5 py-1 text-xs font-semibold text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
       >
         <SlidersHorizontal className="h-3.5 w-3.5" />
         Modelos
