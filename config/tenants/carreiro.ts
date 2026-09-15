@@ -43,9 +43,9 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
     fundoDestaqueMultiplo: "#FFFFCC", // Amarelo Pastel do Cockpit de Múltiplos
   },
   identidadeVisual: {
-    logoClaro: "/tenants/carreiro/logo-carreiro-claro.svg",
-    logoEscuro: "/tenants/carreiro/logo-carreiro-escuro.svg",
-    favicon: "/tenants/carreiro/favicon.ico",
+    logoClaro: "/tenants/carreiro/logo-carreiro.png",
+    logoEscuro: "/tenants/carreiro/logo-carreiro.png",
+    favicon: "/tenants/carreiro/logo-carreiro.png",
     altText: "Logotipo da Rede Carreiro Autopeças",
     larguraPadraoPx: 160,
     alturaPadraoPx: 42,
@@ -98,8 +98,8 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
     },
   ],
   assinatura: {
-    texto: "Powered by iNSIGHT D",
-    url: "https://insightd.com.br",
+    texto: "Powered by Insight Direto",
+    url: "https://insightdireto.com.br",
     exibir: true,
     versaoPlataforma: "1.0.0",
     logoInsightDUrl: "/logos/insightd-monochrome.svg",
@@ -205,7 +205,8 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
       {
         id: "pedido_fornecedor",
         nome: "Pedido ao fornecedor",
-        descricao: "Itens com quantidade de compra, prontos para enviar ao fornecedor.",
+        descricao:
+          "Itens com quantidade de compra, prontos para enviar ao fornecedor.",
         escopo: "compra",
         formatosPermitidos: ["csv", "xlsx", "pdf"],
         colunas: [
@@ -230,7 +231,8 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
       {
         id: "transferencias_lojas",
         nome: "Transferências entre lojas",
-        descricao: "O que sai de qual loja para qual, mantendo a demanda da origem.",
+        descricao:
+          "O que sai de qual loja para qual, mantendo a demanda da origem.",
         escopo: "transferencia",
         formatosPermitidos: ["csv", "xlsx", "pdf"],
         colunas: [
@@ -254,7 +256,8 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
       {
         id: "analise_completa",
         nome: "Análise completa (compra + transferência)",
-        descricao: "Toda ação sugerida com o diagnóstico que a justifica. Só planilha.",
+        descricao:
+          "Toda ação sugerida com o diagnóstico que a justifica. Só planilha.",
         escopo: "compra_ou_transferencia",
         formatosPermitidos: ["csv", "xlsx"],
         colunas: [
@@ -334,14 +337,17 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
       {
         codigo: "PRECO_ELEVADO",
         rotulo: "Preço Elevado",
-        descricao: "Preço do fornecedor cotado muito acima da média de mercado ou da expectativa de venda.",
+        descricao:
+          "Preço do fornecedor cotado muito acima da média de mercado ou da expectativa de venda.",
         categoria: "preco",
-        acaoRecomendada: "Buscar fornecedores alternativos ou negociar lote maior.",
+        acaoRecomendada:
+          "Buscar fornecedores alternativos ou negociar lote maior.",
       },
       {
         codigo: "FORNECEDOR_SEM_ESTOQUE",
         rotulo: "Fornecedor sem Estoque",
-        descricao: "Item em falta na fábrica ou no distribuidor consultado durante a cotação.",
+        descricao:
+          "Item em falta na fábrica ou no distribuidor consultado durante a cotação.",
         categoria: "disponibilidade",
         acaoRecomendada: "Consultar distribuidores regionais secundários.",
       },
@@ -350,49 +356,59 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
         rotulo: "Produto Fora de Linha / Descontinuado",
         descricao: "Peça descontinuada pelo fabricante oficial.",
         categoria: "disponibilidade",
-        acaoRecomendada: "Mapear código similar ou equivalente através da tabela de similares.",
+        acaoRecomendada:
+          "Mapear código similar ou equivalente através da tabela de similares.",
       },
       {
         codigo: "ERRO_DE_DIGITACAO",
         rotulo: "Erro de Digitação / Código Incorreto",
-        descricao: "Vendedor digitou código, aplicação ou descrição errada no balcão.",
+        descricao:
+          "Vendedor digitou código, aplicação ou descrição errada no balcão.",
         categoria: "operacional",
-        acaoRecomendada: "Orientar vendedor a consultar o catálogo mestre de produtos.",
+        acaoRecomendada:
+          "Orientar vendedor a consultar o catálogo mestre de produtos.",
       },
       {
         codigo: "DUPLICIDADE",
         rotulo: "Solicitação em Duplicidade",
-        descricao: "Mesmo item já solicitado anteriormente na mesma filial ou outra loja da rede.",
+        descricao:
+          "Mesmo item já solicitado anteriormente na mesma filial ou outra loja da rede.",
         categoria: "operacional",
         acaoRecomendada: "Acompanhar a solicitação original já em andamento.",
       },
       {
         codigo: "CANCELADO_PELO_CLIENTE",
         rotulo: "Cancelado pelo Cliente",
-        descricao: "Cliente de balcão desistiu do orçamento ou realizou o serviço em outro estabelecimento.",
+        descricao:
+          "Cliente de balcão desistiu do orçamento ou realizou o serviço em outro estabelecimento.",
         categoria: "cliente",
         acaoRecomendada: "Nenhuma ação de compra necessária.",
       },
       {
         codigo: "ATENDIDO_POR_TRANSFERENCIA",
         rotulo: "Atendido por Transferência entre Lojas",
-        descricao: "Demanda suprida por redistribuição de estoque ocioso de outra filial da Rede Carreiro.",
+        descricao:
+          "Demanda suprida por redistribuição de estoque ocioso de outra filial da Rede Carreiro.",
         categoria: "estrategico",
-        acaoRecomendada: "Gerar ordem de transferência no cockpit de transferências.",
+        acaoRecomendada:
+          "Gerar ordem de transferência no cockpit de transferências.",
       },
       {
         codigo: "ABAIXO_LOTE_MINIMO",
         rotulo: "Quantidade Abaixo do Lote Mínimo",
-        descricao: "Demanda insuficiente para atingir faturamento mínimo ou embalagem coletiva do fornecedor.",
+        descricao:
+          "Demanda insuficiente para atingir faturamento mínimo ou embalagem coletiva do fornecedor.",
         categoria: "preco",
         acaoRecomendada: "Aguardar acumular demanda de outras filiais da rede.",
       },
       {
         codigo: "MARGEM_INSUFICIENTE",
         rotulo: "Margem Inviável para Revenda",
-        descricao: "Preço de custo do fornecedor inviabiliza a margem mínima estabelecida no cadastro.",
+        descricao:
+          "Preço de custo do fornecedor inviabiliza a margem mínima estabelecida no cadastro.",
         categoria: "preco",
-        acaoRecomendada: "Avaliar preço de venda ao consumidor final ou novo parceiro.",
+        acaoRecomendada:
+          "Avaliar preço de venda ao consumidor final ou novo parceiro.",
       },
     ],
   },

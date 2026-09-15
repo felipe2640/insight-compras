@@ -41,13 +41,13 @@ describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central"
       expect(paleta).not.toContain("#E6C200");
     });
 
-    it("deve conter identidade visual e assinatura Powered by iNSIGHT D", () => {
+    it("deve conter identidade visual e assinatura Powered by Insight Direto", () => {
       expect(TENANT_CARREIRO.identidadeVisual.logoClaro).toBeDefined();
       expect(TENANT_CARREIRO.identidadeVisual.logoEscuro).toBeDefined();
       expect(TENANT_CARREIRO.identidadeVisual.favicon).toBeDefined();
       expect(TENANT_CARREIRO.assinatura.exibir).toBe(true);
-      expect(TENANT_CARREIRO.assinatura.texto).toBe("Powered by iNSIGHT D");
-      expect(TENANT_CARREIRO.assinatura.url).toBe("https://insightd.com.br");
+      expect(TENANT_CARREIRO.assinatura.texto).toBe("Powered by Insight Direto");
+      expect(TENANT_CARREIRO.assinatura.url).toBe("https://insightdireto.com.br");
     });
   });
 

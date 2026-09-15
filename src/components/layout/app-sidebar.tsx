@@ -91,10 +91,17 @@ export interface UsuarioSidebar {
   readonly papelRotulo: string;
 }
 
-export function AppSidebar({ className, usuario }: { className?: string; usuario?: UsuarioSidebar | null }) {
+export function AppSidebar({
+  className,
+  usuario,
+}: {
+  className?: string;
+  usuario?: UsuarioSidebar | null;
+}) {
   // Nome do cliente ativo, resolvido no servidor. Em demonstração, o nome
   // genérico do mostruário.
-  const nomeTenant = useTenantAtivo().nome.toUpperCase();
+  const tenant = useTenantAtivo();
+  const nomeTenant = tenant.nome.toUpperCase();
   const pathname = usePathname();
   const router = useRouter();
   const [sessao, setSessao] = useState<UsuarioSidebar | null>(usuario ?? null);
@@ -104,9 +111,15 @@ export function AppSidebar({ className, usuario }: { className?: string; usuario
     let ativo = true;
     fetch("/api/auth/sessao")
       .then((r) => (r.ok ? r.json() : null))
-      .then((corpo: { usuario?: { nome: string; papelRotulo: string } } | null) => {
-        if (ativo && corpo?.usuario) setSessao({ nome: corpo.usuario.nome, papelRotulo: corpo.usuario.papelRotulo });
-      })
+      .then(
+        (corpo: { usuario?: { nome: string; papelRotulo: string } } | null) => {
+          if (ativo && corpo?.usuario)
+            setSessao({
+              nome: corpo.usuario.nome,
+              papelRotulo: corpo.usuario.papelRotulo,
+            });
+        },
+      )
       .catch(() => undefined);
     return () => {
       ativo = false;
@@ -128,27 +141,33 @@ export function AppSidebar({ className, usuario }: { className?: string; usuario
       className={cn(
         "relative flex flex-col border-r border-slate-200 bg-white transition-all duration-300 dark:border-slate-800 dark:bg-slate-900 select-none z-30",
         colapsado ? "w-16" : "w-64",
-        className
+        className,
       )}
     >
       {/* 1. Header com Marca do Tenant */}
       <div className="flex h-14 items-center justify-between border-b border-slate-200 px-3 bg-primaria text-white dark:border-slate-800">
         {!colapsado ? (
           <div className="flex items-center gap-2 truncate">
-            <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-secundaria animate-pulse" />
+            <img
+              src={tenant.identidadeVisual.logoClaro}
+              alt={tenant.identidadeVisual.altText}
+              className="h-11 w-11 shrink-0 rounded-md object-contain"
+            />
             <div className="flex flex-col truncate">
               <span className="text-xs font-black tracking-tight leading-none text-white">
                 {nomeTenant}
               </span>
               <span className="text-[10px] text-slate-300 font-medium tracking-wide">
-                iNSIGHT D Compras
+                Insight Direto — Compras
               </span>
             </div>
           </div>
         ) : (
-          <div className="mx-auto flex h-8 w-8 items-center justify-center rounded bg-secundaria text-slate-950 font-black text-xs">
-            RC
-          </div>
+          <img
+            src={tenant.identidadeVisual.logoClaro}
+            alt={tenant.identidadeVisual.altText}
+            className="mx-auto h-9 w-9 rounded-md object-contain"
+          />
         )}
 
         <button
@@ -156,9 +175,15 @@ export function AppSidebar({ className, usuario }: { className?: string; usuario
           onClick={() => setColapsado(!colapsado)}
           className="rounded p-1 text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
           title={colapsado ? "Expandir menu" : "Recolher menu"}
-          aria-label={colapsado ? "Expandir menu lateral" : "Recolher menu lateral"}
+          aria-label={
+            colapsado ? "Expandir menu lateral" : "Recolher menu lateral"
+          }
         >
-          {colapsado ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          {colapsado ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <ChevronLeft className="h-4 w-4" />
+          )}
         </button>
       </div>
 
@@ -173,7 +198,8 @@ export function AppSidebar({ className, usuario }: { className?: string; usuario
           )}
           <nav className="space-y-1">
             {GRUPO_OPERACAO.map((item) => {
-              const ativo = pathname === item.href || pathname.startsWith(item.href + "/");
+              const ativo =
+                pathname === item.href || pathname.startsWith(item.href + "/");
               const Icone = item.icone;
 
               return (
@@ -185,11 +211,18 @@ export function AppSidebar({ className, usuario }: { className?: string; usuario
                     ativo
                       ? "bg-blue-50 text-blue-700 font-semibold dark:bg-blue-950/60 dark:text-blue-300"
                       : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800",
-                    colapsado && "justify-center px-2"
+                    colapsado && "justify-center px-2",
                   )}
                   title={colapsado ? item.titulo : undefined}
                 >
-                  <Icone className={cn("h-4 w-4 shrink-0", ativo ? "text-blue-600 dark:text-blue-400" : "text-slate-400")} />
+                  <Icone
+                    className={cn(
+                      "h-4 w-4 shrink-0",
+                      ativo
+                        ? "text-blue-600 dark:text-blue-400"
+                        : "text-slate-400",
+                    )}
+                  />
                   {!colapsado && (
                     <div className="flex flex-1 items-center justify-between truncate">
                       <span className="truncate">{item.titulo}</span>
@@ -215,7 +248,8 @@ export function AppSidebar({ className, usuario }: { className?: string; usuario
           )}
           <nav className="space-y-1">
             {GRUPO_CONFIGURACOES.map((item) => {
-              const ativo = pathname === item.href || pathname.startsWith(item.href + "/");
+              const ativo =
+                pathname === item.href || pathname.startsWith(item.href + "/");
               const Icone = item.icone;
 
               return (
@@ -227,12 +261,21 @@ export function AppSidebar({ className, usuario }: { className?: string; usuario
                     ativo
                       ? "bg-blue-50 text-blue-700 font-semibold dark:bg-blue-950/60 dark:text-blue-300"
                       : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800",
-                    colapsado && "justify-center px-2"
+                    colapsado && "justify-center px-2",
                   )}
                   title={colapsado ? item.titulo : undefined}
                 >
-                  <Icone className={cn("h-4 w-4 shrink-0", ativo ? "text-blue-600 dark:text-blue-400" : "text-slate-400")} />
-                  {!colapsado && <span className="truncate">{item.titulo}</span>}
+                  <Icone
+                    className={cn(
+                      "h-4 w-4 shrink-0",
+                      ativo
+                        ? "text-blue-600 dark:text-blue-400"
+                        : "text-slate-400",
+                    )}
+                  />
+                  {!colapsado && (
+                    <span className="truncate">{item.titulo}</span>
+                  )}
                 </Link>
               );
             })}
