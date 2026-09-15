@@ -77,8 +77,8 @@ export async function GET(request: NextRequest) {
       if (itensErp && itensErp.length > 0) {
         const itens = itensErp.map((it) => ({
           id: it.id,
-          sku: it.sku ?? `PROD-${it.produtoId}`,
-          descricao: it.descricao,
+          sku: it.sku ?? (it.produtoId ? String(it.produtoId).padStart(6, "0") : `PROD-${it.produtoId}`),
+          descricao: it.descricao || "Item de Compra ERP",
           qtdComprador: it.quantidade,
           qtdTransferencia: 0,
           qtdModelo: null,

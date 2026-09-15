@@ -334,10 +334,16 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
       return linhas.map((linhaBruta) => {
         const l = normalizarLinhaDax(linhaBruta);
         const filialInfo = mapearFilialCarreiro(l.EmpresaId ?? l.ACODEMPRESA);
+        const produtoId = extrairIdProduto(l.ProdutoId ?? l.PRODUTO_ID ?? 0);
+        const rawSku = String(l.SkuBase ?? l.CodigoBase ?? l.ProdutoId ?? produtoId).trim();
+        const sku = rawSku.includes("|") ? rawSku.split("|")[0].trim() : rawSku;
+        const itemId = Number(l.ItemId ?? l.ITEM_ID ?? 0);
+        const id = Number(l.PedidoId ?? l.PEDIDO_ID ?? pedidoId) * 1000 + itemId;
         return {
-          id: Number(l.ItemId ?? l.ID ?? 0),
+          id: id || itemId,
           pedidoId: Number(l.PedidoId ?? l.PEDIDO_ID ?? pedidoId),
-          produtoId: Number(l.ProdutoId ?? l.PRODUTO_ID ?? 0),
+          produtoId,
+          sku: sku || undefined,
           descricao: String(l.Descricao ?? l.DESCRICAO ?? ""),
           quantidade: Number(l.Quantidade ?? l.QTDE ?? 0),
           valorUnitario: Number(l.ValorUnitario ?? l.VALORUNIT ?? 0),
@@ -399,10 +405,17 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
       return linhas.map((linhaBruta) => {
         const l = normalizarLinhaDax(linhaBruta);
         const filialInfo = mapearFilialCarreiro(l.EmpresaId ?? l.ACODEMPRESA);
+        const produtoId = extrairIdProduto(l.ProdutoId ?? l.PRODUTO_ID ?? 0);
+        const rawSku = String(l.SkuBase ?? l.CodigoBase ?? l.ProdutoId ?? produtoId).trim();
+        const sku = rawSku.includes("|") ? rawSku.split("|")[0].trim() : rawSku;
+        const pedId = Number(l.PedidoId ?? l.PEDIDO_ID ?? 0);
+        const itemId = Number(l.ItemId ?? l.ITEM_ID ?? 0);
+        const id = pedId * 1000 + itemId;
         return {
-          id: Number(l.ItemId ?? l.ID ?? 0),
-          pedidoId: Number(l.PedidoId ?? l.PEDIDO_ID ?? 0),
-          produtoId: Number(l.ProdutoId ?? l.PRODUTO_ID ?? 0),
+          id: id || itemId,
+          pedidoId: pedId,
+          produtoId,
+          sku: sku || undefined,
           descricao: String(l.Descricao ?? l.DESCRICAO ?? ""),
           quantidade: Number(l.Quantidade ?? l.QTDE ?? 0),
           valorUnitario: Number(l.ValorUnitario ?? l.VALORUNIT ?? 0),

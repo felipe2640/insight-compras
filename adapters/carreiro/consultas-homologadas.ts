@@ -764,33 +764,33 @@ export function gerarConsultaDaxItensPedidosCompra(opcoes: {
 } = {}): string {
   const limite = Math.min(5000, Math.max(1, opcoes.limite ?? 500));
   const dias = Math.min(365, Math.max(1, opcoes.dias ?? 60));
-  let filtros = `[Tipo] = "C"`;
+  let filtros = `NOT ISBLANK(ITEMSPEDIDO[PRODUTO_ID])`;
   if (opcoes.pedidoId) {
-    filtros += ` && [PedidoId] = ${Math.floor(opcoes.pedidoId)}`;
+    filtros += ` && ITEMSPEDIDO[PEDIDO_ID] = ${Math.floor(opcoes.pedidoId)}`;
   } else {
-    filtros += ` && [DataEmissao] >= TODAY() - ${dias}`;
+    filtros += ` && RELATED(PEDIDOS[TIPO]) = "C" && COALESCE(RELATED(PEDIDOS[DATAEMISSAO]), ITEMSPEDIDO[DATAINCLUSAO]) >= TODAY() - ${dias}`;
   }
 
   return `
 EVALUATE
 TOPN(
     ${limite},
-    FILTER(
-        SELECTCOLUMNS(
+    SELECTCOLUMNS(
+        FILTER(
             ITEMSPEDIDO,
-            "ItemId", ITEMSPEDIDO[ID],
-            "PedidoId", ITEMSPEDIDO[PEDIDO_ID],
-            "ProdutoId", ITEMSPEDIDO[PRODUTO_ID],
-            "Descricao", ITEMSPEDIDO[DESCRICAO],
-            "Quantidade", ITEMSPEDIDO[QTDE],
-            "ValorUnitario", ITEMSPEDIDO[VALORUNIT],
-            "ValorTotal", ITEMSPEDIDO[VALORPEDIDO],
-            "DataEmissao", ITEMSPEDIDO[DATAEMISSAO],
-            "FornecedorId", ITEMSPEDIDO[ACODFORNECEDOR],
-            "Tipo", ITEMSPEDIDO[TIPO],
-            "EmpresaId", ITEMSPEDIDO[ACODEMPRESA]
+            ${filtros}
         ),
-        ${filtros}
+        "ItemId", ITEMSPEDIDO[ITEM_ID],
+        "PedidoId", ITEMSPEDIDO[PEDIDO_ID],
+        "ProdutoId", ITEMSPEDIDO[PRODUTO_ID],
+        "SkuBase", RELATED(PRODUTOS[ACODPRODUTO_BASE]),
+        "Descricao", COALESCE(ITEMSPEDIDO[DESCR_SERVICO], RELATED(PRODUTOS[ADESCRICAO]), ITEMSPEDIDO[DESCRICAO]),
+        "Quantidade", ITEMSPEDIDO[QTDE],
+        "ValorUnitario", ITEMSPEDIDO[VALORUNIT],
+        "ValorTotal", ITEMSPEDIDO[QTDE] * ITEMSPEDIDO[VALORUNIT],
+        "DataEmissao", COALESCE(RELATED(PEDIDOS[DATAEMISSAO]), ITEMSPEDIDO[DATAINCLUSAO]),
+        "FornecedorId", RELATED(PEDIDOS[ACODFORNECEDOR]),
+        "EmpresaId", ITEMSPEDIDO[ACODEMPRESA]
     ),
     [DataEmissao],
     DESC

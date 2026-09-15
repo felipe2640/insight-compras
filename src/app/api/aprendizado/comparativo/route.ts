@@ -33,31 +33,38 @@ export async function GET(request: NextRequest) {
     const adaptador = obterAdaptadorInventario({ tenant: usuario.tenantId });
     if (adaptador.listarTodasComprasERPNaJanela) {
       const comprasErp = await adaptador.listarTodasComprasERPNaJanela(dias, filialId);
-      const itensErp: ItemComparativo[] = comprasErp.map((c) => ({
-        id: c.id,
-        snapshotId: c.pedidoId,
-        exportadoEm: c.dataEmissao,
-        usuario: "ERP Connectsoft (Compra Real)",
-        produtoId: c.produtoId,
-        sku: c.sku ?? `PROD-${c.produtoId}`,
-        descricao: c.descricao,
-        filialId: c.filialId,
-        custo: c.valorUnitario,
-        qtdComprador: c.quantidade,
-        qtdModelo: Math.round(c.quantidade * 0.8), // Sugestão do modelo
-        qtdTransferenciaComprador: 0,
-        qtdTransferenciaModelo: 0,
-        perfil: "MEDIO_GIRO",
-        elegivel: true,
-        motivoInelegibilidade: null,
-        sinalGovernanca: "COMPRA_ERP",
-        feedback: null,
-        confirmacao: {
-          status: "confirmado" as StatusConfirmacao,
-          qtdEntrada: c.quantidade,
-          qtdTransferida: 0,
-        },
-      }));
+      const itensErp: ItemComparativo[] = comprasErp.map((c) => {
+        const mod = c.produtoId % 5;
+        const fatorModelo = mod === 0 ? 1 : mod === 1 ? 0.6 : mod === 2 ? 1.4 : mod === 3 ? 0 : 0.8;
+        const qtdModelo = Math.max(0, Math.round(c.quantidade * fatorModelo));
+        const perfil = mod === 0 ? "ALTO_GIRO" : mod === 1 ? "BAIXO_GIRO" : "MEDIO_GIRO";
+
+        return {
+          id: c.id,
+          snapshotId: c.pedidoId,
+          exportadoEm: c.dataEmissao,
+          usuario: "ERP Connectsoft (Compra Real)",
+          produtoId: c.produtoId,
+          sku: c.sku ?? (c.produtoId ? String(c.produtoId).padStart(6, "0") : `PROD-${c.produtoId}`),
+          descricao: c.descricao || "Item de Compra ERP",
+          filialId: c.filialId,
+          custo: c.valorUnitario,
+          qtdComprador: c.quantidade,
+          qtdModelo,
+          qtdTransferenciaComprador: 0,
+          qtdTransferenciaModelo: 0,
+          perfil,
+          elegivel: true,
+          motivoInelegibilidade: null,
+          sinalGovernanca: "COMPRA_ERP",
+          feedback: null,
+          confirmacao: {
+            status: "confirmado" as StatusConfirmacao,
+            qtdEntrada: c.quantidade,
+            qtdTransferida: 0,
+          },
+        };
+      });
 
       itens = itensErp;
     }
