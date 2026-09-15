@@ -108,14 +108,13 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   private async carregarComResiliencia(
     filtro: FiltroCargaInventario
   ): Promise<RespostaCargaInventario> {
-    // A carga Carreiro é sempre da rede inteira: filialId define apenas qual
-    // loja o motor apresentará depois. Se a filial participar da chave, cada
-    // troca de loja refaz todas as consultas DAX apesar de o inventário bruto
-    // ser idêntico. Compartilhar a chave mantém RBAC/seção/estoque isolados e
-    // permite que a troca reutilize imediatamente a carga já aquecida.
+    // Na carga irrestrita, filialId só muda a perspectiva do motor e a carga
+    // bruta pode ser compartilhada. Na grade operacional, porém, o catálogo é
+    // recortado na própria fonte pelas vendas da filial; nesse caso a filial
+    // precisa permanecer na chave para nunca servir o recorte de outra loja.
     const filtroCargaRede: FiltroCargaInventario = {
       ...filtro,
-      filialId: undefined,
+      filialId: filtro.apenasComEstoqueOuVenda ? filtro.filialId : undefined,
     };
     const resultadoResiliente = await this.gerenciadorCache.obterOuExecutar(
       filtroCargaRede,
@@ -317,7 +316,11 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
 
     for (let pagina = 0; pagina < MAXIMO_PAGINAS; pagina++) {
       const linhas = await this.clienteDax.executarConsultaDax(
-        gerarConsultaDaxProdutosEstoque(filtro, cursor)
+        gerarConsultaDaxProdutosEstoque(
+          filtro,
+          cursor,
+          filtro?.filialId ? NOMES_CADEMP_CARREIRO[filtro.filialId] : undefined
+        )
       );
       todas.push(...(linhas as Record<string, unknown>[]));
       if (linhas.length < TAMANHO_PAGINA_PRODUTOS) break;
