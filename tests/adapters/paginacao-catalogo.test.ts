@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   gerarConsultaDaxProdutosEstoque,
+  gerarConsultaDaxHistoricoVendas,
   TAMANHO_PAGINA_PRODUTOS,
 } from "@adapters/carreiro/consultas-homologadas";
 
@@ -50,6 +51,25 @@ describe("paginação do catálogo de produtos", () => {
     expect(dax).toContain("'PRODUTOS'[ICODFORN] IN { 7, 9 }");
     expect(dax).toContain("NESTOQATUAL");
     expect(dax).toContain(`'PRODUTOS'[ACODPRODUTO] > "000100|x"`);
+  });
+
+  it("recorta no DAX produtos sem venda recente na filial em foco", () => {
+    const dax = gerarConsultaDaxProdutosEstoque(
+      { fornecedoresPermitidos: null, apenasComEstoqueOuVenda: true, filialId: 4 },
+      null,
+      "CEARA AUTO PECAS CAMPO MAIOR"
+    );
+
+    expect(dax).toContain("'CADEMP'[ANOMEFANTASIA] = \"CEARA AUTO PECAS CAMPO MAIOR\"");
+    expect(dax).toContain("DATESINPERIOD('dCalendario'[Data], TODAY(), -180, DAY)");
+    expect(dax).toContain("[Quantidade Vendida Produto]");
+    expect(dax).toContain(") > 0");
+  });
+
+  it("remove do histórico combinações produto/loja sem venda em 180 dias", () => {
+    const dax = gerarConsultaDaxHistoricoVendas({ fornecedoresPermitidos: null });
+    expect(dax).toContain("VAR HistoricoComVenda");
+    expect(dax).toContain("FILTER(HistoricoComVenda, [VendasQtd180d] > 0)");
   });
 
   it("traz o sub-grupo com o nome legível, não o código", () => {

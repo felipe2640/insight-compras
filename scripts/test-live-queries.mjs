@@ -69,8 +69,12 @@ async function testarConsultasVivas() {
   console.log("   Frescor:", frescor?.[0]);
 
   // Executa gerarConsultaDaxProdutosEstoque diretamente
-  const queryProdutos = gerarConsultaDaxProdutosEstoque({ apenasComEstoqueOuVenda: true });
-  const produtos = await rodarDax("3. Produtos em Estoque / Venda Recente", queryProdutos);
+  const queryProdutos = gerarConsultaDaxProdutosEstoque(
+    { apenasComEstoqueOuVenda: true, filialId: 1 },
+    null,
+    "CARREIRO PEDRO II"
+  );
+  const produtos = await rodarDax("3. Produtos com Venda 180d na Pedro II", queryProdutos);
   if (produtos && produtos.length > 0) {
     console.log(`   Total produtos retornados: ${produtos.length}`);
     console.log("   Primeiro produto retornado do Fabric:", produtos[0]);
