@@ -38,10 +38,21 @@ function calcularPercentis(latencias: number[]) {
   return { min, media, p50, p90, p95, p99, max };
 }
 
+/**
+ * Toda calibração aqui é FORÇADA (`calibrarAmbienteExecucao(true)`).
+ *
+ * O helper guarda o fator em cache de módulo, e o valor da primeira chamada era
+ * reaproveitado por toda a suíte — medido minutos antes, possivelmente com a
+ * máquina calma. Rodando junto com as outras 70+ suítes, esse fator defasado
+ * produzia um teto adaptativo apertado demais, e este arquivo virou o reincidente
+ * das falhas de latência. Recalibrar custa ~12ms e, nos testes de concorrência,
+ * a medição acontece DEPOIS do lote paralelo — ou seja, mede a carga real da
+ * janela que acabou de ser cronometrada.
+ */
 describe('Challenger 1 — Desafio Adversarial de Escala e Carga no Mock (Marco 2)', () => {
   describe('1. Escala e Performance de Geracao (25.000 a 50.000 SKUs)', () => {
     it('deve gerar 25.000 SKUs consistentemente em menos de 1.500ms em multiplas seeds com taxa de trabalho comprovada', () => {
-      const { fatorCarga } = calibrarAmbienteExecucao();
+      const { fatorCarga } = calibrarAmbienteExecucao(true);
       const seeds = [42, 101, 777, 9999];
       const tempos: number[] = [];
 
@@ -80,7 +91,7 @@ describe('Challenger 1 — Desafio Adversarial de Escala e Carga no Mock (Marco 
     });
 
     it('deve suportar escala estendida de 35.000 e 50.000 SKUs com linearidade algorítmica comprovada', () => {
-      const { fatorCarga } = calibrarAmbienteExecucao();
+      const { fatorCarga } = calibrarAmbienteExecucao(true);
       const t35 = performance.now();
       const dataset35 = gerarDatasetSinteticoCarreiro({ totalSkus: 35_000, seed: 42 });
       const duracao35 = performance.now() - t35;
@@ -276,7 +287,7 @@ describe('Challenger 1 — Desafio Adversarial de Escala e Carga no Mock (Marco 
       console.log('Duracao Total do Lote (100 reqs): ' + duracaoTotal.toFixed(1) + 'ms');
       console.log('Latencia Interna de Busca: Media: ' + stats.media.toFixed(1) + 'ms | p50: ' + stats.p50.toFixed(1) + 'ms | p95: ' + stats.p95.toFixed(1) + 'ms | Max: ' + stats.max.toFixed(1) + 'ms');
 
-      const { fatorCarga } = calibrarAmbienteExecucao();
+      const { fatorCarga } = calibrarAmbienteExecucao(true);
 
       // Latencia interna média e p95 devem respeitar o limiar adaptativo de 250ms
       const checagemMedia = verificarDesempenhoComProtecaoRegressao(stats.media, 250, fatorCarga, '100 reqs paralelas - Média');
@@ -352,7 +363,7 @@ describe('Challenger 1 — Desafio Adversarial de Escala e Carga no Mock (Marco 
 
       expect(resultados).toHaveLength(NUM_REQUISICOES);
 
-      const { fatorCarga } = calibrarAmbienteExecucao();
+      const { fatorCarga } = calibrarAmbienteExecucao(true);
       const checagemTotal = verificarDesempenhoComProtecaoRegressao(duracaoTotal, 2500, fatorCarga, 'Cold Start 50 reqs concorrentes');
       expect(checagemTotal.aprovado, checagemTotal.mensagem).toBe(true);
 
@@ -365,7 +376,7 @@ describe('Challenger 1 — Desafio Adversarial de Escala e Carga no Mock (Marco 
 
   describe('4. Filtros Adversariais e Edge Cases', () => {
     it('deve responder em tempo controlado mesmo no cold-start com filtro sem correspondencia (empty set)', async () => {
-      const { fatorCarga } = calibrarAmbienteExecucao();
+      const { fatorCarga } = calibrarAmbienteExecucao(true);
       const adaptador = new AdaptadorInventarioMock({ totalSkus: 25_000, seed: 42 });
 
       const t0 = performance.now();
@@ -387,7 +398,7 @@ describe('Challenger 1 — Desafio Adversarial de Escala e Carga no Mock (Marco 
     });
 
     it('deve responder em < 50ms quando o dataset ja esta aquecido (warm cache)', async () => {
-      const { fatorCarga } = calibrarAmbienteExecucao();
+      const { fatorCarga } = calibrarAmbienteExecucao(true);
       const adaptador = new AdaptadorInventarioMock({ totalSkus: 25_000, seed: 42 });
       // Aquece
       await adaptador.carregarInventarioCompleto({ fornecedoresPermitidos: null });
@@ -405,7 +416,7 @@ describe('Challenger 1 — Desafio Adversarial de Escala e Carga no Mock (Marco 
     });
 
     it('deve lidar eficientemente com lista massiva de fornecedores permitidos (1.000 IDs)', async () => {
-      const { fatorCarga } = calibrarAmbienteExecucao();
+      const { fatorCarga } = calibrarAmbienteExecucao(true);
       const adaptador = new AdaptadorInventarioMock({ totalSkus: 25_000, seed: 42 });
       // Aquece dataset
       await adaptador.carregarInventarioCompleto({ fornecedoresPermitidos: null });
@@ -425,7 +436,7 @@ describe('Challenger 1 — Desafio Adversarial de Escala e Carga no Mock (Marco 
 
   describe('5. Salvaguarda e Proteção Ativa contra Regressão de Desempenho', () => {
     it('deve detectar e acusar regressão quando um atraso artificial for introduzido na busca', async () => {
-      const { fatorCarga } = calibrarAmbienteExecucao();
+      const { fatorCarga } = calibrarAmbienteExecucao(true);
       const adaptador = new AdaptadorInventarioMock({ totalSkus: 25_000, seed: 42 });
       await adaptador.carregarInventarioCompleto({ fornecedoresPermitidos: null });
 
@@ -458,7 +469,7 @@ describe('Challenger 1 — Desafio Adversarial de Escala e Carga no Mock (Marco 
     });
 
     it('deve acusar regressão caso o processamento de 25.000 itens viole a taxa mínima de trabalho', () => {
-      const { fatorCarga } = calibrarAmbienteExecucao();
+      const { fatorCarga } = calibrarAmbienteExecucao(true);
       const totalSkus = 25_000;
       const TAXA_MINIMA_SKUS_POR_MS = 15;
 
@@ -482,7 +493,7 @@ describe('Challenger 1 — Desafio Adversarial de Escala e Carga no Mock (Marco 
     });
 
     it('DEMONSTRAÇÃO DE REGRESSÃO: teste deve acusar falha quando atraso artificial for introduzido', async () => {
-      const { fatorCarga } = calibrarAmbienteExecucao();
+      const { fatorCarga } = calibrarAmbienteExecucao(true);
       const adaptador = new AdaptadorInventarioMock({ totalSkus: 25_000, seed: 42 });
       await adaptador.carregarInventarioCompleto({ fornecedoresPermitidos: null });
 
