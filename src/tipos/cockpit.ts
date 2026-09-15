@@ -118,7 +118,6 @@ export interface LinhaCockpitMatriz {
   readonly origemPrevisao?: "IA" | "ANALITICA";
   readonly previsaoIaP50?: number | null;
   readonly previsaoIaP80?: number | null;
-  readonly modeloIaUtilizado?: string | null;
 
   // Ajuste Humano e Múltiplos
   readonly loteMultiplo: number; // ex: 1 avulso, 2 par, 4 jogo

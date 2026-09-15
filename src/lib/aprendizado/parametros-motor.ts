@@ -26,7 +26,7 @@ export async function montarOpcoesMatrizComPublicados(
   const temIa = mapaPrevisoesIa && mapaPrevisoesIa.size > 0;
   const versaoBase = publicados ? publicados.versao : "arquivo do tenant";
   const versaoParametros = temIa
-    ? `IA Chronos-Bolt (${mapaPrevisoesIa.size} séries) + ${versaoBase}`
+    ? `Previsão probabilística (${mapaPrevisoesIa.size} séries) + ${versaoBase}`
     : versaoBase;
 
   if (!publicados || !base.parametrosMotor) {

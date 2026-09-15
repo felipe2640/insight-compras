@@ -539,7 +539,7 @@ export function converterParaLinhasCockpit(
         statusSugestao = "APROVADO_COMPRA";
         const rotuloDemanda =
           resultadoNecessidade.origemPrevisao === "IA" && itemIaFoco
-            ? `Demanda prevista por IA (${itemIaFoco.modeloUtilizado} P80: ${itemIaFoco.demandaP80} un): ${necessidadeAposTransferencia} un`
+            ? `Demanda prevista (faixa conservadora: ${itemIaFoco.demandaP80} un): ${necessidadeAposTransferencia} un`
             : `Demanda calculada: ${necessidadeAposTransferencia} un`;
         motivoDecisao =
           totalRecebidoFoco > 0
@@ -670,7 +670,6 @@ export function converterParaLinhasCockpit(
       origemPrevisao: resultadoNecessidade.origemPrevisao,
       previsaoIaP50: itemIaFoco?.demandaP50 ?? null,
       previsaoIaP80: itemIaFoco?.demandaP80 ?? null,
-      modeloIaUtilizado: itemIaFoco?.modeloUtilizado ?? null,
       motivoInelegibilidade:
         perfilGiro === "SEM_HISTORICO_SUFICIENTE"
           ? temHistoricoFoco
