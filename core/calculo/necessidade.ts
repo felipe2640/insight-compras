@@ -19,6 +19,9 @@
  * - O fator de calibração é do MOTOR ANALÍTICO. Quando a demanda do horizonte vem
  *   de uma projeção de IA homologada, o fator NÃO se aplica: ele corrige o viés da
  *   régua estática, e a projeção probabilística não tem esse viés.
+ * - A projeção de IA só ACRESCENTA cobertura, nunca reduz. A régua analítica é o
+ *   piso: no backtest anual ela é a de menor ruptura, e o modelo campeão subprevê
+ *   a demanda da rede em 94%. A IA entra para cobrir pico que a régua não vê.
  *
  * O QUE VARIA POR CLIENTE fica em `ParametrosMotorCompra`, injetado pelo tenant:
  * horizontes, margens, fator de calibração (aprendido no backtest do cliente) e
@@ -503,16 +506,29 @@ export function calcularNecessidadeItem(
     piso
   );
 
-  // Projeção de IA homologada substitui a demanda estática do horizonte, sempre
-  // reescalada do horizonte do modelo para o horizonte do perfil de giro do item.
-  // Projeção inutilizável devolve null e o motor segue no baseline analítico.
+  // TRAVA DE PISO: a projeção de IA entra somente como ACRÉSCIMO de cobertura.
+  //
+  // O motor analítico é o homologado e, no backtest anual, é o de menor ruptura
+  // (72.000 peças contra 129.835 do modelo campeão, que subprevê a demanda da
+  // rede em 94%). Enquanto a eleição do campeão não for refeita por um critério
+  // de negócio, a IA não pode derrubar a cobertura da régua analítica: ela só
+  // sobe a meta quando enxerga um pico que a régua não vê.
+  //
+  // A projeção é reescalada do horizonte do modelo (30 dias) para o horizonte do
+  // perfil de giro do item. A reescala importa AINDA MAIS sob a trava: sem ela o
+  // número cru de 30 dias venceria o `max` quase sempre e inflaria a meta de um
+  // item cujo horizonte de cobertura é 7 dias.
   const demandaIaHorizonte = escalarPrevisaoIaParaHorizonte(
     previsaoDemandaIA,
     horizonteDias,
     loteMultiplo
   );
-  const usaIa = demandaIaHorizonte !== null;
-  if (demandaIaHorizonte !== null) {
+
+  // `usaIa` é "a IA governou o número", não "havia projeção": quando a régua
+  // analítica vence o max, quem manda é ela — e o fator de calibração dela, que
+  // é justamente o que a IA não deve levar embora, continua valendo.
+  const usaIa = demandaIaHorizonte !== null && demandaIaHorizonte > demandaHorizonte;
+  if (usaIa && demandaIaHorizonte !== null) {
     demandaHorizonte = demandaIaHorizonte;
     previsaoBruta = Math.max(demandaHorizonte, pisoAplicado);
   }

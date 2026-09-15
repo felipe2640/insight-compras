@@ -216,9 +216,9 @@ describe("Integracao do Motor de Demanda por Inteligencia Artificial", () => {
           filialId: 1,
           produtoId: 101,
           sku: "SKU-IA-01",
-          previsaoCentral: 22,
-          demandaP50: 20,
-          demandaP80: 27,
+          previsaoCentral: 40,
+          demandaP50: 45,
+          demandaP80: 45,
           horizonteDias: 30,
           modeloUtilizado: "Chronos-Bolt (Small)",
           dataPrevisao: dataPrevisaoComIdade(1),
@@ -235,14 +235,14 @@ describe("Integracao do Motor de Demanda por Inteligencia Artificial", () => {
     const linhaIa = linhas.find((l) => l.produtoId === 101);
     expect(linhaIa).toBeDefined();
     expect(linhaIa?.origemPrevisao).toBe("IA");
-    expect(linhaIa?.previsaoIaP80).toBe(27);
-    expect(linhaIa?.previsaoIaP50).toBe(20);
-    // A faixa do modelo é o total de 30 dias; o item é ALTO_GIRO, cujo horizonte
-    // de cobertura é 20 dias. Reescala: 27 * (20/30) = 18 -> lote 2 = 18.
-    // Saldo = 4. Necessidade líquida = 18 - 4 = 14.
-    // (Sem a reescala eram 24 un: 30 dias de demanda para cobrir 20 dias.)
-    expect(linhaIa?.sugestaoFinalCompra).toBe(14);
-    expect(linhaIa?.motivoDecisao).toContain("Demanda prevista (faixa conservadora: 27 un/30d)");
+    expect(linhaIa?.previsaoIaP80).toBe(45);
+    expect(linhaIa?.previsaoIaP50).toBe(45);
+    // A faixa é o total de 30 dias; o item é ALTO_GIRO, horizonte de 20 dias.
+    // Reescala: 45 * (20/30) = 30 -> lote 2 = 30. A régua analítica daria 18
+    // (0,667/dia * 20 * 1,25 -> lote 2), então a IA vence o piso e governa.
+    // Saldo = 4. Necessidade líquida = 30 - 4 = 26.
+    expect(linhaIa?.sugestaoFinalCompra).toBe(26);
+    expect(linhaIa?.motivoDecisao).toContain("Demanda prevista (faixa conservadora: 45 un/30d)");
 
     // Item 102 nao tem IA -> fallback para analitico
     const linhaAnalitica = linhas.find((l) => l.produtoId === 102);
@@ -303,9 +303,9 @@ describe("Integracao do Motor de Demanda por Inteligencia Artificial", () => {
           filialId: 1,
           produtoId: 101,
           sku: "SKU-IA-01",
-          previsaoCentral: 22,
-          demandaP50: 20,
-          demandaP80: 27,
+          previsaoCentral: 40,
+          demandaP50: 45,
+          demandaP80: 45,
           horizonteDias: 30,
           modeloUtilizado: "Chronos-Bolt (Small)",
           dataPrevisao: dataPrevisaoComIdade(20),
@@ -326,7 +326,7 @@ describe("Integracao do Motor de Demanda por Inteligencia Artificial", () => {
     expect(linha?.previsaoIaP50).toBeNull();
   });
 
-  it("mantem projecao antiga de item intermitente, cujo silencio e esperado", () => {
+  it("aceita projecao antiga de item intermitente, cujo silencio e esperado", () => {
     // Item 102: p50 de 10 peças em 30 dias na projeção abaixo -> em 20 dias
     // esperava ~6,7. Para o teste do silêncio compatível precisamos de um p50
     // baixo, então usamos uma projeção intermitente de verdade.
@@ -354,8 +354,51 @@ describe("Integracao do Motor de Demanda por Inteligencia Artificial", () => {
     });
 
     const linha = linhas.find((l) => l.produtoId === 102);
-    expect(linha?.origemPrevisao).toBe("IA");
+    // A projeção foi ACEITA (não venceu pela idade): a telemetria dela aparece.
     expect(linha?.previsaoIaP80).toBe(4);
+    // Mas não governa o número: 4 em 30 dias é menos que a régua analítica, e a
+    // trava de piso mantém a cobertura homologada.
+    expect(linha?.origemPrevisao).toBe("ANALITICA");
+  });
+
+  it("previsao subestimada no banco NAO derruba a sugestao do motor analitico", () => {
+    // Cenário real de hoje: o modelo campeão subprevê a demanda da rede em 94%,
+    // e 98,8% das séries saem com p50 perto de zero. Sem a trava de piso, o
+    // cockpit passaria a sugerir quase nada para item que gira.
+    const mapaIa = new Map<string, PrevisaoDemandaIaItem>([
+      [
+        "101:1",
+        {
+          filialId: 1,
+          produtoId: 101,
+          sku: "SKU-IA-01",
+          previsaoCentral: 0.03,
+          demandaP50: 0.03,
+          demandaP80: 0.1,
+          horizonteDias: 30,
+          modeloUtilizado: "Chronos-Bolt (Small)",
+          dataPrevisao: dataPrevisaoComIdade(0),
+        },
+      ],
+    ]);
+
+    const semIa = converterParaLinhasCockpit(cargaBase, {
+      filialFocoId: 1,
+      parametrosMotor: PARAMETROS_MOTOR_PADRAO,
+    });
+    const comIaBaixa = converterParaLinhasCockpit(cargaBase, {
+      filialFocoId: 1,
+      parametrosMotor: PARAMETROS_MOTOR_PADRAO,
+      mapaPrevisoesIa: mapaIa,
+    });
+
+    const linhaSem = semIa.find((l) => l.produtoId === 101);
+    const linhaCom = comIaBaixa.find((l) => l.produtoId === 101);
+
+    // A sugestão com a IA ligada é IDÊNTICA à de antes dela existir.
+    expect(linhaCom?.sugestaoFinalCompra).toBe(linhaSem?.sugestaoFinalCompra);
+    expect(linhaCom?.sugestaoFinalCompra).toBeGreaterThan(0);
+    expect(linhaCom?.origemPrevisao).toBe("ANALITICA");
   });
 
   it("limpa cache de previsoes corretamente", async () => {
