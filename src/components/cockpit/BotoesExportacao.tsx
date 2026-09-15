@@ -29,6 +29,8 @@ import { cn } from "@/lib/utils";
 
 export interface BotoesExportacaoProps {
   readonly itens: readonly LinhaCockpitMatriz[];
+  /** Quando houver marcação na grade, ela passa a ser a base de toda exportação. */
+  readonly itensSelecionados?: readonly LinhaCockpitMatriz[];
   readonly contexto: ContextoExportacao;
   readonly csvPadrao?: OpcoesCsv;
   readonly onAbrirConfiguracao: () => void;
@@ -39,6 +41,7 @@ export interface BotoesExportacaoProps {
 
 export function BotoesExportacao({
   itens,
+  itensSelecionados = [],
   contexto,
   csvPadrao,
   onAbrirConfiguracao,
@@ -48,6 +51,7 @@ export function BotoesExportacao({
   const [modelos, setModelos] = useState<ModeloExportacao[]>([]);
   const [gerando, setGerando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const itensBase = itensSelecionados.length > 0 ? itensSelecionados : itens;
 
   useEffect(() => {
     let ativo = true;
@@ -64,14 +68,14 @@ export function BotoesExportacao({
 
   const contagemPorModelo = useMemo(() => {
     const mapa = new Map<string, number>();
-    for (const m of modelos) mapa.set(m.id, filtrarPorEscopo(itens, m.escopo).length);
+    for (const m of modelos) mapa.set(m.id, filtrarPorEscopo(itensBase, m.escopo).length);
     return mapa;
-  }, [modelos, itens]);
+  }, [modelos, itensBase]);
 
   const exportar = useCallback(
     async (modelo: ModeloExportacao) => {
       setErro(null);
-      const linhas = filtrarPorEscopo(itens, modelo.escopo);
+      const linhas = filtrarPorEscopo(itensBase, modelo.escopo);
       if (linhas.length === 0) {
         setErro(`"${modelo.nome}" não tem nenhuma linha para exportar agora.`);
         return;
@@ -79,7 +83,7 @@ export function BotoesExportacao({
       setGerando(modelo.id);
       try {
         const arquivo = await gerarArquivoExportacao({
-          itens,
+          itens: itensBase,
           layout: layoutDoModelo(modelo),
           formato: modelo.formato,
           contexto: { ...contexto, dataReferencia: new Date() },
@@ -101,7 +105,7 @@ export function BotoesExportacao({
         setGerando(null);
       }
     },
-    [itens, contexto, csvPadrao]
+    [itensBase, contexto, csvPadrao]
   );
 
   return (
@@ -118,7 +122,7 @@ export function BotoesExportacao({
             title={
               vazio
                 ? `Nenhuma linha no escopo de "${modelo.nome}" agora`
-                : `Exportar ${quantas} linha(s) em ${modelo.formato.toUpperCase()}`
+                : `Exportar ${quantas} linha(s)${itensSelecionados.length > 0 ? " selecionada(s)" : ""} em ${modelo.formato.toUpperCase()}`
             }
             className={cn(
               "flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors",

@@ -382,4 +382,36 @@ describe("Interface de Exportação e CRUD de Modelos (DialogExportacao e Botoes
     fireEvent.click(btnModelos);
     expect(onAbrirConfigMock).toHaveBeenCalled();
   });
+
+  it("BotoesExportacao deve priorizar as linhas marcadas na contagem", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({
+        modelos: [{
+          id: "pedido_fornecedor",
+          nome: "Pedido ao fornecedor",
+          escopo: "compra",
+          formato: "csv",
+          colunas: ["sku", "qtd_pedido"],
+          nomeArquivo: "pedido",
+          deFabrica: true,
+        }],
+      }),
+    });
+
+    const segundoItem = { ...ITENS_MOCK[0], produtoId: 2, codigoSku: "SKU-002" };
+    render(
+      <BotoesExportacao
+        itens={[ITENS_MOCK[0], segundoItem]}
+        itensSelecionados={[segundoItem]}
+        contexto={CONTEXTO}
+        onAbrirConfiguracao={() => undefined}
+      />
+    );
+
+    await waitFor(() => {
+      const botao = screen.getByRole("button", { name: /Pedido ao fornecedor/ });
+      expect(botao.getAttribute("title")).toContain("Exportar 1 linha(s) selecionada(s)");
+    });
+  });
 });

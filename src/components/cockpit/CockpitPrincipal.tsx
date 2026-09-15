@@ -535,6 +535,9 @@ export function CockpitPrincipal({
               {/* Um botão por modelo: o comprador exporta o de sempre num clique. */}
               <BotoesExportacao
                 itens={itensFiltrados as LinhaCockpitMatriz[]}
+                itensSelecionados={table.getSelectedRowModel().rows.map(
+                  (r) => r.original as LinhaCockpitMatriz
+                )}
                 contexto={contextoExportacao}
                 csvPadrao={tenantAtivo.exportacao.csvPadrao}
                 onAbrirConfiguracao={() => setDialogExportacaoAberto(true)}
