@@ -10,14 +10,17 @@
  * Lê as projeções probabilísticas de demanda (p50, p80) geradas pelo
  * modelo campeão (Chronos-Bolt) e publicadas na tabela `demanda_ia_previsao` do Supabase.
  *
- * Duas regras não são opcionais nesta leitura:
- * 1. FRESCOR — o pipeline faz upsert por (tenant, filial, produto) e nunca apaga
+ * Três regras não são opcionais nesta leitura:
+ * 1. PAGINAÇÃO — o PostgREST corta a resposta no limite de linhas do projeto
+ *    (1.000 por padrão no Supabase) devolvendo HTTP 200. Sem paginar, a maior
+ *    parte da rede cairia em silêncio no baseline.
+ * 2. FRESCOR — o pipeline faz upsert por (tenant, filial, produto) e nunca apaga
  *    nada. Item que parou de vender sai do lote diário mas a linha antiga
  *    permanece; sem filtro de data o cockpit compraria contra demanda de meses
  *    atrás. Só entram projeções dentro da janela de validade.
- * 2. PAGINAÇÃO — o PostgREST corta a resposta no limite de linhas do projeto
- *    (1.000 por padrão no Supabase) devolvendo HTTP 200. Sem paginar, a maior
- *    parte da rede cairia em silêncio no baseline.
+ * 3. HORIZONTE — a projeção é um TOTAL de período (o pipeline publica 30 dias).
+ *    `horizonte_dias` vem junto porque o motor precisa reescalar o número para o
+ *    horizonte do perfil de giro do item (20/15/7 dias).
  */
 
 /** Validade padrão de uma projeção, em dias. */
@@ -54,7 +57,15 @@ interface LinhaPrevisaoDb {
   data_previsao: string;
 }
 
-const COLUNAS_SELECIONADAS = [
+interface CachePrevisoesIa {
+  carregadoEm: number;
+  mapa: Map<string, PrevisaoDemandaIaItem>;
+}
+
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutos de TTL em memória
+const cachePrevisoes = new Map<string, CachePrevisoesIa>();
+
+const CAMPOS = [
   "filial_id",
   "produto_id",
   "sku",
@@ -65,6 +76,28 @@ const COLUNAS_SELECIONADAS = [
   "modelo_utilizado",
   "data_previsao",
 ].join(",");
+
+/**
+ * Limpa o cache em memória (usado em testes ou após reprocessamento do pipeline).
+ */
+export function limparCachePrevisoesIa(): void {
+  cachePrevisoes.clear();
+}
+
+/**
+ * Conta as projeções distintas no mapa.
+ *
+ * O mapa é indexado duas vezes por linha (`produtoId:filialId` e `sku:filialId`),
+ * então `mapa.size` é o dobro do número de séries — use isto sempre que o número
+ * for exibido ou registrado.
+ */
+export function contarProjecoesIa(mapa: ReadonlyMap<string, PrevisaoDemandaIaItem>): number {
+  let total = 0;
+  for (const [chave, item] of mapa) {
+    if (chave === `${item.produtoId}:${item.filialId}`) total += 1;
+  }
+  return total;
+}
 
 /** Data mínima aceita (YYYY-MM-DD) para uma projeção ser considerada vigente. */
 export function dataMinimaPrevisaoVigente(
@@ -77,7 +110,6 @@ export function dataMinimaPrevisaoVigente(
 }
 
 export interface OpcoesCarregarPrevisoesIa {
-  readonly filialId?: number;
   /** Dias de validade da projeção. Padrão: VALIDADE_PREVISAO_IA_DIAS. */
   readonly validadeDias?: number;
 }
@@ -86,67 +118,73 @@ export interface OpcoesCarregarPrevisoesIa {
  * Carrega o mapa de previsões de demanda por IA indexado por `${produtoId}:${filialId}`.
  * Resiliente: se o Supabase não estiver configurado ou a tabela não existir,
  * retorna um mapa vazio sem quebrar a renderização do cockpit.
+ *
+ * Implementa paginação transparente de 1.000 em 1.000 linhas para contornar
+ * o limite padrão do PostgREST e carregar o catálogo completo de previsões.
  */
 export async function carregarMapaPrevisoesIa(
   tenantId: string,
+  filialId?: number,
   opcoes: OpcoesCarregarPrevisoesIa = {}
 ): Promise<Map<string, PrevisaoDemandaIaItem>> {
+  const { validadeDias = VALIDADE_PREVISAO_IA_DIAS } = opcoes;
+
+  const chaveCache = `${tenantId}:${filialId ?? "todas"}:${validadeDias}`;
+  const emCache = cachePrevisoes.get(chaveCache);
+  if (emCache && Date.now() - emCache.carregadoEm < CACHE_TTL_MS) {
+    return emCache.mapa;
+  }
+
   const mapa = new Map<string, PrevisaoDemandaIaItem>();
 
   const url = process.env.SUPABASE_URL;
   // Service role apenas, como no resto do projeto: `demanda_ia_previsao` não tem
   // grant para anon/authenticated, então a chave pública só renderia 401.
-  const chaveApi = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!url || !chaveApi) {
+  if (!url || !chave) {
     return mapa;
   }
 
-  const { filialId, validadeDias = VALIDADE_PREVISAO_IA_DIAS } = opcoes;
-
   try {
-    const filtros = [
-      `select=${COLUNAS_SELECIONADAS}`,
-      `tenant_id=eq.${encodeURIComponent(tenantId)}`,
-      `data_previsao=gte.${dataMinimaPrevisaoVigente(validadeDias)}`,
-      // Ordem estável: sem ela a paginação por offset pode repetir ou pular linhas.
-      "order=filial_id.asc,produto_id.asc",
-    ];
+    let filtroBase = `tenant_id=eq.${encodeURIComponent(tenantId)}`;
     if (filialId !== undefined && filialId !== null) {
-      filtros.push(`filial_id=eq.${filialId}`);
+      filtroBase += `&filial_id=eq.${filialId}`;
     }
-    const consulta = filtros.join("&");
+    // Projeção vencida não vira compra: o pipeline nunca apaga linha antiga.
+    filtroBase += `&data_previsao=gte.${dataMinimaPrevisaoVigente(validadeDias)}`;
 
-    for (let pagina = 0; pagina < MAXIMO_PAGINAS; pagina++) {
-      const inicio = pagina * TAMANHO_PAGINA;
-      const fim = inicio + TAMANHO_PAGINA - 1;
+    let offset = 0;
+    let continuarPaginando = true;
+    let pagina = 0;
+
+    while (continuarPaginando && pagina < MAXIMO_PAGINAS) {
+      // Ordem estável: sem ela a paginação por offset pode repetir ou pular linhas.
+      const consulta = `select=${CAMPOS}&${filtroBase}&limit=${TAMANHO_PAGINA}&offset=${offset}&order=produto_id.asc,filial_id.asc`;
 
       const res = await fetch(`${url}/rest/v1/demanda_ia_previsao?${consulta}`, {
         method: "GET",
         headers: {
-          apikey: chaveApi,
-          Authorization: `Bearer ${chaveApi}`,
-          // Range pagina do lado do servidor, respeitando o teto do projeto.
-          Range: `${inicio}-${fim}`,
-          "Range-Unit": "items",
+          apikey: chave,
+          Authorization: `Bearer ${chave}`,
+          "Content-Type": "application/json",
         },
         cache: "no-store",
       });
 
       if (!res.ok) {
-        // Tabela ainda não criada ou sem permissão: fallback gracioso para baseline.
-        // 416 significa que o range passou do fim — nada mais a paginar.
-        if (res.status !== 416 && mapa.size === 0) {
+        // Tabela ainda não criada ou sem permissão: fallback gracioso para baseline
+        if (mapa.size === 0) {
           console.warn(
             `[PrevisaoIA] Leitura interrompida (HTTP ${res.status}). Cockpit segue no baseline.`
           );
         }
-        return mapa;
+        break;
       }
 
       const linhas = (await res.json()) as LinhaPrevisaoDb[];
       if (!Array.isArray(linhas) || linhas.length === 0) {
-        return mapa;
+        break;
       }
 
       for (const l of linhas) {
@@ -158,23 +196,43 @@ export async function carregarMapaPrevisoesIa(
           demandaP50: Number(l.demanda_p50 ?? 0),
           demandaP80: Number(l.demanda_p80 ?? 0),
           horizonteDias: Number(l.horizonte_dias ?? 0),
-          modeloUtilizado: String(l.modelo_utilizado ?? "IA"),
+          modeloUtilizado: String(l.modelo_utilizado ?? "Chronos-Bolt (Small)"),
           dataPrevisao: String(l.data_previsao ?? ""),
         };
+
+        // Chave canônica primária: produtoId:filialId
         mapa.set(`${item.produtoId}:${item.filialId}`, item);
+
+        // Chave secundária por SKU, também amarrada à filial: serve quando o
+        // cockpit conhece o item pelo código do ERP e não pelo id interno.
+        //
+        // NÃO existe chave só por produtoId: demanda é por loja. Uma projeção da
+        // filial 1 respondendo pela filial 3 faria a loja comprar contra a
+        // demanda da loja vizinha — melhor cair no motor analítico da própria loja.
+        if (item.sku) {
+          mapa.set(`${item.sku}:${item.filialId}`, item);
+        }
       }
 
-      // Página incompleta = última página.
       if (linhas.length < TAMANHO_PAGINA) {
-        return mapa;
+        continuarPaginando = false;
+      } else {
+        offset += TAMANHO_PAGINA;
+        pagina += 1;
+        if (pagina >= MAXIMO_PAGINAS) {
+          console.warn(
+            `[PrevisaoIA] Teto de ${MAXIMO_PAGINAS} páginas atingido com ${mapa.size} projeções; ` +
+              "podem existir linhas não lidas."
+          );
+        }
       }
+    }
 
-      if (pagina === MAXIMO_PAGINAS - 1) {
-        console.warn(
-          `[PrevisaoIA] Teto de ${MAXIMO_PAGINAS} páginas atingido com ${mapa.size} projeções; ` +
-            "podem existir linhas não lidas."
-        );
-      }
+    if (mapa.size > 0) {
+      cachePrevisoes.set(chaveCache, {
+        carregadoEm: Date.now(),
+        mapa,
+      });
     }
   } catch (erro) {
     // Falha de rede ou PostgREST não interrompe a operação do cockpit

@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import urllib.error
 import urllib.request
 import urllib.parse
 from datetime import date, timedelta
@@ -69,48 +70,52 @@ class ExtratorFabric(ExtratorDadosBase):
             'Authorization': f'Bearer {token}',
             'Content-Type': 'application/json'
         })
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            results = data.get('results', [])
-            if not results:
-                return []
-            tables = results[0].get('tables', [])
-            if not tables:
-                return []
-            raw_rows = tables[0].get('rows', [])
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+        except urllib.error.HTTPError as e:
+            corpo_erro = e.read().decode('utf-8', errors='replace')
+            raise RuntimeError(f"[{self.nome_fonte}] Erro na API REST do Fabric (HTTP {e.code}): {corpo_erro}")
 
-            # Limpar nomes de colunas com colchetes
-            rows_limpas = []
-            for r in raw_rows:
-                limpa = {}
-                for k, v in r.items():
-                    nome = k.rsplit('[', 1)[1][:-1] if ('[' in k and k.endswith(']')) else k.strip('[]')
-                    limpa[nome] = v
-                rows_limpas.append(limpa)
-            return rows_limpas
+        results = data.get('results', [])
+        if not results:
+            return []
+        tables = results[0].get('tables', [])
+        if not tables:
+            return []
+        raw_rows = tables[0].get('rows', [])
+        
+        # Limpar nomes de colunas com colchetes
+        rows_limpas = []
+        for r in raw_rows:
+            limpa = {}
+            for k, v in r.items():
+                nome = k.rsplit('[', 1)[1][:-1] if ('[' in k and k.endswith(']')) else k.strip('[]')
+                limpa[nome] = v
+            rows_limpas.append(limpa)
+        return rows_limpas
 
     @staticmethod
     def _dax_vendas_periodo(inicio: date, fim: date) -> str:
         """
-        DAX de vendas restrito a uma janela de datas (bordas inclusivas em dias).
-        O limite superior é exclusivo no dia seguinte: MOVIMENTOS[DATA] pode carregar
-        hora, e `<= DATE(fim)` descartaria em silêncio tudo que foi vendido depois da
-        meia-noite do último dia da janela.
+        DAX de vendas restrito a uma janela de datas (bordas inclusivas).
+
+        Mesma consulta homologada em queries/daily_demand.dax — medida
+        [Quantidade Vendida Produto] filtrada por Venda Direta sobre 'dCalendario' —
+        só que com a janela parametrizada, para permitir a paginação por data.
         """
-        fim_exclusivo = fim + timedelta(days=1)
         return f"""
         EVALUATE
-        SELECTCOLUMNS(
+        SUMMARIZECOLUMNS(
+            'CADEMP'[ANOMEFANTASIA],
+            'PRODUTOS'[ACODPRODUTO],
+            'dCalendario'[Data],
             FILTER(
-                MOVIMENTOS,
-                MOVIMENTOS[TIPOMOVIMENTO] = "S" &&
-                MOVIMENTOS[DATA] >= DATE({inicio.year}, {inicio.month}, {inicio.day}) &&
-                MOVIMENTOS[DATA] < DATE({fim_exclusivo.year}, {fim_exclusivo.month}, {fim_exclusivo.day})
+                ALL('dCalendario'[Data]),
+                'dCalendario'[Data] >= DATE({inicio.year}, {inicio.month}, {inicio.day})
+                    && 'dCalendario'[Data] <= DATE({fim.year}, {fim.month}, {fim.day})
             ),
-            "Loja", RELATED(CADEMP[ANOMEFANTASIA]),
-            "SKU", MOVIMENTOS[ACODPRODUTO],
-            "Data", MOVIMENTOS[DATA],
-            "QtdVenda", MOVIMENTOS[QTDMOVIMENTADA]
+            "QtdVenda", CALCULATE([Quantidade Vendida Produto], KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"))
         )
         """
 
@@ -157,9 +162,10 @@ class ExtratorFabric(ExtratorDadosBase):
         if not caminho_vendas.exists():
             raise FileNotFoundError(
                 f'[{self.nome_fonte}] Sem credenciais do Fabric e sem cache local em '
-                f'{caminho_vendas}. Configure AZURE_TENANT_ID / AZURE_CLIENT_ID / '
-                f'AZURE_CLIENT_SECRET / POWERBI_WORKSPACE_ID / POWERBI_DATASET_ID '
-                f'ou gere o cache com extrator_dados.py.'
+                f'{caminho_vendas}. Cadastre AZURE_TENANT_ID / AZURE_CLIENT_ID / '
+                f'AZURE_CLIENT_SECRET / POWERBI_WORKSPACE_ID / POWERBI_DATASET_ID em '
+                f'Settings > Secrets and variables > Actions no GitHub, '
+                f'ou gere o cache localmente com extrator_dados.py.'
             )
         df_vendas = pd.read_parquet(caminho_vendas)
         # O cadastro de produtos é opcional: só alimenta a descrição do item.
@@ -235,9 +241,9 @@ class ExtratorFabric(ExtratorDadosBase):
             dax_produtos = """
             EVALUATE
             SELECTCOLUMNS(
-                PRODUTOS,
-                "SKU", PRODUTOS[ACODPRODUTO],
-                "Descricao", PRODUTOS[ADESCRICAO]
+                'PRODUTOS',
+                "SKU", 'PRODUTOS'[ACODPRODUTO],
+                "Descricao", 'PRODUTOS'[ADESCRICAO]
             )
             """
             rows_produtos = self._executar_dax_fabric(token, workspace_id, dataset_id, dax_produtos)

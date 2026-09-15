@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   carregarMapaPrevisoesIa,
+  contarProjecoesIa,
   dataMinimaPrevisaoVigente,
+  limparCachePrevisoesIa,
   VALIDADE_PREVISAO_IA_DIAS,
 } from "@/lib/previsao-ia/repositorio-previsao-ia";
 
@@ -32,6 +34,8 @@ describe("Repositório de Previsões de Demanda por IA", () => {
   beforeEach(() => {
     process.env.SUPABASE_URL = URL_SUPABASE;
     process.env.SUPABASE_SERVICE_ROLE_KEY = "chave-de-servico";
+    // O cache de 15 min é de módulo: sem limpar, um teste herda o mapa do outro.
+    limparCachePrevisoesIa();
   });
 
   afterEach(() => {
@@ -59,6 +63,18 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     expect(fetchFalso).not.toHaveBeenCalled();
   });
 
+  it("não usa a chave anon: a tabela só tem grant para service role", async () => {
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.SUPABASE_ANON_KEY = "chave-publica";
+    const fetchFalso = vi.fn();
+    vi.stubGlobal("fetch", fetchFalso);
+
+    const mapa = await carregarMapaPrevisoesIa("carreiro");
+
+    expect(mapa.size).toBe(0);
+    expect(fetchFalso).not.toHaveBeenCalled();
+  });
+
   it("filtra por tenant e por frescor da projeção", async () => {
     const fetchFalso = vi.fn().mockResolvedValue(respostaOk([linhaDb(4512)]));
     vi.stubGlobal("fetch", fetchFalso);
@@ -70,7 +86,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     // Sem o filtro de data, projeção de meses atrás viraria compra de hoje.
     expect(urlChamada).toContain("data_previsao=gte.");
     // Ordem estável é pré-requisito da paginação por offset.
-    expect(urlChamada).toContain("order=filial_id.asc,produto_id.asc");
+    expect(urlChamada).toContain("order=produto_id.asc,filial_id.asc");
     expect(urlChamada).toContain("horizonte_dias");
 
     const item = mapa.get("4512:1");
@@ -79,18 +95,30 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     expect(item?.horizonteDias).toBe(30);
   });
 
+  it("indexa também por SKU, sempre amarrado à filial", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respostaOk([linhaDb(4512, 3)])));
+
+    const mapa = await carregarMapaPrevisoesIa("carreiro");
+
+    expect(mapa.get("4512:3")).toBeDefined();
+    expect(mapa.get("SKU-4512:3")).toBeDefined();
+    // Demanda é por loja: não existe chave solta por produto, que faria a
+    // filial 5 comprar contra a previsão da filial 3.
+    expect(mapa.get("4512")).toBeUndefined();
+  });
+
   it("aplica o filtro de filial quando informada", async () => {
     const fetchFalso = vi.fn().mockResolvedValue(respostaOk([linhaDb(4512, 3)]));
     vi.stubGlobal("fetch", fetchFalso);
 
-    await carregarMapaPrevisoesIa("carreiro", { filialId: 3 });
+    await carregarMapaPrevisoesIa("carreiro", 3);
 
     expect(String(fetchFalso.mock.calls[0][0])).toContain("filial_id=eq.3");
   });
 
   it("pagina até a última página em vez de parar no teto do PostgREST", async () => {
     // Primeira página cheia (o Supabase corta em 1000 devolvendo HTTP 200),
-    // segunda incompleta: sem paginar, 3 itens ficariam de fora em silêncio.
+    // segunda incompleta: sem paginar, 3 projeções ficariam de fora em silêncio.
     const paginaCheia = Array.from({ length: 1000 }, (_, i) => linhaDb(i + 1));
     const paginaFinal = [linhaDb(1001), linhaDb(1002), linhaDb(1003)];
 
@@ -102,13 +130,12 @@ describe("Repositório de Previsões de Demanda por IA", () => {
 
     const mapa = await carregarMapaPrevisoesIa("carreiro");
 
-    expect(mapa.size).toBe(1003);
+    expect(contarProjecoesIa(mapa)).toBe(1003);
     expect(fetchFalso).toHaveBeenCalledTimes(2);
 
-    const cabecalhos = fetchFalso.mock.calls.map(
-      (c) => (c[1] as RequestInit & { headers: Record<string, string> }).headers.Range
-    );
-    expect(cabecalhos).toEqual(["0-999", "1000-1999"]);
+    const urls = fetchFalso.mock.calls.map((c) => String(c[0]));
+    expect(urls[0]).toContain("offset=0");
+    expect(urls[1]).toContain("offset=1000");
   });
 
   it("encerra a paginação quando a página vem vazia", async () => {
@@ -121,7 +148,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
 
     const mapa = await carregarMapaPrevisoesIa("carreiro");
 
-    expect(mapa.size).toBe(1000);
+    expect(contarProjecoesIa(mapa)).toBe(1000);
     expect(fetchFalso).toHaveBeenCalledTimes(2);
   });
 
@@ -146,6 +173,20 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     const mapa = await carregarMapaPrevisoesIa("carreiro");
 
     expect(mapa.size).toBe(0);
+  });
+
+  it("reaproveita o cache em memória na segunda chamada", async () => {
+    const fetchFalso = vi.fn().mockResolvedValue(respostaOk([linhaDb(4512)]));
+    vi.stubGlobal("fetch", fetchFalso);
+
+    await carregarMapaPrevisoesIa("carreiro");
+    await carregarMapaPrevisoesIa("carreiro");
+
+    expect(fetchFalso).toHaveBeenCalledTimes(1);
+
+    limparCachePrevisoesIa();
+    await carregarMapaPrevisoesIa("carreiro");
+    expect(fetchFalso).toHaveBeenCalledTimes(2);
   });
 
   it("mantém a validade padrão documentada", () => {

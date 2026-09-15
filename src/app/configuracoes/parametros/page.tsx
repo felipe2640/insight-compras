@@ -32,7 +32,7 @@ const pct = (v: number) => `${(v * 100).toFixed(0)}%`;
 
 export default async function PaginaParametros() {
   const usuario = await obterUsuarioAtual();
-  const tenant = obterTenantAtivo();
+  const tenant = obterTenantAtivo(usuario?.tenantId);
   const motor = tenant.parametrosMotor.motor;
   const publicados = usuario ? await carregarParametrosPublicados(usuario.tenantId) : null;
 

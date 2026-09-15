@@ -8,21 +8,19 @@
  */
 
 import { ConfiguracaoTenant } from "@config/tenants/tipos";
-import { resolverTenantConfigurado } from "@config/tenants";
+import { resolverTenantConfigurado, obterConfiguracaoTenant } from "@config/tenants";
 import { OpcoesGeracaoMatriz } from "./gerador-linhas-matriz";
 
 /**
  * Resolve o tenant ativo.
  *
- * `TENANT_ATIVO` é a decisão explícita de qual cliente esta instalação atende.
- * Sem ela, cai no tenant de DEMONSTRAÇÃO: um deploy sem configuração mostra o
- * mostruário da plataforma, nunca a operação de um cliente por acidente.
- *
- * Nome desconhecido também cai na demonstração, e o aviso vai para o log em vez
- * de virar exceção: derrubar o cockpit por causa de uma variável digitada
- * errada seria pior do que abrir em modo mostruário.
+ * Se fornecido um identificador (id, slug, subdomínio ou custom domain), resolve diretamente.
+ * Se omitido, recorre ao tenant configurado no ambiente (TENANT_ATIVO), ou em fallback DEMONSTRAÇÃO.
  */
-export function obterTenantAtivo(): ConfiguracaoTenant {
+export function obterTenantAtivo(identificador?: string | null): ConfiguracaoTenant {
+  if (identificador) {
+    return obterConfiguracaoTenant(identificador);
+  }
   return resolverTenantConfigurado();
 }
 

@@ -1,15 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { obterAdaptadorInventario } from "@adapters/index";
-import { resolverTenantConfigurado } from "@config/tenants";
+import { resolverTenantConfigurado, obterConfiguracaoTenant } from "@config/tenants";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const adaptador = obterAdaptadorInventario();
+export async function GET(request: NextRequest): Promise<NextResponse>;
+export async function GET(): Promise<NextResponse>;
+export async function GET(request?: NextRequest): Promise<NextResponse> {
+  const tenantIdHeader = request?.headers?.get ? request.headers.get("x-tenant-id") : null;
+  const tenant = tenantIdHeader ? obterConfiguracaoTenant(tenantIdHeader) : resolverTenantConfigurado();
+  const adaptador = obterAdaptadorInventario({ tenant });
   const saudeConexao = await adaptador.verificarSaudeConexao();
-  // Qual cliente ESTA instalação atende. Era "carreiro" fixo, numa rota
-  // pública: a sonda de saúde de qualquer deploy anunciava o nome alheio.
-  const tenant = resolverTenantConfigurado();
 
   return NextResponse.json({
     status: "ok",

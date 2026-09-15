@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { obterAdaptadorInventario } from "@adapters/index";
-import { aplicarGuardrailInventarioServerSide } from "@/lib/rbac/validador-carteira";
-import { ErroAcessoNegado } from "@/lib/rbac/tipos";
+import { aplicarGuardrailInventarioServerSide, validarTenantContexto } from "@/lib/rbac/validador-carteira";
+import { ErroAcessoNegado, ErroViolacaoTenant } from "@/lib/rbac/tipos";
 import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
 import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
 import { codificarGradeTabular } from "@/lib/cockpit/codificacao-tabular";
 import { contarStatusGrade, separarAcionaveis } from "@/lib/cockpit/escopo-grade";
+import { obterConfiguracaoTenant } from "@config/tenants";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,13 @@ export async function GET(request: NextRequest) {
     // 1. Identidade: sessão validada pelo provedor (nunca cabeçalhos x-user-*)
     const usuario = await obterUsuarioDaRequisicao(request);
     if (!usuario) return respostaNaoAutenticado();
+
+    // 1.1 Blindagem Anti-Contaminação entre Tenants (RBAC Cross-Tenant)
+    const tenantIdRequisicao = request.headers.get("x-tenant-id");
+    if (tenantIdRequisicao) {
+      validarTenantContexto(usuario, tenantIdRequisicao);
+    }
+    const tenant = obterConfiguracaoTenant(usuario.tenantId);
 
     // 2. Parâmetros de Filtro Solicitados
     const fornecedorQuery = searchParams.get("fornecedorId");
@@ -98,12 +106,15 @@ export async function GET(request: NextRequest) {
         ? provedorQuery
         : undefined;
 
-    // 4. Carregamento Resiliente via Adaptador de Inventário
-    const adaptador = obterAdaptadorInventario({ tipo: tipoProvedor });
+    // 4. Carregamento Resiliente via Adaptador de Inventário do Tenant
+    const adaptador = obterAdaptadorInventario({ tipo: tipoProvedor, tenant });
     const carga = await adaptador.carregarInventarioCompleto(filtroValidado);
 
     // 5. Transformação Canônica em Linhas da Matriz de Decisão
-    const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(filialId));
+    const linhas = converterParaLinhasCockpit(
+      carga,
+      await montarOpcoesMatrizComPublicados(filialId, tenant)
+    );
 
     // Escopo: a grade abre com o que pede decisão e completa o catálogo depois.
     // As contagens saem SEMPRE do conjunto completo — os chips não podem mentir
@@ -137,6 +148,17 @@ export async function GET(request: NextRequest) {
 
     return resposta;
   } catch (erro) {
+    if (erro instanceof ErroViolacaoTenant) {
+      return NextResponse.json(
+        {
+          sucesso: false,
+          erro: "Violação de Isolamento de Tenant",
+          mensagem: erro.message,
+        },
+        { status: 403 }
+      );
+    }
+
     if (erro instanceof ErroAcessoNegado) {
       return NextResponse.json(
         {

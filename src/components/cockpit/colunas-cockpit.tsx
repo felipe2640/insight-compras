@@ -929,14 +929,51 @@ export function criarColunasCockpit({
             ? "bg-slate-800 text-rose-200 border-slate-700 font-bold"
             : "bg-slate-100 text-slate-700 border-slate-200";
 
+        const temIa =
+          item.origemPrevisao === "IA" ||
+          (item.previsaoIaP80 !== null && item.previsaoIaP80 !== undefined && item.previsaoIaP80 > 0);
+
         return (
           <div className="flex flex-col items-center gap-0.5">
             <span className={cn("rounded px-2 py-0.2 text-[10px] border uppercase tracking-wider", color)}>
               {mov}
             </span>
-            <span className="text-[10px] font-mono text-slate-500">
-              P {item.sugestaoCompra} / T {item.sugestaoTransferencia}
-            </span>
+            <div className="flex items-center gap-1 text-[10px] font-mono text-slate-500">
+              <span>
+                P {item.sugestaoCompra} / T {item.sugestaoTransferencia}
+              </span>
+              {temIa && (
+                <TooltipProvider delayDuration={150}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className="cursor-help inline-flex items-center text-purple-600 dark:text-purple-400 hover:text-purple-700 transition-colors"
+                        aria-label="Previsão de demanda por Inteligência Artificial"
+                      >
+                        <Sparkles className="h-3 w-3" />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs text-xs space-y-1 bg-slate-900 text-slate-100 p-2.5 rounded shadow-xl border border-purple-500/30">
+                      <p className="font-bold flex items-center gap-1 text-purple-300">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Motor IA: {item.modeloIaUtilizado ?? "Chronos-Bolt (Small)"}
+                      </p>
+                      <p className="text-[11px] text-slate-300">
+                        Demanda P80 (Conservadora): <strong className="text-white">{item.previsaoIaP80} un</strong>
+                      </p>
+                      {item.previsaoIaP50 !== null && item.previsaoIaP50 !== undefined && (
+                        <p className="text-[11px] text-slate-300">
+                          Demanda P50 (Mediana): <strong className="text-white">{item.previsaoIaP50} un</strong>
+                        </p>
+                      )}
+                      <p className="text-[10px] text-slate-400 border-t border-slate-700/60 pt-1">
+                        Horizonte: 30 dias • Inferido via série temporal (GitHub Actions)
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </div>
           </div>
         );
       },

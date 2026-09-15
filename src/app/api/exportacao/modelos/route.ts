@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
   const usuario = await obterUsuarioDaRequisicao(request);
   if (!usuario) return respostaNaoAutenticado();
 
-  const tenant = obterTenantAtivo();
+  const tenant = obterTenantAtivo(usuario.tenantId);
   const fabrica = modelosDeFabrica(tenant.exportacao);
   const salvos = await listarModelosSalvos(usuario.tenantId);
 
@@ -103,7 +103,7 @@ export async function DELETE(request: NextRequest) {
   const id = new URL(request.url).searchParams.get("id")?.trim();
   if (!id) return NextResponse.json({ erro: "informe o id do modelo" }, { status: 400 });
 
-  const tenant = obterTenantAtivo();
+  const tenant = obterTenantAtivo(usuario.tenantId);
   if (modelosDeFabrica(tenant.exportacao).some((m) => m.id === id)) {
     return NextResponse.json(
       { erro: "Modelo de fábrica não pode ser apagado. Ajuste-o salvando por cima." },

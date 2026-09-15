@@ -12,7 +12,7 @@ export default async function PaginaAuditoriaGestor() {
   // O tenant vem da SESSÃO. Estava "carreiro" fixo aqui: qualquer outro
   // cliente que abrisse esta tela veria a trilha de pedidos da Carreiro.
   const usuario = await obterUsuarioAtual();
-  const tenant = obterTenantAtivo();
+  const tenant = obterTenantAtivo(usuario?.tenantId);
   const tenantId = usuario?.tenantId ?? tenant.id;
 
   const [trilha, kpis] = await Promise.all([
