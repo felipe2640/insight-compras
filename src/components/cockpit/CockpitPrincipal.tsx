@@ -782,15 +782,13 @@ export function CockpitPrincipal({
 
             {/* Filtros Rápidos por Chip (Curva ABC, Marcas) e Botão Limpar */}
             <div className="flex flex-wrap items-center gap-2">
-              {gradeInicial && (
-                <AvisoCatalogo
-                  estado={grade.estadoCatalogo}
-                  totalCatalogo={grade.contagens.total}
-                  totalCarregado={itensComOverrides.length}
-                  erro={grade.erro}
-                  onTentarNovamente={grade.carregarCatalogo}
-                />
-              )}
+              <AvisoCatalogo
+                estado={grade.estadoCatalogo}
+                totalCatalogo={grade.contagens.total}
+                totalCarregado={itensComOverrides.length}
+                erro={grade.erro}
+                onTentarNovamente={grade.carregarCatalogo}
+              />
 
               <QuickFilterChip
                 label="Curva ABC"
