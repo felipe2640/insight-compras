@@ -30,7 +30,7 @@ export async function montarOpcoesMatrizComPublicados(
   const temIa = totalProjecoesIa > 0;
   const versaoBase = publicados ? publicados.versao : "arquivo do tenant";
   const versaoParametros = temIa
-    ? `IA Chronos-Bolt (${totalProjecoesIa} séries) + ${versaoBase}`
+    ? `Previsão probabilística (${totalProjecoesIa} séries) + ${versaoBase}`
     : versaoBase;
 
   if (!publicados || !base.parametrosMotor) {

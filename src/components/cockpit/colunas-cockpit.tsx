@@ -956,7 +956,7 @@ export function criarColunasCockpit({
                     <TooltipContent className="max-w-xs text-xs space-y-1 bg-slate-900 text-slate-100 p-2.5 rounded shadow-xl border border-purple-500/30">
                       <p className="font-bold flex items-center gap-1 text-purple-300">
                         <Sparkles className="h-3.5 w-3.5" />
-                        Motor IA: {item.modeloIaUtilizado ?? "Chronos-Bolt (Small)"}
+                        Previsão de demanda
                       </p>
                       <p className="text-[11px] text-slate-300">
                         Demanda P80 (Conservadora): <strong className="text-white">{item.previsaoIaP80} un</strong>
@@ -967,7 +967,7 @@ export function criarColunasCockpit({
                         </p>
                       )}
                       <p className="text-[10px] text-slate-400 border-t border-slate-700/60 pt-1">
-                        Horizonte: 30 dias • Inferido via série temporal (GitHub Actions)
+                        Horizonte: 30 dias • Cálculo probabilístico sobre o histórico de vendas
                       </p>
                     </TooltipContent>
                   </Tooltip>

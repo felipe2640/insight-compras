@@ -560,9 +560,10 @@ export function converterParaLinhasCockpit(
         statusSugestao = "APROVADO_COMPRA";
         const rotuloDemanda =
           resultadoNecessidade.origemPrevisao === "IA" && itemIaFoco
-            ? // O P80 do modelo é um total de período; mostrar o período evita a
-              // leitura errada de que a sugestão deveria ser igual ao P80.
-              `Demanda prevista por IA (${itemIaFoco.modeloUtilizado} P80: ${itemIaFoco.demandaP80} un/${itemIaFoco.horizonteDias}d): ${necessidadeAposTransferencia} un`
+            ? // Sem o nome do modelo, como o cockpit passou a exibir. Mas COM o
+              // período: a faixa é um total de N dias, e sem isso o comprador lê
+              // que a sugestão deveria ser igual a ela.
+              `Demanda prevista (faixa conservadora: ${itemIaFoco.demandaP80} un/${itemIaFoco.horizonteDias}d): ${necessidadeAposTransferencia} un`
             : `Demanda calculada: ${necessidadeAposTransferencia} un`;
         motivoDecisao =
           totalRecebidoFoco > 0
@@ -693,7 +694,6 @@ export function converterParaLinhasCockpit(
       origemPrevisao: resultadoNecessidade.origemPrevisao,
       previsaoIaP50: itemIaFoco?.demandaP50 ?? null,
       previsaoIaP80: itemIaFoco?.demandaP80 ?? null,
-      modeloIaUtilizado: itemIaFoco?.modeloUtilizado ?? null,
       motivoInelegibilidade:
         perfilGiro === "SEM_HISTORICO_SUFICIENTE"
           ? temHistoricoFoco

@@ -117,7 +117,7 @@ export interface ConfiguracaoTenant {
   readonly nome: string;
   /** Razão social legal - ex: "Rede Carreiro de Autopeças e Serviços Ltda" */
   readonly razaoSocial: string;
-  /** Subdomínio canônico de produção - ex: "carreiro.insightd.com.br" */
+  /** Subdomínio canônico de produção - ex: "carreiro.insightdireto.com.br" */
   readonly subdominioPrincipal: string;
   /** Lista de subdomínios ou aliases válidos que resolvem para este tenant */
   readonly subdominiosValidos: readonly string[];

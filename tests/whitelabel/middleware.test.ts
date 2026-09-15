@@ -31,7 +31,9 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
       expect(sanitizarParametroTenant(null)).toBeNull();
     });
 
-    it("extrairSubdominioDeHost deve extrair subdomínio de host de produção insightd.com.br", () => {
+    it("extrairSubdominioDeHost deve extrair subdomínio de host de produção", () => {
+      // Canônico e legado convivem enquanto houver host apontado para o antigo.
+      expect(extrairSubdominioDeHost("carreiro.insightdireto.com.br")).toBe("carreiro");
       expect(extrairSubdominioDeHost("carreiro.insightd.com.br")).toBe("carreiro");
       expect(extrairSubdominioDeHost("carreiro.insight-compras.com.br")).toBe("carreiro");
       expect(extrairSubdominioDeHost("CARREIRO.insightd.com.br:443")).toBe("carreiro");
@@ -172,7 +174,7 @@ describe("Edge Middleware — Resolução de Subdomínio, Tenants e White-Label"
       });
 
       expect(resultado.headersDownstream["x-tenant-id"]).toBe("carreiro");
-      expect(resultado.headersDownstream["x-tenant-subdominio"]).toBe("carreiro.insightd.com.br");
+      expect(resultado.headersDownstream["x-tenant-subdominio"]).toBe("carreiro.insightdireto.com.br");
       expect(resultado.headersDownstream["x-tenant-cor-primaria"]).toBe("#0B39B0");
       expect(resultado.headersDownstream["x-tenant-cor-secundaria"]).toBe("#3B6BE0");
       expect(resultado.headersDownstream["x-tenant-cor-destaque-multiplo"]).toBe("#FFFFCC");

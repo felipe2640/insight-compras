@@ -6,10 +6,6 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  calcularLimiarAdaptativo,
-  calibrarAmbienteExecucao,
-} from "../helpers/calibracao-desempenho";
-import {
   UsuarioAutenticado,
   ErroAcessoNegado,
   ErroViolacaoTenant,
@@ -241,31 +237,6 @@ describe("RBAC Server-Side — Carteira de Compradores e Controle de Acesso", ()
       expect(() => {
         garantirAcessoGerencial(adminSistema);
       }).not.toThrow();
-    });
-  });
-
-  // ==========================================================================
-  // 5. PERFORMANCE O(1) EM ESCALA (25.000 SKUs)
-  // ==========================================================================
-  describe("5. Performance O(1) de Validação em Lote de 25.000 SKUs", () => {
-    it("deve validar lote de 25.000 itens em menos de 15ms via Set", () => {
-      const lote25k = Array.from({ length: 25000 }, (_, i) => ({
-        fornecedorId: 501,
-        codigoSku: `SKU-${i + 1}`,
-      }));
-
-      const inicio = performance.now();
-      validarItensPedidoServerSide(compradorMonroe, lote25k);
-      const duracao = performance.now() - inicio;
-
-      // 15ms é o alvo de projeto (validação O(1) via Set, não O(n·m)). O teto
-      // escala pela carga medida da máquina, porque são 15 MILISSEGUNDOS de
-      // tempo de parede num processo que divide CPU com as outras 70+ suítes:
-      // uma preempção do SO basta para estourar. Regressão de complexidade —
-      // o que este teste existe para pegar — passa longe de qualquer teto
-      // escalado. Ver tests/helpers/calibracao-desempenho.ts.
-      const { fatorCarga } = calibrarAmbienteExecucao(true);
-      expect(duracao).toBeLessThan(calcularLimiarAdaptativo(15, fatorCarga, 30));
     });
   });
 

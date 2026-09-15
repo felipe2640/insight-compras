@@ -22,7 +22,7 @@ describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central"
       expect(TENANT_CARREIRO.id).toBe("carreiro");
       expect(TENANT_CARREIRO.nome).toBe("Rede Carreiro Autopeças");
       expect(TENANT_CARREIRO.razaoSocial).toContain("Rede Carreiro");
-      expect(TENANT_CARREIRO.subdominioPrincipal).toBe("carreiro.insightd.com.br");
+      expect(TENANT_CARREIRO.subdominioPrincipal).toBe("carreiro.insightdireto.com.br");
       expect(TENANT_CARREIRO.customDomain).toBe("compras.carreiro.com.br");
     });
 

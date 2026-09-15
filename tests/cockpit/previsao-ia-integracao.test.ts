@@ -237,20 +237,18 @@ describe("Integracao do Motor de Demanda por Inteligencia Artificial", () => {
     expect(linhaIa?.origemPrevisao).toBe("IA");
     expect(linhaIa?.previsaoIaP80).toBe(27);
     expect(linhaIa?.previsaoIaP50).toBe(20);
-    expect(linhaIa?.modeloIaUtilizado).toBe("Chronos-Bolt (Small)");
-    // O P80 do modelo é o total de 30 dias; o item é ALTO_GIRO, cujo horizonte
+    // A faixa do modelo é o total de 30 dias; o item é ALTO_GIRO, cujo horizonte
     // de cobertura é 20 dias. Reescala: 27 * (20/30) = 18 -> lote 2 = 18.
     // Saldo = 4. Necessidade líquida = 18 - 4 = 14.
-    // (Antes da reescala eram 24 un: 30 dias de demanda para cobrir 20 dias.)
+    // (Sem a reescala eram 24 un: 30 dias de demanda para cobrir 20 dias.)
     expect(linhaIa?.sugestaoFinalCompra).toBe(14);
-    expect(linhaIa?.motivoDecisao).toContain("Demanda prevista por IA (Chronos-Bolt (Small) P80: 27 un/30d)");
+    expect(linhaIa?.motivoDecisao).toContain("Demanda prevista (faixa conservadora: 27 un/30d)");
 
     // Item 102 nao tem IA -> fallback para analitico
     const linhaAnalitica = linhas.find((l) => l.produtoId === 102);
     expect(linhaAnalitica).toBeDefined();
     expect(linhaAnalitica?.origemPrevisao).toBe("ANALITICA");
     expect(linhaAnalitica?.previsaoIaP80).toBeNull();
-    expect(linhaAnalitica?.modeloIaUtilizado).toBeNull();
   });
 
   it("preserva estritamente a trava de marca zumbi mesmo se houver previsao residual de IA", () => {
@@ -323,9 +321,9 @@ describe("Integracao do Motor de Demanda por Inteligencia Artificial", () => {
 
     const linha = linhas.find((l) => l.produtoId === 101);
     expect(linha?.origemPrevisao).toBe("ANALITICA");
-    // Nem a telemetria pode sugerir que a IA foi usada.
+    // Nem a telemetria pode sugerir que a previsão foi usada.
     expect(linha?.previsaoIaP80).toBeNull();
-    expect(linha?.modeloIaUtilizado).toBeNull();
+    expect(linha?.previsaoIaP50).toBeNull();
   });
 
   it("mantem projecao antiga de item intermitente, cujo silencio e esperado", () => {
