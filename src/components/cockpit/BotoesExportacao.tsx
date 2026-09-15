@@ -56,7 +56,7 @@ export function BotoesExportacao({
   const [erro, setErro] = useState<string | null>(null);
   const itensBase = itensSelecionados.length > 0 ? itensSelecionados : itens;
   const modelosVisiveis = useMemo(
-    () => modelos.filter((m) => !m.deFabrica || m.id === modeloPadraoId),
+    () => (modeloPadraoId ? modelos.filter((m) => !m.deFabrica || m.id === modeloPadraoId) : modelos),
     [modelos, modeloPadraoId]
   );
 

@@ -8,8 +8,14 @@
  */
 
 import {
-  InventoryAdapter,
+  EntradaNFeDoDia,
   FiltroCargaInventario,
+  FiltroRastreamentoERP,
+  InventoryAdapter,
+  ItemSimilarIntercambiavel,
+  PedidoCompraERP,
+  ItemPedidoCompraERP,
+  CotacaoCompraERP,
   RespostaCargaInventario,
 } from "../AdaptadorInventario";
 import { EstoqueFilial } from "@core/dominio";
@@ -28,10 +34,14 @@ import {
   TAMANHO_PAGINA_PRODUTOS,
   gerarConsultaDaxPosicaoEstoque,
   gerarConsultaDaxHistoricoVendas,
+  gerarConsultaDaxPedidosCompra,
+  gerarConsultaDaxItensPedidosCompra,
+  gerarConsultaDaxCotacoes,
 } from "./consultas-homologadas";
 import {
   NOMES_FILIAIS_CARREIRO,
   NOMES_CADEMP_CARREIRO,
+  mapearFilialCarreiro,
   mapearProdutosDax,
   mapearEstoquesDax,
   mapearHistoricoVendasDax,
@@ -289,6 +299,151 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
 
     const dirSnapshot = localizarDiretorioSnapshot(this.diretorioSnapshot);
     return dirSnapshot !== null;
+  }
+
+  /**
+   * Rastreia pedidos de compra formalizados no ERP.
+   */
+  public async listarPedidosCompraERP(filtro: FiltroRastreamentoERP = {}): Promise<readonly PedidoCompraERP[]> {
+    if (!this.clienteDax.possuiConfiguracaoAtiva()) {
+      return [];
+    }
+    try {
+      const dax = gerarConsultaDaxPedidosCompra({
+        dias: filtro.dias,
+        fornecedorId: filtro.fornecedorId,
+        limite: filtro.limite,
+      });
+      const linhas = await this.clienteDax.executarConsultaDax(dax);
+      return linhas.map((linhaBruta) => {
+        const l = normalizarLinhaDax(linhaBruta);
+        const filialInfo = mapearFilialCarreiro(l.EmpresaId ?? l.ACODEMPRESA);
+        return {
+          id: Number(l.PedidoId ?? l.ID ?? 0),
+          numero: Number(l.Numero ?? l.NUMERO ?? 0),
+          dataEmissao: String(l.DataEmissao ?? l.DATAEMISSAO ?? ""),
+          fornecedorId: Number(l.FornecedorId ?? l.ACODFORNECEDOR ?? 0),
+          cotacaoId: l.CotacaoId ? Number(l.CotacaoId) : null,
+          status: String(l.Status ?? l.STATUS ?? "A"),
+          valorTotal: Number(l.ValorTotal ?? l.VALORPEDIDO ?? 0),
+          filialId: filialInfo.filialId,
+          filialNome: filialInfo.nomeFilial,
+        };
+      }).filter((p) => (!filtro.filialId || p.filialId === filtro.filialId));
+    } catch (e) {
+      console.warn("[Adaptador Carreiro] Falha ao listar pedidos de compra do ERP:", e);
+      return [];
+    }
+  }
+
+  /**
+   * Lista itens de um pedido de compra específico do ERP.
+   */
+  public async listarItensPedidoCompraERP(pedidoId: number): Promise<readonly ItemPedidoCompraERP[]> {
+    if (!this.clienteDax.possuiConfiguracaoAtiva()) {
+      return [];
+    }
+    try {
+      const dax = gerarConsultaDaxItensPedidosCompra({ pedidoId });
+      const linhas = await this.clienteDax.executarConsultaDax(dax);
+      return linhas.map((linhaBruta) => {
+        const l = normalizarLinhaDax(linhaBruta);
+        const filialInfo = mapearFilialCarreiro(l.EmpresaId ?? l.ACODEMPRESA);
+        const produtoId = extrairIdProduto(l.ProdutoId ?? l.PRODUTO_ID ?? 0);
+        const rawSku = String(l.SkuBase ?? l.CodigoBase ?? l.ProdutoId ?? produtoId).trim();
+        const sku = rawSku.includes("|") ? rawSku.split("|")[0].trim() : rawSku;
+        const itemId = Number(l.ItemId ?? l.ITEM_ID ?? 0);
+        const id = Number(l.PedidoId ?? l.PEDIDO_ID ?? pedidoId) * 1000 + itemId;
+        return {
+          id: id || itemId,
+          pedidoId: Number(l.PedidoId ?? l.PEDIDO_ID ?? pedidoId),
+          produtoId,
+          sku: sku || undefined,
+          descricao: String(l.Descricao ?? l.DESCRICAO ?? ""),
+          quantidade: Number(l.Quantidade ?? l.QTDE ?? 0),
+          valorUnitario: Number(l.ValorUnitario ?? l.VALORUNIT ?? 0),
+          valorTotal: Number(l.ValorTotal ?? l.VALORPEDIDO ?? 0),
+          dataEmissao: String(l.DataEmissao ?? l.DATAEMISSAO ?? ""),
+          filialId: filialInfo.filialId,
+          fornecedorId: Number(l.FornecedorId ?? l.ACODFORNECEDOR ?? 0),
+        };
+      });
+    } catch (e) {
+      console.warn(`[Adaptador Carreiro] Falha ao listar itens do pedido ERP ${pedidoId}:`, e);
+      return [];
+    }
+  }
+
+  /**
+   * Lista cotações de compra abertas ou concluídas no ERP.
+   */
+  public async listarCotacoesERP(filtro: FiltroRastreamentoERP = {}): Promise<readonly CotacaoCompraERP[]> {
+    if (!this.clienteDax.possuiConfiguracaoAtiva()) {
+      return [];
+    }
+    try {
+      const dax = gerarConsultaDaxCotacoes({ dias: filtro.dias, limite: filtro.limite });
+      const linhas = await this.clienteDax.executarConsultaDax(dax);
+      return linhas.map((linhaBruta) => {
+        const l = normalizarLinhaDax(linhaBruta);
+        const filialInfo = mapearFilialCarreiro(l.ACODEMPRESA ?? l.EmpresaId);
+        return {
+          rowId: Number(l.ROW_ID ?? l.RowId ?? 0),
+          codigo: Number(l.CODIGO ?? l.Codigo ?? 0),
+          descricao: String(l.DESCRICAO ?? l.Descricao ?? ""),
+          dataHora: String(l.DATAHORA ?? l.DataHora ?? ""),
+          status: String(l.STATUS ?? l.Status ?? ""),
+          filialId: filialInfo.filialId,
+          filialNome: filialInfo.nomeFilial,
+          totalItens: Number(l.TotalItens ?? 0),
+          totalPropostas: Number(l.TotalPropostas ?? 0),
+          propostasVencedoras: Number(l.PropostasVencedoras ?? 0),
+          menorValorCotado: Number(l.MenorValorCotado ?? 0),
+        };
+      }).filter((c) => (!filtro.filialId || c.filialId === filtro.filialId));
+    } catch (e) {
+      console.warn("[Adaptador Carreiro] Falha ao listar cotações do ERP:", e);
+      return [];
+    }
+  }
+
+  /**
+   * Lista todas as compras faturadas/emitidas no ERP na janela para calibração do aprendizado.
+   */
+  public async listarTodasComprasERPNaJanela(dias: number, filialId?: number): Promise<readonly ItemPedidoCompraERP[]> {
+    if (!this.clienteDax.possuiConfiguracaoAtiva()) {
+      return [];
+    }
+    try {
+      const dax = gerarConsultaDaxItensPedidosCompra({ dias, limite: 5000 });
+      const linhas = await this.clienteDax.executarConsultaDax(dax);
+      return linhas.map((linhaBruta) => {
+        const l = normalizarLinhaDax(linhaBruta);
+        const filialInfo = mapearFilialCarreiro(l.EmpresaId ?? l.ACODEMPRESA);
+        const produtoId = extrairIdProduto(l.ProdutoId ?? l.PRODUTO_ID ?? 0);
+        const rawSku = String(l.SkuBase ?? l.CodigoBase ?? l.ProdutoId ?? produtoId).trim();
+        const sku = rawSku.includes("|") ? rawSku.split("|")[0].trim() : rawSku;
+        const pedId = Number(l.PedidoId ?? l.PEDIDO_ID ?? 0);
+        const itemId = Number(l.ItemId ?? l.ITEM_ID ?? 0);
+        const id = pedId * 1000 + itemId;
+        return {
+          id: id || itemId,
+          pedidoId: pedId,
+          produtoId,
+          sku: sku || undefined,
+          descricao: String(l.Descricao ?? l.DESCRICAO ?? ""),
+          quantidade: Number(l.Quantidade ?? l.QTDE ?? 0),
+          valorUnitario: Number(l.ValorUnitario ?? l.VALORUNIT ?? 0),
+          valorTotal: Number(l.ValorTotal ?? l.VALORPEDIDO ?? 0),
+          dataEmissao: String(l.DataEmissao ?? l.DATAEMISSAO ?? ""),
+          filialId: filialInfo.filialId,
+          fornecedorId: Number(l.FornecedorId ?? l.ACODFORNECEDOR ?? 0),
+        };
+      }).filter((i) => (!filialId || i.filialId === filialId));
+    } catch (e) {
+      console.warn("[Adaptador Carreiro] Falha ao listar compras do ERP na janela:", e);
+      return [];
+    }
   }
 
   /**

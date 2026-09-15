@@ -725,3 +725,123 @@ FILTER(
 )
 ORDER BY [DataEmissao] DESC
 `.trim();
+
+/**
+ * Gera consulta DAX parametrizada para listar pedidos de compra oficiais do ERP.
+ */
+export function gerarConsultaDaxPedidosCompra(opcoes: {
+  dias?: number;
+  filialCademp?: string;
+  fornecedorId?: number;
+  limite?: number;
+} = {}): string {
+  const limite = Math.min(500, Math.max(1, opcoes.limite ?? 100));
+  const dias = Math.min(365, Math.max(1, opcoes.dias ?? 60));
+  let filtros = `[Tipo] = "C" && [DataEmissao] >= TODAY() - ${dias}`;
+  if (opcoes.fornecedorId) {
+    filtros += ` && [FornecedorId] = ${Math.floor(opcoes.fornecedorId)}`;
+  }
+
+  return `
+EVALUATE
+TOPN(
+    ${limite},
+    FILTER(
+        SELECTCOLUMNS(
+            PEDIDOS,
+            "PedidoId", PEDIDOS[ID],
+            "Numero", PEDIDOS[NUMERO],
+            "DataEmissao", PEDIDOS[DATAEMISSAO],
+            "FornecedorId", PEDIDOS[ACODFORNECEDOR],
+            "Tipo", PEDIDOS[TIPO],
+            "CotacaoId", PEDIDOS[COTACAO_ID],
+            "Status", PEDIDOS[STATUS],
+            "ValorTotal", PEDIDOS[VALORPEDIDO],
+            "EmpresaId", PEDIDOS[ACODEMPRESA]
+        ),
+        ${filtros}
+    ),
+    [DataEmissao],
+    DESC
+)
+`.trim();
+}
+
+/**
+ * Gera consulta DAX parametrizada para listar itens de pedidos de compra no ERP.
+ */
+export function gerarConsultaDaxItensPedidosCompra(opcoes: {
+  pedidoId?: number;
+  dias?: number;
+  limite?: number;
+} = {}): string {
+  const limite = Math.min(5000, Math.max(1, opcoes.limite ?? 500));
+  const dias = Math.min(365, Math.max(1, opcoes.dias ?? 60));
+  let filtros = `NOT ISBLANK(ITEMSPEDIDO[PRODUTO_ID])`;
+  if (opcoes.pedidoId) {
+    filtros += ` && ITEMSPEDIDO[PEDIDO_ID] = ${Math.floor(opcoes.pedidoId)}`;
+  } else {
+    filtros += ` && RELATED(PEDIDOS[TIPO]) = "C" && COALESCE(RELATED(PEDIDOS[DATAEMISSAO]), ITEMSPEDIDO[DATAINCLUSAO]) >= TODAY() - ${dias}`;
+  }
+
+  return `
+EVALUATE
+TOPN(
+    ${limite},
+    SELECTCOLUMNS(
+        FILTER(
+            ITEMSPEDIDO,
+            ${filtros}
+        ),
+        "ItemId", ITEMSPEDIDO[ITEM_ID],
+        "PedidoId", ITEMSPEDIDO[PEDIDO_ID],
+        "ProdutoId", ITEMSPEDIDO[PRODUTO_ID],
+        "SkuBase", RELATED(PRODUTOS[ACODPRODUTO_BASE]),
+        "Descricao", COALESCE(ITEMSPEDIDO[DESCR_SERVICO], RELATED(PRODUTOS[ADESCRICAO]), ITEMSPEDIDO[DESCRICAO]),
+        "Quantidade", ITEMSPEDIDO[QTDE],
+        "ValorUnitario", ITEMSPEDIDO[VALORUNIT],
+        "ValorTotal", ITEMSPEDIDO[QTDE] * ITEMSPEDIDO[VALORUNIT],
+        "DataEmissao", COALESCE(RELATED(PEDIDOS[DATAEMISSAO]), ITEMSPEDIDO[DATAINCLUSAO]),
+        "FornecedorId", RELATED(PEDIDOS[ACODFORNECEDOR]),
+        "EmpresaId", ITEMSPEDIDO[ACODEMPRESA]
+    ),
+    [DataEmissao],
+    DESC
+)
+`.trim();
+}
+
+/**
+ * Gera consulta DAX para listar cotações de compra abertas e concluídas.
+ */
+export function gerarConsultaDaxCotacoes(opcoes: {
+  dias?: number;
+  limite?: number;
+} = {}): string {
+  const limite = Math.min(500, Math.max(1, opcoes.limite ?? 100));
+  const dias = Math.min(365, Math.max(1, opcoes.dias ?? 60));
+
+  return `
+EVALUATE
+TOPN(
+    ${limite},
+    FILTER(
+        SUMMARIZECOLUMNS(
+            TBL_COTACAO[ROW_ID],
+            TBL_COTACAO[CODIGO],
+            TBL_COTACAO[DESCRICAO],
+            TBL_COTACAO[DATAHORA],
+            TBL_COTACAO[STATUS],
+            TBL_COTACAO[ACODEMPRESA],
+            "TotalItens", COUNTROWS(TBL_COTACAO_ITENS),
+            "TotalPropostas", COUNTROWS(TBL_COTACAO_FORN),
+            "PropostasVencedoras", CALCULATE(COUNTROWS(TBL_COTACAO_FORN), KEEPFILTERS(TBL_COTACAO_FORN[GANHADOR] = "T")),
+            "MenorValorCotado", MIN(TBL_COTACAO_FORN[VR_UNIT])
+        ),
+        TBL_COTACAO[DATAHORA] >= TODAY() - ${dias}
+    ),
+    TBL_COTACAO[DATAHORA],
+    DESC
+)
+`.trim();
+}
