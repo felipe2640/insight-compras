@@ -7,7 +7,7 @@ on:
   workflow_dispatch: # Permite acionar manualmente com um clique na interface do GitHub
   push:
     branches:
-      - feat/previsao-demanda-ia
+      - main
     paths:
       - 'scripts/previsao-ia/**'
       - '.github/workflows/previsao-ia-diaria.yml'
