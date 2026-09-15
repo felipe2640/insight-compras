@@ -75,6 +75,14 @@ function historicoMock(parciais: Partial<HistoricoVendasFilial>): HistoricoVenda
   };
 }
 
+/**
+ * Data de projeção com N dias de idade. Relativa de propósito: a vigência
+ * depende da idade da projeção, então data fixa no fixture apodreceria.
+ */
+function dataPrevisaoComIdade(dias: number): string {
+  return new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 describe("Integracao do Motor de Demanda por Inteligencia Artificial", () => {
   beforeEach(() => {
     limparCachePrevisoesIa();
@@ -213,7 +221,7 @@ describe("Integracao do Motor de Demanda por Inteligencia Artificial", () => {
           demandaP80: 27,
           horizonteDias: 30,
           modeloUtilizado: "Chronos-Bolt (Small)",
-          dataPrevisao: "2026-09-14T20:00:00Z",
+          dataPrevisao: dataPrevisaoComIdade(1),
         },
       ],
     ]);
@@ -258,7 +266,7 @@ describe("Integracao do Motor de Demanda por Inteligencia Artificial", () => {
           demandaP80: 8,
           horizonteDias: 30,
           modeloUtilizado: "Chronos-Bolt (Small)",
-          dataPrevisao: "2026-09-14T20:00:00Z",
+          dataPrevisao: dataPrevisaoComIdade(1),
         },
       ],
     ]);
@@ -275,6 +283,81 @@ describe("Integracao do Motor de Demanda por Inteligencia Artificial", () => {
     expect(linhaZumbi?.statusSugestao).toBe("TRAVADO_MARCA_ZUMBI");
     expect(linhaZumbi?.sugestaoFinalCompra).toBe(0);
     expect(linhaZumbi?.motivoDecisao).toContain("TRAVA MARCA ZUMBI");
+  });
+
+  it("descarta projecao vencida e volta para o motor analitico", () => {
+    // Item 101 é de alto giro (p50 de 20 peças em 30 dias). Uma projeção de 20
+    // dias atrás esperava ~13 peças vendidas no período; o item não vendeu
+    // nenhuma (diasSemVenda 60). O silêncio contradiz a projeção: ela não
+    // representa mais o item e a linha volta para a régua analítica.
+    const cargaParada: RespostaCargaInventario = {
+      ...cargaBase,
+      estoques: new Map([
+        ...cargaBase.estoques,
+        ["101:1", estoqueMock({ filialId: 1, produtoId: 101, saldoFisico: 4, diasSemVenda: 60 })],
+      ]),
+    };
+
+    const mapaIa = new Map<string, PrevisaoDemandaIaItem>([
+      [
+        "101:1",
+        {
+          filialId: 1,
+          produtoId: 101,
+          sku: "SKU-IA-01",
+          previsaoCentral: 22,
+          demandaP50: 20,
+          demandaP80: 27,
+          horizonteDias: 30,
+          modeloUtilizado: "Chronos-Bolt (Small)",
+          dataPrevisao: dataPrevisaoComIdade(20),
+        },
+      ],
+    ]);
+
+    const linhas = converterParaLinhasCockpit(cargaParada, {
+      filialFocoId: 1,
+      parametrosMotor: PARAMETROS_MOTOR_PADRAO,
+      mapaPrevisoesIa: mapaIa,
+    });
+
+    const linha = linhas.find((l) => l.produtoId === 101);
+    expect(linha?.origemPrevisao).toBe("ANALITICA");
+    // Nem a telemetria pode sugerir que a IA foi usada.
+    expect(linha?.previsaoIaP80).toBeNull();
+    expect(linha?.modeloIaUtilizado).toBeNull();
+  });
+
+  it("mantem projecao antiga de item intermitente, cujo silencio e esperado", () => {
+    // Item 102: p50 de 10 peças em 30 dias na projeção abaixo -> em 20 dias
+    // esperava ~6,7. Para o teste do silêncio compatível precisamos de um p50
+    // baixo, então usamos uma projeção intermitente de verdade.
+    const mapaIa = new Map<string, PrevisaoDemandaIaItem>([
+      [
+        "102:1",
+        {
+          filialId: 1,
+          produtoId: 102,
+          sku: "SKU-ANALITICO-02",
+          previsaoCentral: 1,
+          demandaP50: 1,
+          demandaP80: 4,
+          horizonteDias: 30,
+          modeloUtilizado: "Chronos-Bolt (Small)",
+          dataPrevisao: dataPrevisaoComIdade(20),
+        },
+      ],
+    ]);
+
+    const linhas = converterParaLinhasCockpit(cargaBase, {
+      filialFocoId: 1,
+      parametrosMotor: PARAMETROS_MOTOR_PADRAO,
+      mapaPrevisoesIa: mapaIa,
+    });
+
+    const linha = linhas.find((l) => l.produtoId === 102);
+    expect(linha?.origemPrevisao).toBe("IA");
+    expect(linha?.previsaoIaP80).toBe(4);
   });
 
   it("limpa cache de previsoes corretamente", async () => {

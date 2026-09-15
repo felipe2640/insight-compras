@@ -16,6 +16,9 @@
  *   à demanda do horizonte infla a meta e foi a divergência que reprovou a versão anterior.
  * - Sem demanda comprovada (perfil SEM_HISTORICO_SUFICIENTE ou consumo <= 0) a
  *   necessidade é estritamente 0.
+ * - O fator de calibração é do MOTOR ANALÍTICO. Quando a demanda do horizonte vem
+ *   de uma projeção de IA homologada, o fator NÃO se aplica: ele corrige o viés da
+ *   régua estática, e a projeção probabilística não tem esse viés.
  *
  * O QUE VARIA POR CLIENTE fica em `ParametrosMotorCompra`, injetado pelo tenant:
  * horizontes, margens, fator de calibração (aprendido no backtest do cliente) e
@@ -514,7 +517,14 @@ export function calcularNecessidadeItem(
     previsaoBruta = Math.max(demandaHorizonte, pisoAplicado);
   }
 
-  const previsaoCalibrada = calibrarPrevisao(previsaoBruta, parametrosMotor.fatorCalibracao);
+  // A calibração corrige o viés do MOTOR ANALÍTICO: o fator foi aprendido no
+  // backtest da régua estática (consumo * horizonte * margem), que superestimava.
+  // A projeção da IA não tem esse viés — ela já é um quantil da distribuição de
+  // demanda, e foi assim, crua, que venceu o benchmark anual. Multiplicar por
+  // 0,90 depois seria aplicar a correção de um modelo em cima de outro e fazer o
+  // cockpit comprar menos do que o número homologado.
+  const fatorCalibracaoAplicado = usaIa ? 1 : parametrosMotor.fatorCalibracao;
+  const previsaoCalibrada = calibrarPrevisao(previsaoBruta, fatorCalibracaoAplicado);
 
   const necessidadeBruta = Math.max(0, previsaoCalibrada - saldo);
   const necessidadeAntesGovernanca = Math.max(0, previsaoCalibrada - estoqueDisponivel);
@@ -550,7 +560,8 @@ export function calcularNecessidadeItem(
     demandaHorizonte,
     pisoAplicado,
     previsaoBruta,
-    fatorCalibracao: parametrosMotor.fatorCalibracao,
+    // O campo é o fator EFETIVAMENTE aplicado: 1 quando a demanda veio da IA.
+    fatorCalibracao: fatorCalibracaoAplicado,
     previsaoCalibrada,
     estoqueDisponivel,
     necessidadeBruta,

@@ -17,14 +17,16 @@
  * 2. FRESCOR — o pipeline faz upsert por (tenant, filial, produto) e nunca apaga
  *    nada. Item que parou de vender sai do lote diário mas a linha antiga
  *    permanece; sem filtro de data o cockpit compraria contra demanda de meses
- *    atrás. Só entram projeções dentro da janela de validade.
+ *    atrás. Aqui aplicamos só o TETO de idade (VALIDADE_MAXIMA_DIAS), porque a
+ *    validade real depende do que o item fez desde a projeção — e isso exige o
+ *    histórico de venda, que vive na carga de inventário. A decisão por item
+ *    está em `vigencia-previsao.ts`, aplicada pelo gerador da matriz.
  * 3. HORIZONTE — a projeção é um TOTAL de período (o pipeline publica 30 dias).
  *    `horizonte_dias` vem junto porque o motor precisa reescalar o número para o
  *    horizonte do perfil de giro do item (20/15/7 dias).
  */
 
-/** Validade padrão de uma projeção, em dias. */
-export const VALIDADE_PREVISAO_IA_DIAS = 3;
+import { VALIDADE_MAXIMA_DIAS } from "./vigencia-previsao";
 
 /** Tamanho da página na leitura do PostgREST. */
 const TAMANHO_PAGINA = 1000;
@@ -101,7 +103,7 @@ export function contarProjecoesIa(mapa: ReadonlyMap<string, PrevisaoDemandaIaIte
 
 /** Data mínima aceita (YYYY-MM-DD) para uma projeção ser considerada vigente. */
 export function dataMinimaPrevisaoVigente(
-  validadeDias = VALIDADE_PREVISAO_IA_DIAS,
+  validadeDias = VALIDADE_MAXIMA_DIAS,
   agora: Date = new Date()
 ): string {
   const limite = new Date(agora.getTime());
@@ -110,7 +112,7 @@ export function dataMinimaPrevisaoVigente(
 }
 
 export interface OpcoesCarregarPrevisoesIa {
-  /** Dias de validade da projeção. Padrão: VALIDADE_PREVISAO_IA_DIAS. */
+  /** Teto de idade das projeções lidas, em dias. Padrão: VALIDADE_MAXIMA_DIAS. */
   readonly validadeDias?: number;
 }
 
@@ -127,7 +129,7 @@ export async function carregarMapaPrevisoesIa(
   filialId?: number,
   opcoes: OpcoesCarregarPrevisoesIa = {}
 ): Promise<Map<string, PrevisaoDemandaIaItem>> {
-  const { validadeDias = VALIDADE_PREVISAO_IA_DIAS } = opcoes;
+  const { validadeDias = VALIDADE_MAXIMA_DIAS } = opcoes;
 
   const chaveCache = `${tenantId}:${filialId ?? "todas"}:${validadeDias}`;
   const emCache = cachePrevisoes.get(chaveCache);
@@ -151,7 +153,8 @@ export async function carregarMapaPrevisoesIa(
     if (filialId !== undefined && filialId !== null) {
       filtroBase += `&filial_id=eq.${filialId}`;
     }
-    // Projeção vencida não vira compra: o pipeline nunca apaga linha antiga.
+    // Teto de idade: o pipeline nunca apaga linha antiga, e projeção de meses
+    // atrás não deve nem sair do banco. A validade fina é por item, depois.
     filtroBase += `&data_previsao=gte.${dataMinimaPrevisaoVigente(validadeDias)}`;
 
     let offset = 0;

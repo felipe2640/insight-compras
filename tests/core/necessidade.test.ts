@@ -259,10 +259,36 @@ describe("Motor de Necessidade de Compra", () => {
       // p80 de 30 dias reescalado para 20 dias: 23 * (20/30) = 15,33 -> lote 5 = 20
       expect(comIa.demandaHorizonte).toBe(20);
       expect(comIa.previsaoBruta).toBe(20);
-      // Calibração do cliente de 0.90 -> ceil(20 * 0.90) = 18
-      expect(comIa.previsaoCalibrada).toBe(18);
-      // Necessidade líquida: 18 - saldo(5) = 13
-      expect(comIa.necessidadeLiquida).toBe(13);
+      // A calibração de 0,90 do tenant NÃO incide sobre a projeção da IA: ela
+      // corrige o viés da régua estática, e o p80 do modelo não tem esse viés.
+      expect(comIa.fatorCalibracao).toBe(1);
+      expect(comIa.previsaoCalibrada).toBe(20);
+      // Necessidade líquida: 20 - saldo(5) = 15
+      expect(comIa.necessidadeLiquida).toBe(15);
+    });
+
+    it("mantém a calibração do tenant no caminho analítico", () => {
+      const parametros = {
+        consumoDiario: 1,
+        perfilGiro: "ALTO_GIRO",
+        saldoFisico: 5,
+        quantidadeJaPedida: 0,
+        loteMultiplo: 5,
+        medianaLinhaVenda: 0,
+        parametrosMotor: { ...PARAMETROS_MOTOR_PADRAO, fatorCalibracao: 0.90 },
+      } as const;
+
+      const semIa = calcularNecessidadeItem(parametros);
+
+      // Régua estática: 1 * 20 * 1,25 = 25 -> lote 5 = 25; calibrado: ceil(25 * 0,90) = 23
+      expect(semIa.origemPrevisao).toBe("ANALITICA");
+      expect(semIa.fatorCalibracao).toBe(0.90);
+      expect(semIa.previsaoCalibrada).toBe(23);
+
+      // Mesmo item, agora com projeção de IA: o fator deixa de incidir.
+      const comIa = calcularNecessidadeItem({ ...parametros, previsaoDemandaIA: PROJECAO_IA });
+      expect(comIa.origemPrevisao).toBe("IA");
+      expect(comIa.fatorCalibracao).toBe(1);
     });
 
     it("a mesma projeção pesa menos em item de baixo giro (horizonte de 7 dias)", () => {

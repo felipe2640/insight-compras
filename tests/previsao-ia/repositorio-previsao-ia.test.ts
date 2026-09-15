@@ -4,8 +4,8 @@ import {
   contarProjecoesIa,
   dataMinimaPrevisaoVigente,
   limparCachePrevisoesIa,
-  VALIDADE_PREVISAO_IA_DIAS,
 } from "@/lib/previsao-ia/repositorio-previsao-ia";
+import { VALIDADE_MAXIMA_DIAS } from "@/lib/previsao-ia/vigencia-previsao";
 
 const URL_SUPABASE = "https://projeto.supabase.co";
 
@@ -189,7 +189,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     expect(fetchFalso).toHaveBeenCalledTimes(2);
   });
 
-  it("mantém a validade padrão documentada", () => {
-    expect(VALIDADE_PREVISAO_IA_DIAS).toBeGreaterThan(0);
+  it("usa o teto de idade como filtro no banco", () => {
+    expect(VALIDADE_MAXIMA_DIAS).toBeGreaterThan(0);
   });
 });
