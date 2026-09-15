@@ -125,6 +125,7 @@ export function CockpitPrincipal({
   // reais. Fica no topo porque a lista de lojas e a exportação dependem dele.
   const tenantAtivo = useTenantAtivo();
   const nomesFiliaisTenant = useNomesFiliais();
+  const [lojaFocoId, setLojaFocoId] = useState<number>(filialFocoIdInicial);
 
   // Sessão real do usuário autenticado (RBAC)
   const { usuario: sessao } = useSession(usuarioSessao);
@@ -153,7 +154,7 @@ export function CockpitPrincipal({
   const grade = useGradeProgressiva({
     gradeInicial: gradeInicial ?? PAYLOAD_TABULAR_VAZIO,
     contagensCatalogo: contagensCatalogo ?? CONTAGENS_VAZIAS,
-    filialId: filialFocoIdInicial,
+    filialId: lojaFocoId,
     automatico: gradeInicial !== undefined && !ehCompradorSemCarteira,
   });
   const linhasBase = ehCompradorSemCarteira ? [] : (itensIniciais ?? grade.itens);
@@ -244,8 +245,6 @@ export function CockpitPrincipal({
     setRawQuery,
     statusFiltro,
     alterarStatus,
-    lojaFocoId,
-    setLojaFocoId,
     itensFiltrados,
     facetas,
     marcasDeselecionadas,
@@ -257,7 +256,6 @@ export function CockpitPrincipal({
   } = useFiltrosCockpit({
     itens: ehCompradorSemCarteira ? [] : itensComOverrides,
     fornecedoresPermitidos: fornecedoresAtivos,
-    lojaFocoIdInicial: filialFocoIdInicial,
     contagensCatalogo: gradeInicial ? (ehCompradorSemCarteira ? CONTAGENS_VAZIAS : grade.contagens) : undefined,
   });
 
@@ -388,6 +386,14 @@ export function CockpitPrincipal({
   // Filtros tipados por coluna: compõem com a busca livre e os chips de status.
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [rowHeight, setRowHeight] = useState<"compact" | "default" | "relaxed">("default");
+
+  const handleLojaFocoChange = useCallback((novaLojaId: number) => {
+    setLojaFocoId(novaLojaId);
+    // Ajustes e seleção pertencem à grade da filial anterior.
+    setDeltas({});
+    setRowSelection({});
+    setColumnFilters([]);
+  }, []);
 
   const handleSortChange = useCallback((optionId: string, desc?: boolean) => {
     setSortValue(optionId);
@@ -698,7 +704,7 @@ export function CockpitPrincipal({
               <span className="font-semibold text-slate-600 dark:text-slate-400">Loja Foco:</span>
               <select
                 value={lojaFocoId}
-                onChange={(e) => setLojaFocoId(Number(e.target.value))}
+                onChange={(e) => handleLojaFocoChange(Number(e.target.value))}
                 className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none hover:border-slate-300 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
               >
                 {/* O nome vem do cadastro do tenant e já diz o que precisa
