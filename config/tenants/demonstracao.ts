@@ -96,6 +96,12 @@ export const TENANT_DEMONSTRACAO: ConfiguracaoTenant = {
     },
     leadTimePadraoDias: 7,
     filialFocoPadraoId: 1,
+    lotes: {
+      usarErp: true,
+      usarHistorico: true,
+      usarVocabulario: true,
+      multiplosPorSku: {},
+    },
     // Sem estudo: os campos numéricos ficam em zero de propósito. Copiar a
     // procedência de um cliente aqui daria ao ambiente de demonstração um
     // lastro que ele não tem.

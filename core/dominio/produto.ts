@@ -31,6 +31,7 @@ export interface Produto {
   readonly precoCusto: number;
   readonly precoVenda: number;
   readonly loteMultiplo: number; // 1 = avulso, 2 = par, 4 = jogo
+  readonly origemLoteMultiplo?: "CONFIGURACAO" | "ERP" | "HISTOGRAMA" | "VOCABULARIO" | "PADRAO";
   readonly dataUltimaVenda?: string | null;
   readonly dataUltimaCompra?: string | null;
   /**

@@ -1022,7 +1022,17 @@ export function criarColunasCockpit({
               {exigeMultiplo && (
                 <span
                   className="absolute -top-1.5 -right-2 flex h-3.5 items-center justify-center rounded-full bg-amber-200 px-1 text-[8px] font-bold text-amber-900 border border-amber-300 shadow-sm"
-                  title={`Múltiplo de embalagem: ${item.loteMultiplo} un`}
+                  title={`Múltiplo de compra: ${item.loteMultiplo} un · Origem: ${
+                    item.origemLoteMultiplo === "CONFIGURACAO"
+                      ? "configuração do SKU"
+                      : item.origemLoteMultiplo === "ERP"
+                        ? "cadastro do ERP"
+                        : item.origemLoteMultiplo === "HISTOGRAMA"
+                          ? "histórico de vendas"
+                          : item.origemLoteMultiplo === "VOCABULARIO"
+                            ? "descrição do produto"
+                            : "padrão"
+                  }`}
                 >
                   {item.loteMultiplo}x
                 </span>
