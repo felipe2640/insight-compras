@@ -36,7 +36,9 @@ export default function PaginaLogin() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-100 p-4">
-      <FormularioLogin />
+      <React.Suspense fallback={<div className="w-full max-w-md h-72 rounded-2xl bg-white animate-pulse" />}>
+        <FormularioLogin />
+      </React.Suspense>
 
       {modoDemonstracao && (
         <div className="w-full max-w-md rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">

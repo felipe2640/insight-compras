@@ -15,6 +15,7 @@ import {
 } from "@core/dominio";
 import { resolverLoteAutopecas, inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
 import { detectarLotePorHistograma } from "@core/travas/lote-multiplo";
+import type { ConfiguracaoLotesTenant } from "@config/tenants/tipos";
 import { agruparMovimentosPorDia, calcularDiasEmRuptura } from "@core/calculo/ruptura";
 import { DIAS_JANELA_RUPTURA } from "./consultas-homologadas";
 import {
@@ -137,6 +138,7 @@ function mesclarDatasProduto(a: Produto, b: Produto): Produto {
 
 export interface OpcoesMapeamentoProdutos {
   readonly lotesPorProdutoId?: ReadonlyMap<number, number>;
+  readonly configuracaoLotes?: ConfiguracaoLotesTenant;
 }
 
 export function mapearProdutosDax(
@@ -226,10 +228,15 @@ export function mapearProdutosDax(
       loteDetectadoHistograma = detectarLotePorHistograma(linha.quantidadesPorLinha as number[]);
     }
 
-    const { lote: loteMultiplo } = resolverLoteAutopecas({
+    const configuracaoLotes = opcoes?.configuracaoLotes;
+    const { lote: loteMultiplo, origem: origemLoteMultiplo } = resolverLoteAutopecas({
+      loteConfigurado: Number(configuracaoLotes?.multiplosPorSku[codigoSku] ?? 0),
       loteCadastradoErp,
       loteDetectadoHistograma,
       descricao,
+      usarErp: configuracaoLotes?.usarErp,
+      usarHistorico: configuracaoLotes?.usarHistorico,
+      usarVocabulario: configuracaoLotes?.usarVocabulario,
     });
 
     const produto: Produto = {
@@ -250,6 +257,7 @@ export function mapearProdutosDax(
       precoCusto,
       precoVenda,
       loteMultiplo,
+      origemLoteMultiplo,
       dataUltimaVenda,
       dataUltimaCompra,
     };

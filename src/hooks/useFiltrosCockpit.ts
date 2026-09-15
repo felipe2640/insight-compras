@@ -151,7 +151,6 @@ export interface UseFiltrosCockpitParams {
   contagensCatalogo?: ContagensStatusGrade;
   itens: readonly LinhaCockpitMatriz[];
   fornecedoresPermitidos?: readonly number[] | null;
-  lojaFocoIdInicial?: number;
   /** Aba aberta ao entrar no cockpit. Padrão: "PEDIR" (o trabalho do dia). */
   statusInicial?: StatusFilterOption;
 }
@@ -159,7 +158,6 @@ export interface UseFiltrosCockpitParams {
 export function useFiltrosCockpit({
   itens,
   fornecedoresPermitidos = null,
-  lojaFocoIdInicial = 1,
   statusInicial = "PEDIR",
   contagensCatalogo,
 }: UseFiltrosCockpitParams) {
@@ -177,8 +175,6 @@ export function useFiltrosCockpit({
   // O comprador entra na ferramenta para saber o que comprar; abrir em 19 mil
   // linhas onde a maioria não pede nada esconde justamente o trabalho do dia.
   const [statusFiltro, setStatusFiltro] = useState<StatusFilterOption>(statusInicial);
-  const [lojaFocoId, setLojaFocoId] = useState<number>(lojaFocoIdInicial);
-
   const fornecedoresSet = useMemo(() => {
     if (!fornecedoresPermitidos) return null;
     return new Set(fornecedoresPermitidos);
@@ -336,8 +332,6 @@ export function useFiltrosCockpit({
     secoesDeselecionadas,
     curvasDeselecionadas,
     statusFiltro,
-    lojaFocoId,
-    setLojaFocoId,
     itensFiltrados,
     facetas,
     toggleMarca,

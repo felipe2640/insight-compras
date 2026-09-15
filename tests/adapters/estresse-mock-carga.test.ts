@@ -20,69 +20,11 @@ import {
 } from '@core/transferencia/balanceamento';
 import { calcularNecessidadeItem } from '@core/calculo/necessidade';
 import { FiltroCargaInventario } from '@adapters/AdaptadorInventario';
-
-/**
- * Utilitários de Calibração de Baseline Adaptativo da Máquina.
- * Elimina falsos-positivos decorrentes de ruído de carga da máquina (ex: compilações e builds concorrentes),
- * mantendo salvaguarda estrita contra regressões reais de complexidade algorítmica.
- */
-const TEMPO_NOMINAL_CALIBRACAO_MS = 3.0;
-let cacheCalibracao: { duracaoBaseMs: number; fatorCarga: number } | null = null;
-
-function calibrarAmbienteExecucao(forcarRecalibracao = false): {
-  duracaoBaseMs: number;
-  fatorCarga: number;
-} {
-  if (cacheCalibracao && !forcarRecalibracao) {
-    return cacheCalibracao;
-  }
-
-  const executarCarga = () => {
-    const t0 = performance.now();
-    const mapa = new Map<number, number>();
-    for (let i = 0; i < 100_000; i++) {
-      const chave = i % 2000;
-      mapa.set(chave, (mapa.get(chave) ?? 0) + (i % 5));
-    }
-    return performance.now() - t0;
-  };
-
-  // Aquecimento do motor JIT
-  executarCarga();
-  const amostras = [executarCarga(), executarCarga(), executarCarga()].sort((a, b) => a - b);
-  const duracaoBaseMs = amostras[1];
-  const fatorCarga = Math.max(1.0, duracaoBaseMs / TEMPO_NOMINAL_CALIBRACAO_MS);
-
-  cacheCalibracao = { duracaoBaseMs, fatorCarga };
-  return cacheCalibracao;
-}
-
-function calcularLimiarAdaptativo(
-  limiarNominalMs: number,
-  fatorCarga: number,
-  margemJitterMs = 60
-): number {
-  const tetoEscalado = limiarNominalMs * fatorCarga;
-  const margem = fatorCarga > 1.0 ? margemJitterMs * Math.min(fatorCarga, 3.0) : 0;
-  return Math.ceil(Math.max(limiarNominalMs, tetoEscalado + margem));
-}
-
-function verificarDesempenhoComProtecaoRegressao(
-  duracaoRealMs: number,
-  limiarNominalMs: number,
-  fatorCarga: number,
-  nomeOperacao = 'Operação'
-): { aprovado: boolean; limiteEfetivoMs: number; mensagem?: string } {
-  const limiteEfetivoMs = calcularLimiarAdaptativo(limiarNominalMs, fatorCarga);
-  if (duracaoRealMs > limiteEfetivoMs) {
-    return {
-      aprovado: false,
-      limiteEfetivoMs,
-      mensagem: `[Regressão de Desempenho] ${nomeOperacao} levou ${duracaoRealMs.toFixed(1)}ms, excedendo o teto adaptativo de ${limiteEfetivoMs}ms (nominal: ${limiarNominalMs}ms, fator de carga: ${fatorCarga.toFixed(2)}x).`,
-    };
-  }
-  return { aprovado: true, limiteEfetivoMs };
-}
+import {
+  calcularLimiarAdaptativo,
+  calibrarAmbienteExecucao,
+  verificarDesempenhoComProtecaoRegressao,
+} from '../helpers/calibracao-desempenho';
 
 function calcularPercentis(latencias: number[]) {
   const ordenadas = [...latencias].sort((a, b) => a - b);
@@ -528,9 +470,13 @@ describe('Challenger 1 — Desafio Adversarial de Escala e Carga no Mock (Marco 
 
       expect(taxaReal).toBeGreaterThanOrEqual(TAXA_MINIMA_SKUS_POR_MS);
 
-      // Simula algoritmo degradado que leva tempo excessivo (regressão de trabalho)
+      // Simula algoritmo degradado que leva tempo excessivo (regressão de trabalho).
+      // A degradação é ARTIFICIAL e independente de máquina, então NÃO leva a
+      // compensação de carga: multiplicar por fatorCarga (como a taxa real acima,
+      // onde a compensação é correta) inflava a taxa degradada e, em máquina
+      // carregada, apagava a própria degradação que o teste quer detectar.
       const duracaoDegradada = duracaoReal * 5 + 3000;
-      const taxaDegradada = (totalSkus / duracaoDegradada) * fatorCarga;
+      const taxaDegradada = totalSkus / duracaoDegradada;
 
       expect(taxaDegradada).toBeLessThan(TAXA_MINIMA_SKUS_POR_MS);
     });
@@ -546,10 +492,15 @@ describe('Challenger 1 — Desafio Adversarial de Escala e Carga no Mock (Marco 
       await new Promise((resolve) => setTimeout(resolve, 800));
       const duracaoComAtraso = performance.now() - t0;
 
+      // O atraso injetado acima é FIXO (800ms). Para o meta-teste ser
+      // determinístico, o teto usa fator de carga limitado: sem esse limite, numa
+      // máquina carregada o teto adaptativo ultrapassa os 800ms e o teste conclui
+      // o oposto do que quer provar — que o detector não detecta.
+      const fatorParaMetaTeste = Math.min(fatorCarga, 1.5);
       const checagem = verificarDesempenhoComProtecaoRegressao(
         duracaoComAtraso,
         250,
-        fatorCarga,
+        fatorParaMetaTeste,
         'Busca com Atraso Injetado'
       );
       // Comprova que o detector identificou a regressão de desempenho

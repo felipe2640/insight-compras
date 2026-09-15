@@ -97,7 +97,17 @@ export interface ParametrosMotorTenant {
   readonly leadTimePadraoDias: number;
   /** Filial exibida por padrão no cockpit. */
   readonly filialFocoPadraoId: number;
+  /** Fontes aceitas e exceções explícitas para múltiplos de compra. */
+  readonly lotes: ConfiguracaoLotesTenant;
   readonly procedenciaCalibracao: ProcedenciaCalibracaoTenant;
+}
+
+export interface ConfiguracaoLotesTenant {
+  readonly usarErp: boolean;
+  readonly usarHistorico: boolean;
+  readonly usarVocabulario: boolean;
+  /** Exceções auditáveis por código do SKU. Ex.: { "030666": 1 }. */
+  readonly multiplosPorSku: Readonly<Record<string, number>>;
 }
 
 export interface ConfiguracaoTenant {

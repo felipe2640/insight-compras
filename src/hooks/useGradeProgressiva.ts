@@ -65,8 +65,22 @@ export function useGradeProgressiva(opcoes: OpcoesGradeProgressiva): RetornoGrad
   const [contagens, setContagens] = useState<ContagensStatusGrade>(contagensCatalogo);
   const [erro, setErro] = useState<string | null>(null);
   const [, iniciarTransicao] = useTransition();
+  const filialAnterior = useRef(filialId);
 
   // Se a loja em foco muda, o que está na tela não vale mais.
+  useEffect(() => {
+    // A carga inicial pertence somente à filial que veio do servidor. Ao trocar
+    // de loja, retire imediatamente as linhas antigas enquanto a nova grade é
+    // buscada; exibi-las com o novo nome de loja levaria a decisões incorretas.
+    if (filialAnterior.current !== filialId) {
+      filialAnterior.current = filialId;
+      setItens([]);
+      setContagens({ total: 0, pedir: 0, transferir: 0, ruptura: 0, zumbi: 0 });
+      setEstadoCatalogo("carregando");
+      setErro(null);
+    }
+  }, [filialId]);
+
   useEffect(() => {
     setItens(decodificarGradeTabular<LinhaCockpitMatriz>(gradeInicial));
     setContagens(contagensCatalogo);

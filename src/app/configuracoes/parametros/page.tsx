@@ -176,6 +176,20 @@ export default async function PaginaParametros() {
             </dl>
           </div>
 
+          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <p className="mb-1 font-semibold text-slate-800">Múltiplos de compra</p>
+            <p className="mb-2 text-slate-600">
+              Fontes habilitadas para definir se o pedido deve ser feito em par, jogo ou caixa.
+              Uma exceção por SKU sempre tem prioridade.
+            </p>
+            <dl className="space-y-1 text-slate-600">
+              <div className="flex justify-between"><dt>Cadastro do ERP</dt><dd>{tenant.parametrosMotor.lotes.usarErp ? "habilitado" : "desabilitado"}</dd></div>
+              <div className="flex justify-between"><dt>Histórico de vendas</dt><dd>{tenant.parametrosMotor.lotes.usarHistorico ? "habilitado" : "desabilitado"}</dd></div>
+              <div className="flex justify-between"><dt>Descrição do produto</dt><dd>{tenant.parametrosMotor.lotes.usarVocabulario ? "habilitado" : "desabilitado"}</dd></div>
+              <div className="flex justify-between"><dt>Exceções por SKU</dt><dd className="font-mono">{Object.keys(tenant.parametrosMotor.lotes.multiplosPorSku).length}</dd></div>
+            </dl>
+          </div>
+
           <p className="flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-blue-900">
             <GraduationCap className="mt-0.5 h-4 w-4 shrink-0" />
             <span>

@@ -164,6 +164,13 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
     },
     leadTimePadraoDias: 7,
     filialFocoPadraoId: 1,
+    lotes: {
+      usarErp: true,
+      usarHistorico: true,
+      // Evita afirmar que vende em par apenas pelo nome da peça.
+      usarVocabulario: false,
+      multiplosPorSku: {},
+    },
     procedenciaCalibracao: {
       modeloVencedor: "current_engine_calibrated_90",
       dataEstudo: "2026-09-07",
