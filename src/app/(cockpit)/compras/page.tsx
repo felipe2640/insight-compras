@@ -1,7 +1,12 @@
 import React from "react";
 import { headers } from "next/headers";
+import { obterAdaptadorInventario, RespostaCargaInventario } from "@adapters/index";
+import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
+import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { CockpitPrincipal } from "@/components/cockpit/CockpitPrincipal";
 import { obterUsuarioAtual, rotuloPapel } from "@/lib/autenticacao/servidor";
+import { codificarGradeTabular } from "@/lib/cockpit/codificacao-tabular";
+import { contarStatusGrade, separarAcionaveis } from "@/lib/cockpit/escopo-grade";
 import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 
 // A página lê a sessão (cookies), portanto é dinâmica por requisição; o cache de dados fica no adapter.
@@ -12,6 +17,7 @@ async function CarregarDadosCockpit() {
   const tenantIdHeader = headers().get("x-tenant-id");
   const tenantId = tenantIdHeader ?? usuario?.tenantId;
   const tenant = obterTenantAtivo(tenantId);
+  const adaptador = obterAdaptadorInventario({ tenant });
 
   /**
    * Loja que abre em foco: do CADASTRO do cliente.
@@ -33,8 +39,40 @@ async function CarregarDadosCockpit() {
     ? fornecedoresRaw
     : Array.from(fornecedoresRaw);
 
+  const ehCompradorSemCarteira =
+    ehComprador && (!fornecedoresPermitidos || fornecedoresPermitidos.length === 0);
+
+  const carga: RespostaCargaInventario = ehCompradorSemCarteira
+    ? {
+        produtos: [],
+        estoques: new Map(),
+        historicos: new Map(),
+        entradasHoje: [],
+        similares: new Map(),
+        metadados: {
+          provedor: "MOCK_SINTETICO",
+          totalSkusCarregados: 0,
+          timestampCarga: new Date().toISOString(),
+          emModoDegradado: false,
+          latenciaMs: 0,
+        },
+      }
+    : await adaptador.carregarInventarioCompleto({
+        fornecedoresPermitidos,
+        filialId: filialFoco,
+        apenasComEstoqueOuVenda: true,
+      });
+
+  const linhas = converterParaLinhasCockpit(
+    carga,
+    await montarOpcoesMatrizComPublicados(filialFoco, tenant)
+  );
+  const { acionaveis } = separarAcionaveis(linhas);
+
   return (
     <CockpitPrincipal
+      gradeInicial={codificarGradeTabular(acionaveis)}
+      contagensCatalogo={contarStatusGrade(linhas)}
       filialFocoIdInicial={filialFoco}
       fornecedoresPermitidosInicial={fornecedoresPermitidos}
       usuarioSessao={
@@ -54,10 +92,10 @@ async function CarregarDadosCockpit() {
 }
 
 /**
- * O servidor entrega o shell após validar a sessão, sem bloquear a navegação
- * pela consulta do inventário. A grade é preenchida pela API no navegador: o
- * usuário sai imediatamente do login e acompanha o carregamento no cockpit.
- * Isso também elimina a antiga carga duplicada (SSR e API logo em seguida).
+ * A grade acionável inicial continua sendo resolvida no servidor. Ela garante
+ * que uma falha na carga complementar do navegador nunca transforme o cockpit
+ * em uma tabela vazia. As trocas de loja seguem aproveitando os caches do
+ * servidor e das três grades recentes no cliente.
  */
 export default function PaginaCockpitCompras() {
   return <CarregarDadosCockpit />;
