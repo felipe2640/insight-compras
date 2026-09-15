@@ -24,7 +24,12 @@ export const TENANT_DEMONSTRACAO: ConfiguracaoTenant = {
   nome: "Rede Demonstração",
   razaoSocial: "Rede Demonstração Autopeças Ltda",
   subdominioPrincipal: "demo.insightd.com.br",
-  subdominiosValidos: ["demo.insightd.com.br", "demo.local", "demo", "demonstracao"],
+  subdominiosValidos: [
+    "demo.insightd.com.br",
+    "demo.local",
+    "demo",
+    "demonstracao",
+  ],
   // Sintética SEMPRE. O mostruário existe para mostrar a plataforma a quem não
   // é cliente; ele não pode, em hipótese alguma, abrir o estoque de quem é.
   fonteDados: "sintetica",
@@ -45,18 +50,58 @@ export const TENANT_DEMONSTRACAO: ConfiguracaoTenant = {
     logoClaro: "/logos/insightd-monochrome.svg",
     logoEscuro: "/logos/insightd-monochrome.svg",
     favicon: "/favicon.ico",
-    altText: "iNSIGHT D — Copiloto de Compras",
+    altText: "Insight Direto — Copiloto de Compras",
     larguraPadraoPx: 160,
     alturaPadraoPx: 42,
   },
   // Lojas genéricas: praça e nome inventados de propósito, para que ninguém
   // reconheça a operação de um cliente numa apresentação.
   filiais: [
-    { filialId: 1, nome: "Loja Matriz", codigo: "MATRIZ", tipo: "matriz", ativa: true, cidade: "Centro", uf: "SP" },
-    { filialId: 2, nome: "Loja Norte", codigo: "NORTE", tipo: "filial", ativa: true, cidade: "Zona Norte", uf: "SP" },
-    { filialId: 3, nome: "Loja Sul", codigo: "SUL", tipo: "filial", ativa: true, cidade: "Zona Sul", uf: "SP" },
-    { filialId: 4, nome: "Loja Leste", codigo: "LESTE", tipo: "filial", ativa: true, cidade: "Zona Leste", uf: "SP" },
-    { filialId: 5, nome: "Loja Oeste", codigo: "OESTE", tipo: "filial", ativa: true, cidade: "Zona Oeste", uf: "SP" },
+    {
+      filialId: 1,
+      nome: "Loja Matriz",
+      codigo: "MATRIZ",
+      tipo: "matriz",
+      ativa: true,
+      cidade: "Centro",
+      uf: "SP",
+    },
+    {
+      filialId: 2,
+      nome: "Loja Norte",
+      codigo: "NORTE",
+      tipo: "filial",
+      ativa: true,
+      cidade: "Zona Norte",
+      uf: "SP",
+    },
+    {
+      filialId: 3,
+      nome: "Loja Sul",
+      codigo: "SUL",
+      tipo: "filial",
+      ativa: true,
+      cidade: "Zona Sul",
+      uf: "SP",
+    },
+    {
+      filialId: 4,
+      nome: "Loja Leste",
+      codigo: "LESTE",
+      tipo: "filial",
+      ativa: true,
+      cidade: "Zona Leste",
+      uf: "SP",
+    },
+    {
+      filialId: 5,
+      nome: "Loja Oeste",
+      codigo: "OESTE",
+      tipo: "filial",
+      ativa: true,
+      cidade: "Zona Oeste",
+      uf: "SP",
+    },
   ],
   assinatura: {
     texto: "Powered by iNSIGHT D",
@@ -129,7 +174,8 @@ export const TENANT_DEMONSTRACAO: ConfiguracaoTenant = {
       {
         id: "pedido_fornecedor",
         nome: "Pedido ao fornecedor",
-        descricao: "Itens com quantidade de compra, prontos para enviar ao fornecedor.",
+        descricao:
+          "Itens com quantidade de compra, prontos para enviar ao fornecedor.",
         escopo: "compra",
         formatosPermitidos: ["csv", "xlsx", "pdf"],
         colunas: [
@@ -154,7 +200,8 @@ export const TENANT_DEMONSTRACAO: ConfiguracaoTenant = {
       {
         id: "transferencias_lojas",
         nome: "Transferências entre lojas",
-        descricao: "O que sai de qual loja para qual, mantendo a demanda da origem.",
+        descricao:
+          "O que sai de qual loja para qual, mantendo a demanda da origem.",
         escopo: "transferencia",
         formatosPermitidos: ["csv", "xlsx", "pdf"],
         colunas: [
@@ -176,7 +223,8 @@ export const TENANT_DEMONSTRACAO: ConfiguracaoTenant = {
       {
         id: "analise_completa",
         nome: "Análise completa (compra + transferência)",
-        descricao: "Tudo o que exige decisão, com o diagnóstico que levou a ela.",
+        descricao:
+          "Tudo o que exige decisão, com o diagnóstico que levou a ela.",
         escopo: "compra_ou_transferencia",
         formatosPermitidos: ["csv", "xlsx"],
         colunas: [
