@@ -72,6 +72,7 @@ const CABECALHOS_GESTOR = { "Content-Type": "application/json" }; // identidade 
 export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonly<Record<number, string>> }) {
   const [dias, setDias] = useState("30");
   const [filial, setFilial] = useState("");
+  const [fonte, setFonte] = useState("erp");
   const [divergencia, setDivergencia] = useState("");
   const [dados, setDados] = useState<Resposta | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -89,7 +90,7 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
     setCarregando(true);
     setErro(null);
     try {
-      const q = new URLSearchParams({ dias });
+      const q = new URLSearchParams({ dias, fonte });
       if (filial) q.set("filialId", filial);
       const r = await fetch(`/api/aprendizado/comparativo?${q}`, { headers: CABECALHOS_GESTOR });
       setDados((await r.json()) as Resposta);
@@ -98,7 +99,7 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
     } finally {
       setCarregando(false);
     }
-  }, [dias, filial]);
+  }, [dias, filial, fonte]);
 
   useEffect(() => { void carregar(); }, [carregar]);
 
@@ -165,7 +166,46 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
   return (
     <div className="space-y-4">
       {/* Filtros + resumo numa faixa só */}
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+        <div className="flex items-center gap-1 rounded-md bg-slate-100 p-0.5 border border-slate-200">
+          <button
+            type="button"
+            onClick={() => setFonte("erp")}
+            className={cn(
+              "rounded px-2.5 py-1 text-xs font-semibold transition-all",
+              fonte === "erp"
+                ? "bg-white text-blue-900 shadow-xs border border-blue-200"
+                : "text-slate-600 hover:text-slate-900"
+            )}
+          >
+            Compras Reais ERP
+          </button>
+          <button
+            type="button"
+            onClick={() => setFonte("snapshot")}
+            className={cn(
+              "rounded px-2.5 py-1 text-xs font-semibold transition-all",
+              fonte === "snapshot"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-300"
+                : "text-slate-600 hover:text-slate-900"
+            )}
+          >
+            Exportações Cockpit
+          </button>
+          <button
+            type="button"
+            onClick={() => setFonte("todos")}
+            className={cn(
+              "rounded px-2 py-1 text-xs font-semibold transition-all",
+              fonte === "todos"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-300"
+                : "text-slate-600 hover:text-slate-900"
+            )}
+          >
+            Todas
+          </button>
+        </div>
+
         <label className="text-xs text-slate-600">Período
           <select value={dias} onChange={(e) => setDias(e.target.value)} className="ml-1 rounded border border-slate-300 px-2 py-1 text-sm">
             {["7", "30", "60", "90"].map((d) => <option key={d} value={d}>{d} dias</option>)}
@@ -214,7 +254,7 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
           </thead>
           <tbody>
             {itens.length === 0 && (
-              <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-500">{carregando ? "Carregando…" : "Nenhuma exportação no período. Exporte um pedido no cockpit para começar."}</td></tr>
+              <tr><td colSpan={10} className="px-3 py-8 text-center text-slate-500">{carregando ? "Carregando…" : "Nenhum registro encontrado no período para a fonte selecionada."}</td></tr>
             )}
             {itens.map((i) => {
               const d = ROTULO_DIVERGENCIA[i.divergencia];
