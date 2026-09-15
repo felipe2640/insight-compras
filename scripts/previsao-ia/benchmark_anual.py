@@ -10,12 +10,17 @@ from modelos.baseline_atual import ModeloBaselineAtual
 from modelos.croston_sba import ModeloCrostonSBA
 from modelos.dlinear import ModeloDLinear
 from modelos.chronos_bolt import ModeloChronosBolt
+from normalizacao import ALIASES_VENDAS, normalizar_colunas
 
 def carregar_dados():
     base_dir = Path(__file__).parent
     df_vendas = pd.read_parquet(base_dir / 'dados/daily_demand.parquet')
     df_produtos = pd.read_parquet(base_dir / 'dados/current_product.parquet')
-    df_vendas['Data'] = pd.to_datetime(df_vendas['Data'])
+    # Aceita o cache novo (colunas canônicas) e o legado (nomes crus do DAX).
+    df_vendas = normalizar_colunas(df_vendas, ALIASES_VENDAS, 'Vendas')
+    df_vendas['data'] = pd.to_datetime(df_vendas['data'], errors='coerce').dt.normalize()
+    df_vendas = df_vendas[df_vendas['data'].notna()]
+    df_vendas['qtd_venda'] = pd.to_numeric(df_vendas['qtd_venda'], errors='coerce').fillna(0.0)
     return df_vendas, df_produtos
 
 def construir_matriz_temporal(df_vendas, data_min, data_max):
@@ -25,13 +30,13 @@ def construir_matriz_temporal(df_vendas, data_min, data_max):
     n_dias = len(datas)
 
     series_dict = {}
-    grupos = df_vendas.groupby(['ANOMEFANTASIA', 'ACODPRODUTO'])
+    grupos = df_vendas.groupby(['loja', 'sku'])
     for (loja, sku), group in grupos:
         vetor = np.zeros(n_dias, dtype=np.float32)
         for _, row in group.iterrows():
-            d = row['Data']
+            d = row['data']
             if d in mapa_datas:
-                vetor[mapa_datas[d]] += float(row['QtdVenda'])
+                vetor[mapa_datas[d]] += float(row['qtd_venda'])
         series_dict[(loja, sku)] = vetor
 
     print(f'-> {len(series_dict):,} series temporais construidas com {n_dias} dias cada.')
@@ -39,8 +44,8 @@ def construir_matriz_temporal(df_vendas, data_min, data_max):
 
 def executar_benchmark_anual():
     df_vendas, df_produtos = carregar_dados()
-    data_min = df_vendas['Data'].min()
-    data_max = df_vendas['Data'].max()
+    data_min = df_vendas['data'].min()
+    data_max = df_vendas['data'].max()
     series_dict, datas = construir_matriz_temporal(df_vendas, data_min, data_max)
 
     cortes = [

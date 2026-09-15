@@ -16,6 +16,9 @@
  *   à demanda do horizonte infla a meta e foi a divergência que reprovou a versão anterior.
  * - Sem demanda comprovada (perfil SEM_HISTORICO_SUFICIENTE ou consumo <= 0) a
  *   necessidade é estritamente 0.
+ * - O fator de calibração é do MOTOR ANALÍTICO. Quando a demanda do horizonte vem
+ *   de uma projeção de IA homologada, o fator NÃO se aplica: ele corrige o viés da
+ *   régua estática, e a projeção probabilística não tem esse viés.
  *
  * O QUE VARIA POR CLIENTE fica em `ParametrosMotorCompra`, injetado pelo tenant:
  * horizontes, margens, fator de calibração (aprendido no backtest do cliente) e
@@ -125,6 +128,22 @@ export const PARAMETROS_MOTOR_PADRAO: ParametrosMotorCompra = {
 };
 
 /**
+ * Projeção probabilística de demanda produzida pelo pipeline de IA.
+ *
+ * `horizonteDiasPrevisao` é obrigatório porque a projeção é um TOTAL de período:
+ * o pipeline publica 30 dias, enquanto o motor trabalha com 20/15/7 dias conforme
+ * o perfil de giro. Sem o horizonte de origem não há como usar o número — e usá-lo
+ * cru contra um horizonte de 7 dias infla a meta em mais de 4x.
+ */
+export interface PrevisaoDemandaIaCalculo {
+  readonly demandaP50: number;
+  readonly demandaP80: number;
+  /** Horizonte, em dias, para o qual a projeção foi gerada pelo modelo. */
+  readonly horizonteDiasPrevisao: number;
+  readonly modelo?: string;
+}
+
+/**
  * Configuração de um perfil isolado (horizonte + margem), mantida para
  * compatibilidade com chamadas que sobrescrevem apenas um perfil.
  */
@@ -170,11 +189,7 @@ export interface ParametrosCalculoNecessidade {
   /** Margem alvo do item. Se ausente, usa a padrão do tenant. */
   readonly margemAlvo?: number | null;
   /** Projeção de demanda calculada por IA homologada (Chronos-Bolt/Small/Tiny). */
-  readonly previsaoDemandaIA?: {
-    readonly demandaP50: number;
-    readonly demandaP80: number;
-    readonly modelo?: string;
-  } | null;
+  readonly previsaoDemandaIA?: PrevisaoDemandaIaCalculo | null;
 }
 
 export interface ResultadoCalculoNecessidade {
@@ -260,6 +275,35 @@ export function calcularPrevisaoDemanda(
     pisoAplicado,
     previsaoBruta: Math.max(demandaHorizonte, pisoAplicado),
   };
+}
+
+/**
+ * Converte a projeção de IA (total do horizonte do modelo) na demanda do horizonte
+ * do item, já arredondada para o lote.
+ *
+ * A projeção vem sempre como um total de período (o pipeline publica 30 dias) e o
+ * horizonte do motor varia por perfil de giro (20/15/7). A conversão é proporcional
+ * ao tempo de cobertura: p80 * (horizonteDoItem / horizonteDoModelo).
+ *
+ * Devolve `null` quando a projeção não é utilizável (ausente, não positiva, ou sem
+ * horizonte de origem válido). Nesse caso o motor mantém a demanda estática — é
+ * melhor cair no baseline homologado do que comprar sobre um número sem escala.
+ */
+export function escalarPrevisaoIaParaHorizonte(
+  previsao: PrevisaoDemandaIaCalculo | null | undefined,
+  horizonteDias: number,
+  loteMultiplo = 1
+): number | null {
+  if (!previsao) return null;
+
+  const { demandaP80, horizonteDiasPrevisao } = previsao;
+
+  if (!Number.isFinite(demandaP80) || demandaP80 <= 0) return null;
+  if (!Number.isFinite(horizonteDiasPrevisao) || horizonteDiasPrevisao <= 0) return null;
+  if (!Number.isFinite(horizonteDias) || horizonteDias <= 0) return null;
+
+  const demandaEscalada = demandaP80 * (horizonteDias / horizonteDiasPrevisao);
+  return arredondarParaLote(demandaEscalada, loteMultiplo);
 }
 
 /**
@@ -459,15 +503,28 @@ export function calcularNecessidadeItem(
     piso
   );
 
-  // Se houver projeção de demanda gerada por modelo de IA homologado
-  const usaIa = Boolean(previsaoDemandaIA && previsaoDemandaIA.demandaP80 > 0);
-  if (usaIa && previsaoDemandaIA) {
-    const demandaIaLote = arredondarParaLote(previsaoDemandaIA.demandaP80, loteMultiplo);
-    demandaHorizonte = demandaIaLote;
+  // Projeção de IA homologada substitui a demanda estática do horizonte, sempre
+  // reescalada do horizonte do modelo para o horizonte do perfil de giro do item.
+  // Projeção inutilizável devolve null e o motor segue no baseline analítico.
+  const demandaIaHorizonte = escalarPrevisaoIaParaHorizonte(
+    previsaoDemandaIA,
+    horizonteDias,
+    loteMultiplo
+  );
+  const usaIa = demandaIaHorizonte !== null;
+  if (demandaIaHorizonte !== null) {
+    demandaHorizonte = demandaIaHorizonte;
     previsaoBruta = Math.max(demandaHorizonte, pisoAplicado);
   }
 
-  const previsaoCalibrada = calibrarPrevisao(previsaoBruta, parametrosMotor.fatorCalibracao);
+  // A calibração corrige o viés do MOTOR ANALÍTICO: o fator foi aprendido no
+  // backtest da régua estática (consumo * horizonte * margem), que superestimava.
+  // A projeção da IA não tem esse viés — ela já é um quantil da distribuição de
+  // demanda, e foi assim, crua, que venceu o benchmark anual. Multiplicar por
+  // 0,90 depois seria aplicar a correção de um modelo em cima de outro e fazer o
+  // cockpit comprar menos do que o número homologado.
+  const fatorCalibracaoAplicado = usaIa ? 1 : parametrosMotor.fatorCalibracao;
+  const previsaoCalibrada = calibrarPrevisao(previsaoBruta, fatorCalibracaoAplicado);
 
   const necessidadeBruta = Math.max(0, previsaoCalibrada - saldo);
   const necessidadeAntesGovernanca = Math.max(0, previsaoCalibrada - estoqueDisponivel);
@@ -503,7 +560,8 @@ export function calcularNecessidadeItem(
     demandaHorizonte,
     pisoAplicado,
     previsaoBruta,
-    fatorCalibracao: parametrosMotor.fatorCalibracao,
+    // O campo é o fator EFETIVAMENTE aplicado: 1 quando a demanda veio da IA.
+    fatorCalibracao: fatorCalibracaoAplicado,
     previsaoCalibrada,
     estoqueDisponivel,
     necessidadeBruta,

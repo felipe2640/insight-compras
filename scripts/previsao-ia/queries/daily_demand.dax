@@ -1,9 +1,12 @@
 EVALUATE
+VAR DiasHistorico = 730
+VAR DataFim = TODAY()
+VAR DataInicio = DataFim - DiasHistorico
 VAR Periodo =
     FILTER(
         ALL('dCalendario'[Data]),
-        'dCalendario'[Data] >= DATE(2024, 9, 1)
-            && 'dCalendario'[Data] <= DATE(2026, 9, 12)
+        'dCalendario'[Data] >= DataInicio
+            && 'dCalendario'[Data] <= DataFim
     )
 RETURN
 FILTER(

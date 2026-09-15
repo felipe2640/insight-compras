@@ -197,13 +197,15 @@ describe("Prontidão Multi-Tenant em Produção & Salvaguarda Carreiro", () => {
   describe("6. Matriz de Decisão e Parâmetros Multi-Tenant", () => {
     it("deve montar opções com parâmetros calibrados do tenant especificado", () => {
       const opcoesCarreiro = montarOpcoesMatriz(1, TENANT_CARREIRO);
-      expect(opcoesCarreiro.parametrosMotor.fatorCalibracao).toBe(0.9);
-      expect(opcoesCarreiro.nomesFiliais[1]).toBe("Carreiro Pedro II (Matriz)");
-      expect(opcoesCarreiro.nomesFiliais[2]).toBe("Melo / Piripiri");
+      expect(opcoesCarreiro.parametrosMotor).toBeDefined();
+      expect(opcoesCarreiro.nomesFiliais).toBeDefined();
+      expect(opcoesCarreiro.parametrosMotor?.fatorCalibracao).toBe(0.9);
+      expect(opcoesCarreiro.nomesFiliais?.[1]).toBe("Carreiro Pedro II (Matriz)");
+      expect(opcoesCarreiro.nomesFiliais?.[2]).toBe("Melo / Piripiri");
 
       const opcoesDemo = montarOpcoesMatriz(1, TENANT_DEMONSTRACAO);
-      expect(opcoesDemo.parametrosMotor.fatorCalibracao).toBe(1.0);
-      expect(opcoesDemo.nomesFiliais[1]).toBe("Loja Matriz");
+      expect(opcoesDemo.parametrosMotor?.fatorCalibracao).toBe(1.0);
+      expect(opcoesDemo.nomesFiliais?.[1]).toBe("Loja Matriz");
     });
   });
 });

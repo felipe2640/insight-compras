@@ -33,3 +33,20 @@ CREATE TABLE IF NOT EXISTS auditoria_pedido (
 );
 
 CREATE INDEX IF NOT EXISTS idx_auditoria_pedido_tenant ON auditoria_pedido(tenant_id, criado_em DESC);
+
+-- ============================================================================
+-- RLS (Row Level Security)
+--
+-- Mesma convenção de schema-aprendizado.sql e schema-ia.sql: a tabela NÃO é
+-- exposta a anon nem a authenticated. Todo acesso é server-side com a
+-- service_role key — ver src/lib/auditoria/provedores/supabase.ts, que é o
+-- único caminho do app até aqui.
+--
+-- Sem este bloco a tabela nascia legível E GRAVÁVEL com a chave anon, que vai
+-- para o navegador. Numa trilha que existe para ser imutável, a escrita é o
+-- problema maior: dava para forjar ou apagar registro de decisão de compra.
+-- ============================================================================
+ALTER TABLE auditoria_pedido ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON TABLE auditoria_pedido FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE auditoria_pedido TO service_role;

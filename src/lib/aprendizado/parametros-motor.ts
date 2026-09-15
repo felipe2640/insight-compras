@@ -11,7 +11,10 @@ import { ConfiguracaoTenant } from "@config/tenants/tipos";
 import { OpcoesGeracaoMatriz } from "@/lib/cockpit/gerador-linhas-matriz";
 import { montarOpcoesMatriz, obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 import { carregarParametrosPublicados } from "./repositorio";
-import { carregarMapaPrevisoesIa } from "@/lib/previsao-ia/repositorio-previsao-ia";
+import {
+  carregarMapaPrevisoesIa,
+  contarProjecoesIa,
+} from "@/lib/previsao-ia/repositorio-previsao-ia";
 
 export async function montarOpcoesMatrizComPublicados(
   filialFocoId?: number,
@@ -23,10 +26,11 @@ export async function montarOpcoesMatrizComPublicados(
     carregarMapaPrevisoesIa(tenant.id),
   ]);
 
-  const temIa = mapaPrevisoesIa && mapaPrevisoesIa.size > 0;
+  const totalProjecoesIa = mapaPrevisoesIa ? contarProjecoesIa(mapaPrevisoesIa) : 0;
+  const temIa = totalProjecoesIa > 0;
   const versaoBase = publicados ? publicados.versao : "arquivo do tenant";
   const versaoParametros = temIa
-    ? `Previsão probabilística (${mapaPrevisoesIa.size} séries) + ${versaoBase}`
+    ? `Previsão probabilística (${totalProjecoesIa} séries) + ${versaoBase}`
     : versaoBase;
 
   if (!publicados || !base.parametrosMotor) {

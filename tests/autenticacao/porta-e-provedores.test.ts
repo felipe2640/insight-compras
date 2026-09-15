@@ -302,12 +302,13 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
 describe("contas de demonstração só valem no tenant de DEMONSTRAÇÃO", () => {
   const envOriginal = { ...process.env };
   afterEach(() => {
+    vi.unstubAllEnvs();
     process.env = { ...envOriginal };
   });
 
   it("entra no mostruário, esteja em produção ou não", async () => {
     delete process.env.TENANT_ATIVO;
-    process.env.NODE_ENV = "production";
+    vi.stubEnv("NODE_ENV", "production");
     const sessao = await new ProvedorAutenticacaoDemo().entrar({
       usuario: "gestor",
       senha: "demo",
@@ -320,7 +321,7 @@ describe("contas de demonstração só valem no tenant de DEMONSTRAÇÃO", () =>
     // O risco nunca foi "produção": era a instalação de um CLIENTE subir com
     // contas internas de senha "demo" porque a variável do Supabase faltou.
     process.env.TENANT_ATIVO = "carreiro";
-    process.env.NODE_ENV = "development";
+    vi.stubEnv("NODE_ENV", "development");
     await expect(
       new ProvedorAutenticacaoDemo().entrar({
         usuario: "gestor",

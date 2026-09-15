@@ -52,5 +52,11 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           POWERBI_WORKSPACE_ID: ${{ secrets.POWERBI_WORKSPACE_ID }}
           POWERBI_DATASET_ID: ${{ secrets.POWERBI_DATASET_ID }}
+          # Nome fantasia da loja no ERP -> filial_id do tenant. Fica em variável
+          # porque o nome é editável no ERP e não deve exigir mudança de código.
+          # Ex.: {"CARREIRO PEDRO II": 1, "MELO DISTRIBUIDORA": 2}
+          MAPA_LOJA_FILIAL_JSON: ${{ vars.MAPA_LOJA_FILIAL_JSON }}
+          # Horizonte da projeção publicada (o cockpit reescala por perfil de giro).
+          HORIZONTE_DIAS_PREVISAO: ${{ vars.HORIZONTE_DIAS_PREVISAO }}
         run: |
           uv run python pipeline_diario.py --extrair --fonte fabric

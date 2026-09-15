@@ -24,6 +24,7 @@ import {
   aplicarGovernancaCompra,
   PARAMETROS_MOTOR_PADRAO,
   ParametrosMotorCompra,
+  PrevisaoDemandaIaCalculo,
   ResultadoCalculoNecessidade,
 } from "@core/calculo/necessidade";
 import {
@@ -31,10 +32,12 @@ import {
   SaldoFilialParaTransferencia,
 } from "@core/transferencia/balanceamento";
 import { Produto } from "@core/dominio";
+import { EstoqueFilial } from "@core/dominio/estoque";
 import { calcularConsumoDiario, classificarPerfilGiro } from "@core/calculo/demanda-diaria";
 import { calcularCurvaAbc } from "@core/calculo/curva-abc";
 import { StatusSugestao, CurvaABC, campoHistoricoDisponivel, campoEstoqueDisponivel } from "@core/dominio";
 import { PrevisaoDemandaIaItem } from "@/lib/previsao-ia/repositorio-previsao-ia";
+import { avaliarVigenciaPrevisao } from "@/lib/previsao-ia/vigencia-previsao";
 
 export interface OpcoesGeracaoMatriz {
   readonly filialFocoId?: number;
@@ -93,6 +96,37 @@ function classificarGiroPorDiasSemVenda(
 }
 
 /**
+ * Projeção de IA utilizável para um item numa filial, ou null.
+ *
+ * Duas travas antes de o número chegar ao motor:
+ * 1. A projeção é sempre da MESMA filial — demanda de uma loja não responde por
+ *    outra, e o mapa vem indexado por `produtoId:filialId`.
+ * 2. A projeção precisa estar vigente: fresca, ou antiga com o item parado de um
+ *    jeito compatível com o que o modelo projetou (ver `vigencia-previsao.ts`).
+ *    Vencida, o item cai no motor analítico, que lê 180 dias de histórico.
+ */
+function resolverPrevisaoIa(
+  mapaPrevisoesIa: ReadonlyMap<string, PrevisaoDemandaIaItem> | undefined,
+  chave: string,
+  est: EstoqueFilial | undefined,
+  agora: Date = new Date()
+): PrevisaoDemandaIaCalculo | null {
+  const itemIa = mapaPrevisoesIa?.get(chave);
+  if (!itemIa || itemIa.demandaP80 <= 0) return null;
+
+  const vigencia = avaliarVigenciaPrevisao(itemIa, est?.diasSemVenda ?? null, agora);
+  if (!vigencia.vigente) return null;
+
+  return {
+    demandaP50: itemIa.demandaP50,
+    demandaP80: itemIa.demandaP80,
+    // O motor reescala o total do modelo para o horizonte do perfil de giro.
+    horizonteDiasPrevisao: itemIa.horizonteDias,
+    modelo: itemIa.modeloUtilizado,
+  };
+}
+
+/**
  * Calcula a necessidade de um produto em UMA loja qualquer, com a mesma régua
  * usada para a loja em foco. Serve ao balanceamento de rede: para decidir quem
  * doa e quem recebe, todas as lojas precisam ser avaliadas pela mesma lógica.
@@ -112,15 +146,7 @@ function calcularNecessidadeLoja(
   const hist = carga.historicos.get(chave);
   if (!est && !hist) return null;
 
-  const itemIa = mapaPrevisoesIa?.get(chave) ?? mapaPrevisoesIa?.get(String(p.id));
-  const previsaoDemandaIA =
-    itemIa && itemIa.demandaP80 > 0
-      ? {
-          demandaP50: itemIa.demandaP50,
-          demandaP80: itemIa.demandaP80,
-          modelo: itemIa.modeloUtilizado,
-        }
-      : null;
+  const previsaoDemandaIA = resolverPrevisaoIa(mapaPrevisoesIa, chave, est);
 
   const cmd = calcularConsumoDiario({
     vendasLiquidasJanela: hist?.vendasLiquidas180dias ?? 0,
@@ -400,15 +426,10 @@ export function converterParaLinhasCockpit(
     }
 
     const chaveFocoIa = `${p.id}:${filialFocoId}`;
-    const itemIaFoco = mapaPrevisoesIa?.get(chaveFocoIa) ?? mapaPrevisoesIa?.get(String(p.id));
-    const previsaoDemandaIAFoco =
-      itemIaFoco && itemIaFoco.demandaP80 > 0
-        ? {
-            demandaP50: itemIaFoco.demandaP50,
-            demandaP80: itemIaFoco.demandaP80,
-            modelo: itemIaFoco.modeloUtilizado,
-          }
-        : null;
+    const previsaoDemandaIAFoco = resolverPrevisaoIa(mapaPrevisoesIa, chaveFocoIa, estFoco);
+    // Só é telemetria de IA o que efetivamente entrou no cálculo: projeção
+    // vencida não pode aparecer no cockpit como se tivesse sido usada.
+    const itemIaFoco = previsaoDemandaIAFoco ? mapaPrevisoesIa?.get(chaveFocoIa) : undefined;
 
     const resultadoNecessidade =
       necessidadesPorLoja.get(filialFocoId) ??
@@ -539,7 +560,10 @@ export function converterParaLinhasCockpit(
         statusSugestao = "APROVADO_COMPRA";
         const rotuloDemanda =
           resultadoNecessidade.origemPrevisao === "IA" && itemIaFoco
-            ? `Demanda prevista (faixa conservadora: ${itemIaFoco.demandaP80} un): ${necessidadeAposTransferencia} un`
+            ? // Sem o nome do modelo, como o cockpit passou a exibir. Mas COM o
+              // período: a faixa é um total de N dias, e sem isso o comprador lê
+              // que a sugestão deveria ser igual a ela.
+              `Demanda prevista (faixa conservadora: ${itemIaFoco.demandaP80} un/${itemIaFoco.horizonteDias}d): ${necessidadeAposTransferencia} un`
             : `Demanda calculada: ${necessidadeAposTransferencia} un`;
         motivoDecisao =
           totalRecebidoFoco > 0

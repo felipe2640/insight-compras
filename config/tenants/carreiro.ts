@@ -10,8 +10,10 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
   id: "carreiro",
   nome: "Rede Carreiro Autopeças",
   razaoSocial: "Rede Carreiro de Autopeças e Serviços Ltda",
-  subdominioPrincipal: "carreiro.insightd.com.br",
+  subdominioPrincipal: "carreiro.insightdireto.com.br",
   subdominiosValidos: [
+    "carreiro.insightdireto.com.br",
+    // Alias legado: mantido enquanto houver host apontado para o domínio antigo.
     "carreiro.insightd.com.br",
     "carreiro.insight-compras.com.br",
     "carreiro.local",

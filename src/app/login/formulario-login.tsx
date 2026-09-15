@@ -32,7 +32,11 @@ export function FormularioLogin() {
 
   const proximo = (() => {
     const n = parametros.get("next");
-    return n && n.startsWith("/") && !n.startsWith("//") ? n : "/compras";
+    // Só caminho interno. A barra invertida também é rejeitada: pela spec de URL
+    // ela é separador válido em esquemas especiais, então `/\evil.com` é
+    // normalizado pelo navegador para `//evil.com` e o location.assign abaixo
+    // sairia do domínio. Com router.push isso era inofensivo; com assign, não.
+    return n && /^\/(?![/\\])/.test(n) ? n : "/compras";
   })();
 
   const handleSubmit = async (e: React.FormEvent) => {

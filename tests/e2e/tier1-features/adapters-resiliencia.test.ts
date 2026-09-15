@@ -116,7 +116,7 @@ describe("Tier 1 — Feature 6: Adapters, Resiliência de Cache, Circuit Breaker
   // T1.6.5: Sistema White-Label Multi-Tenant Carreiro
   it("T1.6.5 — deve validar as variáveis e especificações do tenant Carreiro para deploy isolado na Vercel", () => {
     expect(TENANT_CARREIRO.id).toBe("carreiro");
-    expect(TENANT_CARREIRO.subdominioPrincipal).toBe("carreiro.insightd.com.br");
+    expect(TENANT_CARREIRO.subdominioPrincipal).toBe("carreiro.insightdireto.com.br");
     expect(TENANT_CARREIRO.cores.primaria).toBe("#0B39B0"); // Azul do logotipo
     expect(TENANT_CARREIRO.filiais).toHaveLength(5);
     expect(TENANT_CARREIRO.filiais.map((f) => f.nome)).toEqual([

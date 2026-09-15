@@ -22,7 +22,7 @@ describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central"
       expect(TENANT_CARREIRO.id).toBe("carreiro");
       expect(TENANT_CARREIRO.nome).toBe("Rede Carreiro Autopeças");
       expect(TENANT_CARREIRO.razaoSocial).toContain("Rede Carreiro");
-      expect(TENANT_CARREIRO.subdominioPrincipal).toBe("carreiro.insightd.com.br");
+      expect(TENANT_CARREIRO.subdominioPrincipal).toBe("carreiro.insightdireto.com.br");
       expect(TENANT_CARREIRO.customDomain).toBe("compras.carreiro.com.br");
     });
 
@@ -41,13 +41,13 @@ describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central"
       expect(paleta).not.toContain("#E6C200");
     });
 
-    it("deve conter identidade visual e assinatura Powered by iNSIGHT D", () => {
+    it("deve conter identidade visual e assinatura Powered by Insight Direto", () => {
       expect(TENANT_CARREIRO.identidadeVisual.logoClaro).toBeDefined();
       expect(TENANT_CARREIRO.identidadeVisual.logoEscuro).toBeDefined();
       expect(TENANT_CARREIRO.identidadeVisual.favicon).toBeDefined();
       expect(TENANT_CARREIRO.assinatura.exibir).toBe(true);
-      expect(TENANT_CARREIRO.assinatura.texto).toBe("Powered by iNSIGHT D");
-      expect(TENANT_CARREIRO.assinatura.url).toBe("https://insightd.com.br");
+      expect(TENANT_CARREIRO.assinatura.texto).toBe("Powered by Insight Direto");
+      expect(TENANT_CARREIRO.assinatura.url).toBe("https://insightdireto.com.br");
     });
   });
 

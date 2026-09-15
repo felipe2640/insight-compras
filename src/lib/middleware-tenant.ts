@@ -33,7 +33,7 @@ export function sanitizarParametroTenant(valor: string | null): string | null {
 }
 
 /**
- * Extrai o subdomínio a partir do host (ex: "carreiro.insightd.com.br" -> "carreiro").
+ * Extrai o subdomínio a partir do host (ex: "carreiro.insightdireto.com.br" -> "carreiro").
  */
 export function extrairSubdominioDeHost(host: string): string | null {
   if (!host) return null;
@@ -46,10 +46,20 @@ export function extrairSubdominioDeHost(host: string): string | null {
     return null;
   }
 
-  // 1. Tratamento para domínios insightd.com.br ou insight-compras.com.br
-  if (hostSemPorta.endsWith(".insightd.com.br") || hostSemPorta.endsWith(".insight-compras.com.br")) {
+  // 1. Domínios da plataforma. `insightdireto.com.br` é o canônico; os outros
+  // dois seguem aceitos enquanto houver host apontado para eles.
+  //
+  // Domínio .vercel.app não entra aqui de propósito: lá não há subdomínio de
+  // tenant, e a resolução acontece por TENANT_ATIVO (instalação dedicada) ou
+  // por ?tenant= — ambos com precedência sobre o subdomínio.
+  const DOMINIOS_PLATAFORMA = [
+    ".insightdireto.com.br",
+    ".insightd.com.br",
+    ".insight-compras.com.br",
+  ];
+  if (DOMINIOS_PLATAFORMA.some((dominio) => hostSemPorta.endsWith(dominio))) {
     const partes = hostSemPorta.split(".");
-    // ex: ["carreiro", "insightd", "com", "br"]
+    // ex: ["carreiro", "insightdireto", "com", "br"]
     if (partes.length >= 4) {
       const sub = partes[0];
       if (sub !== "www" && sub !== "app" && sub !== "api") {
@@ -100,7 +110,7 @@ export function processarRequisicaoTenant(entrada: EntradaResolucaoTenant): Resu
     return montarResultado(tenant, "query");
   }
 
-  // 2. Ordem 2: Subdomínio no hostname (carreiro.insightd.com.br)
+  // 2. Ordem 2: Subdomínio no hostname (carreiro.insightdireto.com.br)
   const subdominio = extrairSubdominioDeHost(hostname);
   if (subdominio) {
     const tenant = obterConfiguracaoTenant(subdominio);
