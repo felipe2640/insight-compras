@@ -55,6 +55,13 @@ interface RespostaGrade {
   readonly mensagem?: string;
 }
 
+interface EntradaCacheGrade {
+  readonly grade: PayloadGradeTabular;
+  readonly contagens: ContagensStatusGrade;
+}
+
+const MAXIMO_LOJAS_EM_CACHE = 3;
+
 export function useGradeProgressiva(opcoes: OpcoesGradeProgressiva): RetornoGradeProgressiva {
   const { gradeInicial, contagensCatalogo, filialId, buscar, automatico = true } = opcoes;
 
@@ -66,6 +73,9 @@ export function useGradeProgressiva(opcoes: OpcoesGradeProgressiva): RetornoGrad
   const [erro, setErro] = useState<string | null>(null);
   const [, iniciarTransicao] = useTransition();
   const filialAnterior = useRef(filialId);
+  // Cache limitado à vida deste cockpit: não persiste dados operacionais após
+  // logout e evita manter as cinco grades grandes simultaneamente na memória.
+  const cachePorFilial = useRef(new Map<number, EntradaCacheGrade>());
 
   // Se a loja em foco muda, o que está na tela não vale mais.
   useEffect(() => {
@@ -92,6 +102,21 @@ export function useGradeProgressiva(opcoes: OpcoesGradeProgressiva): RetornoGrad
 
   const carregarCatalogo = useCallback(() => {
     if (emVoo.current) emVoo.current.abort();
+
+    const entradaCache = cachePorFilial.current.get(filialId);
+    if (entradaCache) {
+      // Atualiza a ordem LRU; retornar a uma das três lojas recentes não toca a rede.
+      cachePorFilial.current.delete(filialId);
+      cachePorFilial.current.set(filialId, entradaCache);
+      iniciarTransicao(() => {
+        setItens(decodificarGradeTabular<LinhaCockpitMatriz>(entradaCache.grade));
+        setContagens(entradaCache.contagens);
+        setEstadoCatalogo("completo");
+        setErro(null);
+      });
+      return;
+    }
+
     const controle = new AbortController();
     emVoo.current = controle;
     setEstadoCatalogo("carregando");
@@ -110,11 +135,21 @@ export function useGradeProgressiva(opcoes: OpcoesGradeProgressiva): RetornoGrad
         if (controle.signal.aborted) return;
         if (!corpo.grade) throw new Error(corpo.mensagem ?? "resposta sem a grade");
         const completo = decodificarGradeTabular<LinhaCockpitMatriz>(corpo.grade);
+        const contagensResposta = corpo.contagens ?? contagensCatalogo;
+        cachePorFilial.current.set(filialId, {
+          grade: corpo.grade,
+          contagens: contagensResposta,
+        });
+        while (cachePorFilial.current.size > MAXIMO_LOJAS_EM_CACHE) {
+          const maisAntiga = cachePorFilial.current.keys().next().value;
+          if (maisAntiga === undefined) break;
+          cachePorFilial.current.delete(maisAntiga);
+        }
         // Transição: a troca de 2 mil por 19 mil linhas não pode travar o clique
         // que o comprador está dando neste instante.
         iniciarTransicao(() => {
           setItens(completo);
-          if (corpo.contagens) setContagens(corpo.contagens);
+          setContagens(contagensResposta);
           setEstadoCatalogo("completo");
         });
       })
@@ -126,7 +161,7 @@ export function useGradeProgressiva(opcoes: OpcoesGradeProgressiva): RetornoGrad
       .finally(() => {
         if (emVoo.current === controle) emVoo.current = null;
       });
-  }, [buscar, filialId]);
+  }, [buscar, contagensCatalogo, filialId]);
 
   useEffect(() => {
     if (!automatico) return;

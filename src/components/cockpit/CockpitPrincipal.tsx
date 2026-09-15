@@ -155,7 +155,7 @@ export function CockpitPrincipal({
     gradeInicial: gradeInicial ?? PAYLOAD_TABULAR_VAZIO,
     contagensCatalogo: contagensCatalogo ?? CONTAGENS_VAZIAS,
     filialId: lojaFocoId,
-    automatico: gradeInicial !== undefined && !ehCompradorSemCarteira,
+    automatico: !ehCompradorSemCarteira,
   });
   const linhasBase = ehCompradorSemCarteira ? [] : (itensIniciais ?? grade.itens);
 
