@@ -96,6 +96,7 @@ export function obterAdaptadorInventario(
           ...opcoes.carreiro,
           clienteDax,
           configuracaoLotes: tenant.parametrosMotor.lotes,
+          classesNaoCompraveis: tenant.catalogo.classesNaoCompraveis,
         }));
       }
       return mapaInstanciasAdaptadores.get(chave)!;

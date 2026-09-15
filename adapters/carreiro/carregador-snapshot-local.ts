@@ -17,6 +17,7 @@ import {
   RespostaCargaInventario,
   FiltroCargaInventario,
 } from "../AdaptadorInventario";
+import type { ClasseNaoCompravelTenant } from "@config/tenants/tipos";
 import {
   mapearProdutosDax,
   mapearEstoquesDax,
@@ -26,6 +27,8 @@ import {
 
 export interface OpcoesCarregadorSnapshot {
   readonly diretorio?: string;
+  /** Classes do ERP que não são mercadoria (serviços). Declaradas pelo tenant. */
+  readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
 }
 
 /**
@@ -73,7 +76,8 @@ export function localizarDiretorioSnapshot(diretorioInformado?: string): string 
  */
 export async function carregarSnapshotCarreiroLocal(
   diretorioSnapshot: string,
-  filtro?: FiltroCargaInventario
+  filtro?: FiltroCargaInventario,
+  opcoes?: OpcoesCarregadorSnapshot
 ): Promise<RespostaCargaInventario> {
   const inicioCarga = Date.now();
 
@@ -85,7 +89,11 @@ export async function carregarSnapshotCarreiroLocal(
   const conteudoProdutos = await fs.promises.readFile(caminhoProdutos, "utf8");
   const linhasProdutos = JSON.parse(conteudoProdutos) as Record<string, unknown>[];
 
-  const produtos = mapearProdutosDax(linhasProdutos);
+  // O snapshot é o mesmo payload cru do DAX: a mesma trava de catálogo vale aqui,
+  // senão o modo degradado volta a servir serviço como item de compra.
+  const produtos = mapearProdutosDax(linhasProdutos, {
+    classesNaoCompraveis: opcoes?.classesNaoCompraveis,
+  });
   const estoques = mapearEstoquesDax(linhasProdutos);
   const mapaProdutos = new Map(produtos.map((p) => [p.id, p]));
 
