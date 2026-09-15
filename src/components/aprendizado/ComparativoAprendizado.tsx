@@ -286,7 +286,21 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
                       aria-label={`Motivo da divergência do SKU ${i.sku}`}
                     >
                       <option value="">{i.divergencia === "igual" ? "—" : "Informar…"}</option>
-                      {MOTIVOS_DIVERGENCIA.map((m) => <option key={m.id} value={m.id}>{m.rotulo}</option>)}
+                      <optgroup label="Comercial / Negócio (Não distorce a IA)">
+                        {MOTIVOS_DIVERGENCIA.filter((m) => m.grupo === "comercial").map((m) => (
+                          <option key={m.id} value={m.id}>{m.rotulo}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Calibração do Modelo de IA (Ajusta Algoritmo)">
+                        {MOTIVOS_DIVERGENCIA.filter((m) => m.grupo === "calibracao").map((m) => (
+                          <option key={m.id} value={m.id}>{m.rotulo}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Outros">
+                        {MOTIVOS_DIVERGENCIA.filter((m) => m.grupo === "outro").map((m) => (
+                          <option key={m.id} value={m.id}>{m.rotulo}</option>
+                        ))}
+                      </optgroup>
                     </select>
                   </td>
                 </tr>
