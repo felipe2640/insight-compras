@@ -48,7 +48,8 @@ export function AvisoCatalogo({
       >
         <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
         <span>
-          Mostrando os {numero(totalCarregado)} itens que pedem decisão. O restante do catálogo não
+          Mostrando {numero(totalCarregado)} itens prioritários (compra, transferência, ruptura ou
+          trava). O restante do catálogo não
           carregou{erro ? ` (${erro})` : ""}.
         </span>
         <button
@@ -63,6 +64,7 @@ export function AvisoCatalogo({
   }
 
   const restante = Math.max(0, totalCatalogo - totalCarregado);
+  const iniciandoNovaLoja = estado === "carregando" && totalCatalogo === 0 && totalCarregado === 0;
   return (
     <div
       role="status"
@@ -77,8 +79,14 @@ export function AvisoCatalogo({
         <CheckCheck className="h-3.5 w-3.5 shrink-0 text-blue-600" />
       )}
       <span>
-        {numero(totalCarregado)} itens que pedem decisão já na tela
-        {restante > 0 ? ` — carregando os outros ${numero(restante)} do catálogo para busca` : ""}.
+        {iniciandoNovaLoja ? (
+          "Carregando dados da loja selecionada…"
+        ) : (
+          <>
+            {numero(totalCarregado)} itens prioritários já disponíveis
+            {restante > 0 ? ` — carregando mais ${numero(restante)} itens do catálogo para busca` : ""}.
+          </>
+        )}
       </span>
     </div>
   );
