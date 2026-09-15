@@ -540,6 +540,7 @@ export function CockpitPrincipal({
                 )}
                 contexto={contextoExportacao}
                 csvPadrao={tenantAtivo.exportacao.csvPadrao}
+                modeloPadraoId={tenantAtivo.exportacao.layoutPadraoId}
                 onAbrirConfiguracao={() => setDialogExportacaoAberto(true)}
                 versao={versaoModelos}
               />

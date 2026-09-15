@@ -8,6 +8,7 @@ import { obterUsuarioAtual, rotuloPapel } from "@/lib/autenticacao/servidor";
 import { codificarGradeTabular } from "@/lib/cockpit/codificacao-tabular";
 import { contarStatusGrade, separarAcionaveis } from "@/lib/cockpit/escopo-grade";
 import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
+import { carregarConfiguracaoLotes } from "@/lib/configuracao/lotes-repositorio";
 
 // A página lê a sessão (cookies), portanto é dinâmica por requisição; o cache de dados fica no adapter.
 export const dynamic = "force-dynamic";
@@ -16,7 +17,9 @@ async function CarregarDadosCockpit() {
   const usuario = await obterUsuarioAtual();
   const tenantIdHeader = headers().get("x-tenant-id");
   const tenantId = tenantIdHeader ?? usuario?.tenantId;
-  const tenant = obterTenantAtivo(tenantId);
+  const tenantBase = obterTenantAtivo(tenantId);
+  const lotes = await carregarConfiguracaoLotes(tenantBase.id, tenantBase.parametrosMotor.lotes);
+  const tenant = { ...tenantBase, parametrosMotor: { ...tenantBase.parametrosMotor, lotes } };
   const adaptador = obterAdaptadorInventario({ tenant });
 
   /**
