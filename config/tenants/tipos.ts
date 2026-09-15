@@ -58,8 +58,8 @@ export interface FilialCadastradaTenant {
 }
 
 export interface AssinaturaInsightDTenant {
-  readonly texto: string; // "Powered by iNSIGHT D"
-  readonly url: string; // "https://insightd.com.br"
+  readonly texto: string; // "Powered by Insight Direto"
+  readonly url: string; // "https://insightdireto.com.br"
   readonly exibir: boolean;
   readonly versaoPlataforma: string;
   readonly logoInsightDUrl?: string;
@@ -163,7 +163,12 @@ export interface MotivoRecusaCompraTenant {
   readonly codigo: string;
   readonly rotulo: string;
   readonly descricao: string;
-  readonly categoria: "preco" | "disponibilidade" | "operacional" | "cliente" | "estrategico";
+  readonly categoria:
+    | "preco"
+    | "disponibilidade"
+    | "operacional"
+    | "cliente"
+    | "estrategico";
   readonly acaoRecomendada?: string;
 }
 
@@ -206,7 +211,12 @@ export interface ConfiguracaoProcessoCompraTenant {
  * É o que permite escrever `border-secundaria/30` — com a vírgula, qualquer
  * classe com opacidade sobre a cor do cliente simplesmente não pinta.
  */
-export function hexParaRgb(hex: string): { r: number; g: number; b: number; cssRgb: string } {
+export function hexParaRgb(hex: string): {
+  r: number;
+  g: number;
+  b: number;
+  cssRgb: string;
+} {
   const normalizado = hex.replace("#", "").trim();
   const valorHex =
     normalizado.length === 3
@@ -232,10 +242,14 @@ export function hexParaRgb(hex: string): { r: number; g: number; b: number; cssR
 /**
  * Mapeia a configuração de cores do tenant para um dicionário de CSS Variables.
  */
-export function gerarVariaveisCssTenant(tenant: ConfiguracaoTenant): Record<string, string> {
+export function gerarVariaveisCssTenant(
+  tenant: ConfiguracaoTenant,
+): Record<string, string> {
   const rgbPrimaria = hexParaRgb(tenant.cores.primaria).cssRgb;
   const rgbSecundaria = hexParaRgb(tenant.cores.secundaria).cssRgb;
-  const rgbDestaqueMultiplo = hexParaRgb(tenant.cores.fundoDestaqueMultiplo).cssRgb;
+  const rgbDestaqueMultiplo = hexParaRgb(
+    tenant.cores.fundoDestaqueMultiplo,
+  ).cssRgb;
 
   return {
     "--cor-primaria": tenant.cores.primaria,

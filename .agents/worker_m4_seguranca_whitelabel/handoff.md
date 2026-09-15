@@ -4,7 +4,7 @@
 > **Papéis:** implementer, qa, specialist  
 > **Destinatário:** Project Orchestrator (`parent` — id: `140d3f6b-8e9e-4004-bf5c-e74848758224`)  
 > **Data / Hora:** 2026-09-06T17:09:30Z  
-> **Status do Marco:** M4 — Concluído com 100% de Aprovação  
+> **Status do Marco:** M4 — Concluído com 100% de Aprovação
 
 ---
 
@@ -13,17 +13,19 @@
 Durante a execução da tarefa de implementação do Milestone 4 (Features #23 a #27), foram diretamente observadas e registradas as seguintes evidências concretas:
 
 ### 1.1 Baseline Pré-Implementação
+
 - **Execução do Test Runner (`npm test`):**  
   Antes de qualquer modificação, a suíte prévia continha **33 arquivos de teste e 275 testes passando** com código de saída 0 em 12.37s.
 - **Compilador TypeScript (`npm run build` / `tsc --noEmit`):**  
   Compilação executou com código de saída 0 em modo `strict: true`.
 
 ### 1.2 Arquivos e Módulos Implementados
+
 Foram criados 15 arquivos de código de produção e 5 arquivos de testes automatizados:
 
 1. **Camada de Configuração White-Label (`config/tenants/`):**
    - `config/tenants/tipos.ts`: Contratos `ConfiguracaoTenant`, `CoresInstitucionaisTenant`, `IdentidadeVisualTenant`, `FilialCadastradaTenant`, `AssinaturaInsightDTenant`, e os conversores puros `hexParaRgb`, `gerarVariaveisCssTenant` e `gerarStringCssVarsInline`.
-   - `config/tenants/carreiro.ts`: Configuração canônica da Rede Carreiro Autopeças, com `#0F2B5C` (Azul Carreiro), `#D4AF37` (Dourado Carreiro), `#FFFFCC` (destaque de múltiplos), logos SVG, favicon, assinatura iNSIGHT D e as 5 filiais oficiais (Loja 1 Matriz Pedro II, Loja 2 Piripiri, Loja 3 Poranga, Loja 4 Campo Maior, Loja 5 José de Freitas).
+   - `config/tenants/carreiro.ts`: Configuração canônica da Rede Carreiro Autopeças, com `#0F2B5C` (Azul Carreiro), `#D4AF37` (Dourado Carreiro), `#FFFFCC` (destaque de múltiplos), logos SVG, favicon, assinatura Insight Direto e as 5 filiais oficiais (Loja 1 Matriz Pedro II, Loja 2 Piripiri, Loja 3 Poranga, Loja 4 Campo Maior, Loja 5 José de Freitas).
    - `config/tenants/index.ts`: Registro e catálogo central `CATALOGO_TENANTS`, constante `TENANT_PADRAO` e resolvedor em O(1) `obterConfiguracaoTenant`.
 
 2. **Camada de Edge Middleware & Resolução de Subdomínio:**
@@ -58,8 +60,9 @@ Foram criados 15 arquivos de código de produção e 5 arquivos de testes automa
    - `tests/seguranca/auditoria.test.ts`: 14 testes cobrindo conformidade, sobrecompras, subcompras, congelamento em runtime, integridade da cadeia SHA-256 e detecção de adulterações.
 
 ### 1.3 Resultado Final de Compilação e Testes
+
 - **`npm run lint` / `npm run build` (`tsc --noEmit`):** Código de saída 0, 0 erros com `strict: true`.
-- **`npm test` (`vitest run`):**  
+- **`npm test` (`vitest run`):**
   - Test Files: **38 passed (38/38)**
   - Tests: **425 passed (425/425)**
   - 100% dos 275 testes prévios continuam verdes; 150 novos testes adicionados e verdes.
@@ -105,6 +108,7 @@ Foram criados 15 arquivos de código de produção e 5 arquivos de testes automa
 ## 4. Conclusion (Conclusão)
 
 O **Milestone 4 (Segurança, RBAC, Auditoria & White-Label)** foi concluído com absoluto sucesso:
+
 - **Zero Cheating / Implementação Genuína:** Todos os componentes foram construídos do zero com lógica matemática, criptográfica e validação real.
 - **275 Testes Pré-existentes Intactos:** 100% dos testes de M1, M2 e M3 continuam passando sem nenhuma quebra.
 - **150 Novos Testes Adicionados:** Cobertura total de cenários adversariais, injeção DAX/SQL, RBAC server-side, trilha tamper-evident e Edge Middleware.
@@ -118,32 +122,41 @@ O **Milestone 4 (Segurança, RBAC, Auditoria & White-Label)** foi concluído com
 Para que o orquestrador, auditores forenses ou pares possam verificar de forma independente e reproduzível:
 
 ### 5.1 Comandos de Terminal
+
 1. **Verificação de Compilação Estrita:**
+
    ```powershell
    npm run build
    ```
-   *Critério de Sucesso:* Código de saída 0, 0 erros TypeScript.
+
+   _Critério de Sucesso:_ Código de saída 0, 0 erros TypeScript.
 
 2. **Verificação de Lint / Tipagem:**
+
    ```powershell
    npm run lint
    ```
-   *Critério de Sucesso:* Código de saída 0.
+
+   _Critério de Sucesso:_ Código de saída 0.
 
 3. **Execução Específica da Bateria M4 (Segurança e White-Label):**
+
    ```powershell
    npx vitest run tests/seguranca/ tests/whitelabel/
    ```
-   *Critério de Sucesso:* 5 arquivos de teste, 150 testes passando em < 1s.
+
+   _Critério de Sucesso:_ 5 arquivos de teste, 150 testes passando em < 1s.
 
 4. **Execução da Suíte Completa do Repositório:**
    ```powershell
    npm test
    ```
-   *Critério de Sucesso:* 38 arquivos de teste, 425 testes passando com código de saída 0.
+   _Critério de Sucesso:_ 38 arquivos de teste, 425 testes passando com código de saída 0.
 
 ### 5.2 Condições de Invalidação
+
 A entrega deverá ser considerada inválida caso:
+
 - Um comprador consiga carregar inventário de fornecedor fora de sua carteira sem receber erro 403 Forbidden.
 - Um comprador consiga criar pedido contendo SKU de outro fornecedor sem ser bloqueado com 403 Forbidden.
 - O validador de cadeia SHA-256 não aponte erro ao simular alteração em qualquer campo de um registro de auditoria.
