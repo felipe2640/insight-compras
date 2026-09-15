@@ -232,86 +232,74 @@ describe("Motor de Necessidade de Compra", () => {
     });
   });
 
-  describe("integração com previsão probabilística por IA", () => {
+  describe("trava de piso: a IA só acrescenta cobertura", () => {
     /** Projeção publicada pelo pipeline: total de 30 dias. */
-    const PROJECAO_IA = {
+    const PROJECAO_BAIXA = {
       demandaP50: 18,
       demandaP80: 23,
       horizonteDiasPrevisao: 30,
       modelo: "Chronos-Bolt (Small)",
     };
 
-    it("substitui a taxa estática pela projeção do modelo reescalada ao horizonte", () => {
-      const comIa = calcularNecessidadeItem({
-        consumoDiario: 1,
-        perfilGiro: "ALTO_GIRO",
-        saldoFisico: 5,
-        quantidadeJaPedida: 0,
-        loteMultiplo: 5,
-        medianaLinhaVenda: 0,
-        parametrosMotor: {
-          ...PARAMETROS_MOTOR_PADRAO,
-          fatorCalibracao: 0.90,
-        },
-        previsaoDemandaIA: PROJECAO_IA,
-      });
+    /** Projeção que enxerga pico acima da régua analítica. */
+    const PROJECAO_ALTA = { ...PROJECAO_BAIXA, demandaP50: 45, demandaP80: 60 };
 
-      // p80 de 30 dias reescalado para 20 dias: 23 * (20/30) = 15,33 -> lote 5 = 20
-      expect(comIa.demandaHorizonte).toBe(20);
-      expect(comIa.previsaoBruta).toBe(20);
-      // A calibração de 0,90 do tenant NÃO incide sobre a projeção da IA: ela
-      // corrige o viés da régua estática, e o p80 do modelo não tem esse viés.
-      expect(comIa.fatorCalibracao).toBe(1);
-      expect(comIa.previsaoCalibrada).toBe(20);
-      // Necessidade líquida: 20 - saldo(5) = 15
-      expect(comIa.necessidadeLiquida).toBe(15);
+    const ITEM_ALTO_GIRO = {
+      consumoDiario: 1,
+      perfilGiro: "ALTO_GIRO",
+      saldoFisico: 5,
+      quantidadeJaPedida: 0,
+      loteMultiplo: 5,
+      medianaLinhaVenda: 0,
+      parametrosMotor: { ...PARAMETROS_MOTOR_PADRAO, fatorCalibracao: 0.90 },
+    } as const;
+
+    it("projeção abaixo da régua NÃO derruba a cobertura analítica", () => {
+      // Régua: 1/dia * 20 dias * 1,25 = 25. IA: 23 em 30 dias -> 15,33 em 20 -> lote 5 = 20.
+      // 20 < 25, então quem manda é a régua homologada.
+      const r = calcularNecessidadeItem({ ...ITEM_ALTO_GIRO, previsaoDemandaIA: PROJECAO_BAIXA });
+
+      expect(r.demandaHorizonte).toBe(25);
+      expect(r.origemPrevisao).toBe("ANALITICA");
+      // E a calibração do tenant continua valendo, porque o número é o dela.
+      expect(r.fatorCalibracao).toBe(0.90);
+      expect(r.previsaoCalibrada).toBe(23);
+      expect(r.necessidadeLiquida).toBe(18);
     });
 
-    it("mantém a calibração do tenant no caminho analítico", () => {
-      const parametros = {
-        consumoDiario: 1,
-        perfilGiro: "ALTO_GIRO",
-        saldoFisico: 5,
-        quantidadeJaPedida: 0,
-        loteMultiplo: 5,
-        medianaLinhaVenda: 0,
-        parametrosMotor: { ...PARAMETROS_MOTOR_PADRAO, fatorCalibracao: 0.90 },
-      } as const;
+    it("projeção acima da régua acrescenta cobertura e dispensa a calibração", () => {
+      // IA: 60 em 30 dias -> 40 em 20 dias (lote 5). 40 > 25, a IA governa.
+      const r = calcularNecessidadeItem({ ...ITEM_ALTO_GIRO, previsaoDemandaIA: PROJECAO_ALTA });
 
-      const semIa = calcularNecessidadeItem(parametros);
-
-      // Régua estática: 1 * 20 * 1,25 = 25 -> lote 5 = 25; calibrado: ceil(25 * 0,90) = 23
-      expect(semIa.origemPrevisao).toBe("ANALITICA");
-      expect(semIa.fatorCalibracao).toBe(0.90);
-      expect(semIa.previsaoCalibrada).toBe(23);
-
-      // Mesmo item, agora com projeção de IA: o fator deixa de incidir.
-      const comIa = calcularNecessidadeItem({ ...parametros, previsaoDemandaIA: PROJECAO_IA });
-      expect(comIa.origemPrevisao).toBe("IA");
-      expect(comIa.fatorCalibracao).toBe(1);
+      expect(r.demandaHorizonte).toBe(40);
+      expect(r.origemPrevisao).toBe("IA");
+      expect(r.modeloIaUtilizado).toBe("Chronos-Bolt (Small)");
+      // O fator do motor analítico não incide sobre o quantil do modelo.
+      expect(r.fatorCalibracao).toBe(1);
+      expect(r.previsaoCalibrada).toBe(40);
+      expect(r.necessidadeLiquida).toBe(35);
     });
 
-    it("a mesma projeção pesa menos em item de baixo giro (horizonte de 7 dias)", () => {
+    it("a reescala por horizonte importa ainda mais sob a trava", () => {
+      // Sem reescalar, o total de 30 dias venceria o max em qualquer perfil e
+      // inflaria a meta de um item cujo horizonte de cobertura é 7 dias.
       const comum = {
         consumoDiario: 1,
         saldoFisico: 0,
         quantidadeJaPedida: 0,
         loteMultiplo: 1,
         parametrosMotor: PARAMETROS_MOTOR_PADRAO,
-        previsaoDemandaIA: PROJECAO_IA,
+        previsaoDemandaIA: PROJECAO_ALTA,
       } as const;
 
       const altoGiro = calcularNecessidadeItem({ ...comum, perfilGiro: "ALTO_GIRO" });
-      const baixoGiro = calcularNecessidadeItem({
-        ...comum,
-        perfilGiro: "BAIXO_GIRO_INTERMITENTE",
-      });
+      const baixoGiro = calcularNecessidadeItem({ ...comum, perfilGiro: "BAIXO_GIRO_INTERMITENTE" });
 
-      // 23 * (20/30) = 15,33 -> 16 | 23 * (7/30) = 5,37 -> 6
-      expect(altoGiro.demandaHorizonte).toBe(16);
-      expect(baixoGiro.demandaHorizonte).toBe(6);
-      // O número cru do modelo (23) nunca vira meta de um horizonte de 7 dias
-      expect(baixoGiro.demandaHorizonte).toBeLessThan(PROJECAO_IA.demandaP80);
+      // 60 * (20/30) = 40 contra régua 25 -> IA vence com 40.
+      expect(altoGiro.demandaHorizonte).toBe(40);
+      // 60 * (7/30) = 14 contra régua ceil(1*7*1,8) = 13 -> IA vence com 14, não com 60.
+      expect(baixoGiro.demandaHorizonte).toBe(14);
+      expect(baixoGiro.demandaHorizonte).toBeLessThan(PROJECAO_ALTA.demandaP80);
     });
 
     it("cai no baseline quando a projeção vem sem horizonte de origem", () => {
@@ -322,11 +310,12 @@ describe("Motor de Necessidade de Compra", () => {
         quantidadeJaPedida: 0,
         loteMultiplo: 1,
         parametrosMotor: PARAMETROS_MOTOR_PADRAO,
-        previsaoDemandaIA: { ...PROJECAO_IA, horizonteDiasPrevisao: 0 },
+        previsaoDemandaIA: { ...PROJECAO_ALTA, horizonteDiasPrevisao: 0 },
       });
 
       // Motor estático: 1 * 20 dias * (1 + 0,25) = 25
       expect(res.demandaHorizonte).toBe(25);
+      expect(res.origemPrevisao).toBe("ANALITICA");
     });
 
     it("ignora previsão de IA se o produto não tiver histórico comprovado", () => {
