@@ -9,6 +9,7 @@ import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
 import { codificarGradeTabular } from "@/lib/cockpit/codificacao-tabular";
 import { contarStatusGrade, separarAcionaveis } from "@/lib/cockpit/escopo-grade";
 import { obterConfiguracaoTenant } from "@config/tenants";
+import { carregarConfiguracaoLotes } from "@/lib/configuracao/lotes-repositorio";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,9 @@ export async function GET(request: NextRequest) {
     if (tenantIdRequisicao) {
       validarTenantContexto(usuario, tenantIdRequisicao);
     }
-    const tenant = obterConfiguracaoTenant(usuario.tenantId);
+    const tenantBase = obterConfiguracaoTenant(usuario.tenantId);
+    const lotes = await carregarConfiguracaoLotes(usuario.tenantId, tenantBase.parametrosMotor.lotes);
+    const tenant = { ...tenantBase, parametrosMotor: { ...tenantBase.parametrosMotor, lotes } };
 
     // 2. Parâmetros de Filtro Solicitados
     const fornecedorQuery = searchParams.get("fornecedorId");

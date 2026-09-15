@@ -7,6 +7,7 @@ import { aplicarGuardrailInventarioServerSide } from "@/lib/rbac/validador-carte
 import { ErroAcessoNegado } from "@/lib/rbac/tipos";
 import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
 import { obterConfiguracaoTenant } from "@config/tenants";
+import { carregarConfiguracaoLotes } from "@/lib/configuracao/lotes-repositorio";
 
 export const dynamic = "force-dynamic";
 // Compatível com o teto do plano Hobby mesmo quando Fluid Compute está desativado.
@@ -25,7 +26,9 @@ export async function GET(request: NextRequest) {
     const usuario = await obterUsuarioDaRequisicao(request);
     if (!usuario) return respostaNaoAutenticado();
 
-    const tenant = obterConfiguracaoTenant(usuario.tenantId);
+    const tenantBase = obterConfiguracaoTenant(usuario.tenantId);
+    const lotes = await carregarConfiguracaoLotes(usuario.tenantId, tenantBase.parametrosMotor.lotes);
+    const tenant = { ...tenantBase, parametrosMotor: { ...tenantBase.parametrosMotor, lotes } };
     const filtro = aplicarGuardrailInventarioServerSide(usuario, {});
     const adaptador = obterAdaptadorInventario({ tenant });
     const carga = await adaptador.carregarInventarioCompleto(filtro);
