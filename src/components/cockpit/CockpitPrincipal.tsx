@@ -97,6 +97,7 @@ const CONTAGENS_VAZIAS: ContagensStatusGrade = {
   transferir: 0,
   ruptura: 0,
   zumbi: 0,
+  sugestaoErp: 0,
 };
 
 
