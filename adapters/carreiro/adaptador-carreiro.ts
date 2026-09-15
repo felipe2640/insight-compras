@@ -104,8 +104,17 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   private async carregarComResiliencia(
     filtro: FiltroCargaInventario
   ): Promise<RespostaCargaInventario> {
+    // A carga Carreiro é sempre da rede inteira: filialId define apenas qual
+    // loja o motor apresentará depois. Se a filial participar da chave, cada
+    // troca de loja refaz todas as consultas DAX apesar de o inventário bruto
+    // ser idêntico. Compartilhar a chave mantém RBAC/seção/estoque isolados e
+    // permite que a troca reutilize imediatamente a carga já aquecida.
+    const filtroCargaRede: FiltroCargaInventario = {
+      ...filtro,
+      filialId: undefined,
+    };
     const resultadoResiliente = await this.gerenciadorCache.obterOuExecutar(
-      filtro,
+      filtroCargaRede,
       async () => {
         // 0. Modo demonstração: snapshot primeiro, sem tocar a rede.
         // Carga instantânea e imune a oscilação de conexão.
