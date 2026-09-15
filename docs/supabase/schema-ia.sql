@@ -32,19 +32,25 @@ create index if not exists idx_demanda_ia_lookup
 create index if not exists idx_demanda_ia_data
   on demanda_ia_previsao (tenant_id, data_previsao desc);
 
+-- ============================================================================
 -- RLS (Row Level Security)
+--
+-- Mesma convenção do schema-aprendizado.sql: a tabela NÃO é exposta a anon nem a
+-- authenticated. Todo acesso é server-side com a service_role key (que passa por
+-- cima do RLS) — tanto a leitura do cockpit quanto o upsert do pipeline diário.
+--
+-- Por que não há política de SELECT permissiva: `using (true)` não isola tenant
+-- nenhum. Com a chave anon (que vai para o navegador) qualquer pessoa poderia ler
+-- `?tenant_id=eq.<outro_cliente>` e levar a demanda por SKU da rede alheia.
+-- ============================================================================
 alter table demanda_ia_previsao enable row level security;
 
--- Política de leitura: autenticados ou aplicação via chave anon/service_role
-create policy "Leitura pública autenticada por tenant"
-  on demanda_ia_previsao
-  for select
-  using (true);
+-- Remove as políticas permissivas da primeira versão deste schema (idempotente:
+-- reexecutar este arquivo corrige um projeto onde elas já foram aplicadas).
+drop policy if exists "Leitura pública autenticada por tenant" on demanda_ia_previsao;
+drop policy if exists "Pipeline diário IA pode inserir e atualizar" on demanda_ia_previsao;
 
--- Política de escrita: pipeline local autenticado via service_role key
-create policy "Pipeline diário IA pode inserir e atualizar"
-  on demanda_ia_previsao
-  for all
-  using (auth.role() = 'service_role' or current_user = 'postgres');
+revoke all on table demanda_ia_previsao from anon, authenticated;
+grant select, insert, update, delete on table demanda_ia_previsao to service_role;
 
 comment on table demanda_ia_previsao is 'Projeções de demanda por IA (Chronos-Bolt/Croston/DLinear) por filial e SKU para cálculo do estoque ótimo';
