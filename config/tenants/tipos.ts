@@ -110,6 +110,46 @@ export interface ConfiguracaoLotesTenant {
   readonly multiplosPorSku: Readonly<Record<string, number>>;
 }
 
+/**
+ * Classe/grupo do ERP que NÃO é mercadoria comprável.
+ *
+ * O cadastro de produtos do ERP não guarda só peça. A Rede Carreiro fatura mão
+ * de obra (balanceamento, troca de amortecedor) pela mesma tabela PRODUTOS, em
+ * nota de venda tipo 01 — indistinguível de uma peça para qualquer agregação.
+ *
+ * Para o motor de compra isso é veneno silencioso: serviço tem demanda
+ * recorrente comprovada e saldo físico eternamente zero, que é exatamente o
+ * perfil do item que ele mais quer comprar. Medido ao vivo em 15/09/2026, o
+ * cockpit sugeria comprar 26 unidades de "SERVICO BALANCEAMENTO".
+ *
+ * A exclusão é por CÓDIGO declarado, nunca por texto da descrição ou da marca:
+ * o mesmo cadastro tem "REGENCE VEICULOS PECAS E SERVI" e "PREMIUM CAR SERVICE"
+ * como classes, e são fornecedores de peça de verdade.
+ */
+export interface ClasseNaoCompravelTenant {
+  /**
+   * Código BASE da classe no ERP, sem o prefixo de empresa.
+   *
+   * O ERP da Carreiro prefixa a classe com a loja: a classe 1107 chega como
+   * 1000000001107 na loja 1 e 5000000001107 na loja 5. Declare 1107.
+   */
+  readonly codigoBase: number;
+  /** Nome da classe como está no ERP, para auditoria. Ex.: "SERVICOS MECANICOS". */
+  readonly nome: string;
+  /** Por que não é comprável. Fica no histórico da decisão. */
+  readonly motivo: string;
+}
+
+/**
+ * O que, no cadastro de produtos do cliente, não deve virar item de compra.
+ *
+ * A lista é de declaração OBRIGATÓRIA, mesmo vazia: um cliente sem serviços no
+ * cadastro é uma AFIRMAÇÃO conferida, diferente de ninguém ter olhado.
+ */
+export interface ConfiguracaoCatalogoTenant {
+  readonly classesNaoCompraveis: readonly ClasseNaoCompravelTenant[];
+}
+
 export interface ConfiguracaoTenant {
   /** Identificador único do tenant em minúsculas (slug) - ex: "carreiro" */
   readonly id: string;
@@ -145,6 +185,8 @@ export interface ConfiguracaoTenant {
   readonly assinatura: AssinaturaInsightDTenant;
   /** Parâmetros calibrados do motor de compra deste cliente. */
   readonly parametrosMotor: ParametrosMotorTenant;
+  /** O que o cadastro do ERP guarda como produto mas não é mercadoria comprável. */
+  readonly catalogo: ConfiguracaoCatalogoTenant;
   /**
    * Layouts de exportação (CSV/XLSX/PDF) deste cliente.
    * O ERP e os fornecedores de cada cliente exigem colunas, rótulos e
