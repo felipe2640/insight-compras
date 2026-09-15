@@ -9,6 +9,7 @@
  */
 
 import React from "react";
+import { headers } from "next/headers";
 import { Info } from "lucide-react";
 import { FormularioLogin } from "./formulario-login";
 import { idProvedorConfigurado } from "@/lib/autenticacao";
@@ -27,7 +28,8 @@ export default function PaginaLogin() {
    * mostruário publicado — e, junto com a trava do provedor, deixava o
    * visitante diante de um login em que era impossível entrar.
    */
-  const tenant = obterTenantAtivo();
+  const tenantIdHeader = headers().get("x-tenant-id");
+  const tenant = obterTenantAtivo(tenantIdHeader);
   const modoDemonstracao =
     idProvedorConfigurado() === "demo" && tenant.fonteDados === "sintetica";
   const senhaDemo = process.env.DEMO_SENHA ?? "demo";

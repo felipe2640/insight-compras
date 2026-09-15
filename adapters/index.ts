@@ -13,7 +13,7 @@ import { ClienteDaxPowerBI } from "./carreiro/cliente-dax";
 import { AdaptadorInventarioMock } from "./mock/adaptador-mock";
 import { OpcoesGeradorSintetico } from "./mock/gerador-sintetico";
 import { localizarDiretorioSnapshot } from "./carreiro/carregador-snapshot-local";
-import { resolverTenantConfigurado } from "@config/tenants";
+import { resolverTenantConfigurado, obterConfiguracaoTenant, ConfiguracaoTenant } from "@config/tenants";
 
 export * from "./AdaptadorInventario";
 export * from "./carreiro/adaptador-carreiro";
@@ -29,30 +29,29 @@ export type TipoProvedorInventario = "AUTO" | "CARREIRO" | "MOCK";
 
 export interface OpcoesFabricaAdaptador {
   readonly tipo?: TipoProvedorInventario;
+  readonly tenant?: string | ConfiguracaoTenant;
   readonly carreiro?: OpcoesAdaptadorCarreiro;
   readonly mock?: OpcoesGeradorSintetico;
 }
 
 /**
- * Instância singleton compartilhada para evitar recriação desnecessária em requisições serverless.
+ * Instâncias em cache mapeadas por chave para evitar recriação desnecessária
+ * e garantir que caches L1 e Circuit Breakers fiquem isolados por tenant/provedor.
  */
-let instanciaMockSingleton: AdaptadorInventarioMock | null = null;
-let instanciaCarreiroSingleton: AdaptadorInventarioCarreiro | null = null;
+const mapaInstanciasAdaptadores = new Map<string, InventoryAdapter>();
+
+export function limparInstanciasAdaptadores(): void {
+  mapaInstanciasAdaptadores.clear();
+}
 
 /**
- * Fábrica canônica para obtenção do adaptador de inventário adequado ao ambiente.
+ * Fábrica canônica para obtenção do adaptador de inventário adequado ao ambiente e tenant.
  *
  * Modo AUTO (padrão): quem decide é o TENANT, pela sua `fonteDados`.
  *
- * Antes decidia o ambiente: havendo credenciais de Power BI, devolvia o
- * adaptador da Carreiro — com os GUIDs e os nomes CADEMP dela — para qualquer
- * tenant. O ambiente de DEMONSTRAÇÃO, cuja razão de existir é não expor
- * cliente nenhum, servia o estoque real da rede sob nomes sintéticos assim que
- * as credenciais estivessem no ambiente. E o segundo cliente herdaria o
- * mapeamento do primeiro, calado.
- *
  * Declarada "sintetica", a fonte não toca a nuvem de ninguém, tenha o ambiente
- * as credenciais que tiver.
+ * as credenciais que tiver. Para fontes reais (ex: "powerbi-carreiro"), instancia
+ * o adaptador conectado ou serve o snapshot local com Circuit Breaker.
  */
 export function obterAdaptadorInventario(
   opcoes: OpcoesFabricaAdaptador = {}
@@ -60,41 +59,52 @@ export function obterAdaptadorInventario(
   const tipo = opcoes.tipo ?? (process.env.USE_MOCK_ADAPTER === "true" ? "MOCK" : "AUTO");
 
   if (tipo === "MOCK") {
-    if (!instanciaMockSingleton || opcoes.mock) {
-      instanciaMockSingleton = new AdaptadorInventarioMock(opcoes.mock);
+    const chave = "MOCK_GLOBAL";
+    if (!mapaInstanciasAdaptadores.has(chave) || opcoes.mock) {
+      mapaInstanciasAdaptadores.set(chave, new AdaptadorInventarioMock(opcoes.mock));
     }
-    return instanciaMockSingleton;
+    return mapaInstanciasAdaptadores.get(chave)!;
   }
 
   if (tipo === "CARREIRO") {
-    if (!instanciaCarreiroSingleton || opcoes.carreiro) {
-      instanciaCarreiroSingleton = new AdaptadorInventarioCarreiro(opcoes.carreiro);
+    const chave = "CARREIRO_FORCADO";
+    if (!mapaInstanciasAdaptadores.has(chave) || opcoes.carreiro) {
+      mapaInstanciasAdaptadores.set(chave, new AdaptadorInventarioCarreiro(opcoes.carreiro));
     }
-    return instanciaCarreiroSingleton;
+    return mapaInstanciasAdaptadores.get(chave)!;
   }
 
-  // Modo AUTO: a fonte declarada pelo tenant manda.
-  if (resolverTenantConfigurado().fonteDados === "sintetica") {
-    if (!instanciaMockSingleton || opcoes.mock) {
-      instanciaMockSingleton = new AdaptadorInventarioMock(opcoes.mock);
+  // Modo AUTO: quem decide é o tenant (passado explicitamente nas opções ou resolvido pelo ambiente)
+  const tenant = typeof opcoes.tenant === "string"
+    ? obterConfiguracaoTenant(opcoes.tenant)
+    : opcoes.tenant ?? resolverTenantConfigurado();
+
+  if (tenant.fonteDados === "sintetica") {
+    const chave = `MOCK_${tenant.id}`;
+    if (!mapaInstanciasAdaptadores.has(chave) || opcoes.mock) {
+      mapaInstanciasAdaptadores.set(chave, new AdaptadorInventarioMock(opcoes.mock));
     }
-    return instanciaMockSingleton;
+    return mapaInstanciasAdaptadores.get(chave)!;
   }
 
-  const clienteDax = new ClienteDaxPowerBI(opcoes.carreiro?.configuracaoDax);
-  if (clienteDax.possuiConfiguracaoAtiva() || opcoes.carreiro?.diretorioSnapshot) {
-    if (!instanciaCarreiroSingleton || opcoes.carreiro) {
-      instanciaCarreiroSingleton = new AdaptadorInventarioCarreiro({
-        ...opcoes.carreiro,
-        clienteDax,
-      });
+  if (tenant.fonteDados === "powerbi-carreiro") {
+    const chave = `CARREIRO_${tenant.id}`;
+    const clienteDax = new ClienteDaxPowerBI(opcoes.carreiro?.configuracaoDax);
+    if (clienteDax.possuiConfiguracaoAtiva() || opcoes.carreiro?.diretorioSnapshot) {
+      if (!mapaInstanciasAdaptadores.has(chave) || opcoes.carreiro) {
+        mapaInstanciasAdaptadores.set(chave, new AdaptadorInventarioCarreiro({
+          ...opcoes.carreiro,
+          clienteDax,
+        }));
+      }
+      return mapaInstanciasAdaptadores.get(chave)!;
     }
-    return instanciaCarreiroSingleton;
   }
 
-  // Fallback para Mock
-  if (!instanciaMockSingleton || opcoes.mock) {
-    instanciaMockSingleton = new AdaptadorInventarioMock(opcoes.mock);
+  // Fallback seguro para Mock
+  const chaveFallback = `MOCK_FALLBACK_${tenant.id}`;
+  if (!mapaInstanciasAdaptadores.has(chaveFallback) || opcoes.mock) {
+    mapaInstanciasAdaptadores.set(chaveFallback, new AdaptadorInventarioMock(opcoes.mock));
   }
-  return instanciaMockSingleton;
+  return mapaInstanciasAdaptadores.get(chaveFallback)!;
 }

@@ -34,6 +34,7 @@ import { Produto } from "@core/dominio";
 import { calcularConsumoDiario, classificarPerfilGiro } from "@core/calculo/demanda-diaria";
 import { calcularCurvaAbc } from "@core/calculo/curva-abc";
 import { StatusSugestao, CurvaABC, campoHistoricoDisponivel, campoEstoqueDisponivel } from "@core/dominio";
+import { PrevisaoDemandaIaItem } from "@/lib/previsao-ia/repositorio-previsao-ia";
 
 export interface OpcoesGeracaoMatriz {
   readonly filialFocoId?: number;
@@ -48,6 +49,11 @@ export interface OpcoesGeracaoMatriz {
    * não dependa de nenhum adapter de cliente específico.
    */
   readonly nomesFiliais?: Readonly<Record<number, string>>;
+  /**
+   * Mapa de projeções probabilísticas de demanda por Inteligência Artificial (Chronos-Bolt)
+   * indexadas por `${produtoId}:${filialId}`.
+   */
+  readonly mapaPrevisoesIa?: ReadonlyMap<string, PrevisaoDemandaIaItem>;
 }
 
 /**
@@ -98,12 +104,23 @@ function calcularNecessidadeLoja(
   filialId: number,
   carga: RespostaCargaInventario,
   parametrosMotor: ParametrosMotorCompra,
-  leadTimeDias: number
+  leadTimeDias: number,
+  mapaPrevisoesIa?: ReadonlyMap<string, PrevisaoDemandaIaItem>
 ): ResultadoCalculoNecessidade | null {
   const chave = `${p.id}:${filialId}`;
   const est = carga.estoques.get(chave);
   const hist = carga.historicos.get(chave);
   if (!est && !hist) return null;
+
+  const itemIa = mapaPrevisoesIa?.get(chave) ?? mapaPrevisoesIa?.get(String(p.id));
+  const previsaoDemandaIA =
+    itemIa && itemIa.demandaP80 > 0
+      ? {
+          demandaP50: itemIa.demandaP50,
+          demandaP80: itemIa.demandaP80,
+          modelo: itemIa.modeloUtilizado,
+        }
+      : null;
 
   const cmd = calcularConsumoDiario({
     vendasLiquidasJanela: hist?.vendasLiquidas180dias ?? 0,
@@ -133,6 +150,7 @@ function calcularNecessidadeLoja(
     sinalGovernanca: est?.sinalGovernancaCompra ?? null,
     margemRealizada: est?.margemRealizada ?? null,
     margemAlvo: est?.margemAlvo ?? null,
+    previsaoDemandaIA,
   });
 }
 
@@ -149,6 +167,7 @@ export function converterParaLinhasCockpit(
   const parametrosMotor = opcoes.parametrosMotor ?? PARAMETROS_MOTOR_PADRAO;
   const nomesFiliais = opcoes.nomesFiliais ?? {};
   const nomeFilialFoco = nomesFiliais[filialFocoId] ?? `Loja ${filialFocoId}`;
+  const mapaPrevisoesIa = opcoes.mapaPrevisoesIa;
 
   // 1. Agrupamento de estoques por produto para transferências entre filiais
   const estoquesPorProduto = new Map<number, Array<{ filialId: number; saldo: number; minStock: number }>>();
@@ -376,9 +395,20 @@ export function converterParaLinhasCockpit(
     // Sem isso não há como saber quem doa, quem recebe e quem tem prioridade.
     const necessidadesPorLoja = new Map<number, ResultadoCalculoNecessidade>();
     for (const filialId of todasAsFiliais) {
-      const r = calcularNecessidadeLoja(p, filialId, carga, parametrosMotor, leadTimeDias);
+      const r = calcularNecessidadeLoja(p, filialId, carga, parametrosMotor, leadTimeDias, mapaPrevisoesIa);
       if (r) necessidadesPorLoja.set(filialId, r);
     }
+
+    const chaveFocoIa = `${p.id}:${filialFocoId}`;
+    const itemIaFoco = mapaPrevisoesIa?.get(chaveFocoIa) ?? mapaPrevisoesIa?.get(String(p.id));
+    const previsaoDemandaIAFoco =
+      itemIaFoco && itemIaFoco.demandaP80 > 0
+        ? {
+            demandaP50: itemIaFoco.demandaP50,
+            demandaP80: itemIaFoco.demandaP80,
+            modelo: itemIaFoco.modeloUtilizado,
+          }
+        : null;
 
     const resultadoNecessidade =
       necessidadesPorLoja.get(filialFocoId) ??
@@ -395,6 +425,7 @@ export function converterParaLinhasCockpit(
         sinalGovernanca: estFoco?.sinalGovernancaCompra ?? null,
         margemRealizada: estFoco?.margemRealizada ?? null,
         margemAlvo: estFoco?.margemAlvo ?? null,
+        previsaoDemandaIA: previsaoDemandaIAFoco,
       });
 
     let necessidadeCompra = resultadoNecessidade.necessidadeLiquida;
@@ -506,10 +537,14 @@ export function converterParaLinhasCockpit(
         });
         sugestaoFinalCompra = ajuste.quantidadeAjustada;
         statusSugestao = "APROVADO_COMPRA";
+        const rotuloDemanda =
+          resultadoNecessidade.origemPrevisao === "IA" && itemIaFoco
+            ? `Demanda prevista por IA (${itemIaFoco.modeloUtilizado} P80: ${itemIaFoco.demandaP80} un): ${necessidadeAposTransferencia} un`
+            : `Demanda calculada: ${necessidadeAposTransferencia} un`;
         motivoDecisao =
           totalRecebidoFoco > 0
             ? `Transferir ${totalRecebidoFoco} un de ${melhorOrigemTransferencia?.nomeFilial} e comprar ${sugestaoFinalCompra} un (múltiplo ${loteMultiplo})`
-            : `Demanda calculada: ${necessidadeAposTransferencia} un (Ajustado p/ múltiplo ${loteMultiplo}: ${sugestaoFinalCompra} un)`;
+            : `${rotuloDemanda} (Ajustado p/ múltiplo ${loteMultiplo}: ${sugestaoFinalCompra} un)`;
       } else {
         sugestaoFinalCompra = 0;
         statusSugestao = "ESTOQUE_SUFICIENTE";
@@ -632,6 +667,10 @@ export function converterParaLinhasCockpit(
       horizonteDiasAplicado: resultadoNecessidade.horizonteDias,
       margemSegurancaAplicada: resultadoNecessidade.margemSeguranca,
       fatorCalibracaoAplicado: resultadoNecessidade.fatorCalibracao,
+      origemPrevisao: resultadoNecessidade.origemPrevisao,
+      previsaoIaP50: itemIaFoco?.demandaP50 ?? null,
+      previsaoIaP80: itemIaFoco?.demandaP80 ?? null,
+      modeloIaUtilizado: itemIaFoco?.modeloUtilizado ?? null,
       motivoInelegibilidade:
         perfilGiro === "SEM_HISTORICO_SUFICIENTE"
           ? temHistoricoFoco

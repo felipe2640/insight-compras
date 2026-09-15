@@ -206,6 +206,10 @@ export interface ResultadoCalculoNecessidade {
   readonly estoqueSegurancaDiagnostico: number;
   /** Diagnóstico: nível de estoque que dispara reposição (NÃO entra na necessidade). */
   readonly pontoDePedidoDiagnostico: number;
+  /** Origem da demanda projetada: IA (Chronos-Bolt) ou régua analítica do motor. */
+  readonly origemPrevisao: "IA" | "ANALITICA";
+  /** Nome do modelo de IA utilizado na projeção, quando aplicável. */
+  readonly modeloIaUtilizado?: string | null;
 }
 
 /**
@@ -431,6 +435,8 @@ export function calcularNecessidadeItem(
       fatorReducaoAplicado: 1,
       estoqueSegurancaDiagnostico: Math.max(0, estoqueMinimoCadastrado),
       pontoDePedidoDiagnostico: Math.max(0, estoqueMinimoCadastrado),
+      origemPrevisao: "ANALITICA",
+      modeloIaUtilizado: null,
     };
   }
 
@@ -454,7 +460,8 @@ export function calcularNecessidadeItem(
   );
 
   // Se houver projeção de demanda gerada por modelo de IA homologado
-  if (previsaoDemandaIA && previsaoDemandaIA.demandaP80 > 0) {
+  const usaIa = Boolean(previsaoDemandaIA && previsaoDemandaIA.demandaP80 > 0);
+  if (usaIa && previsaoDemandaIA) {
     const demandaIaLote = arredondarParaLote(previsaoDemandaIA.demandaP80, loteMultiplo);
     demandaHorizonte = demandaIaLote;
     previsaoBruta = Math.max(demandaHorizonte, pisoAplicado);
@@ -510,5 +517,7 @@ export function calcularNecessidadeItem(
       leadTimeDias,
       estoqueSegurancaDiagnostico
     ),
+    origemPrevisao: usaIa ? "IA" : "ANALITICA",
+    modeloIaUtilizado: usaIa ? (previsaoDemandaIA?.modelo ?? "Chronos-Bolt (Small)") : null,
   };
 }

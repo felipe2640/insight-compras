@@ -11,6 +11,7 @@
  */
 
 import React from "react";
+import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ItemLegenda {
@@ -53,6 +54,13 @@ export function LegendaGrade({ className }: { className?: string }) {
           {item.rotulo}
         </span>
       ))}
+      <span
+        title="Demanda dimensionada pelo modelo campeão de IA (Chronos-Bolt P80/P50)"
+        className="flex cursor-help items-center gap-1 text-[11px] text-purple-700 dark:text-purple-300 font-medium ml-1"
+      >
+        <Sparkles className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+        Previsão IA (Chronos-Bolt)
+      </span>
     </div>
   );
 }

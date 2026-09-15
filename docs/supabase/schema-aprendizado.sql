@@ -20,7 +20,15 @@ create table if not exists aprendizado_snapshot (
   layout_id     text        not null,        -- ex.: 'pedido_fornecedor'
   formato       text        not null,        -- 'csv' | 'xlsx' | 'pdf'
   n_itens       integer     not null,
-  app_version   text
+  app_version   text,
+  status        text        default 'exportado',
+  enviado_em    timestamptz,
+  enviado_por   text,
+  confirmado_em timestamptz,
+  confirmado_por text,
+  recebido_em   timestamptz,
+  recebido_por  text,
+  historico_estados jsonb   default '[]'::jsonb
 );
 create index if not exists idx_aprendizado_snapshot_tenant_data
   on aprendizado_snapshot (tenant_id, exportado_em desc);

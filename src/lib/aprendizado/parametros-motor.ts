@@ -11,23 +11,35 @@ import { ConfiguracaoTenant } from "@config/tenants/tipos";
 import { OpcoesGeracaoMatriz } from "@/lib/cockpit/gerador-linhas-matriz";
 import { montarOpcoesMatriz, obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 import { carregarParametrosPublicados } from "./repositorio";
+import { carregarMapaPrevisoesIa } from "@/lib/previsao-ia/repositorio-previsao-ia";
 
 export async function montarOpcoesMatrizComPublicados(
   filialFocoId?: number,
   tenant: ConfiguracaoTenant = obterTenantAtivo()
 ): Promise<OpcoesGeracaoMatriz & { versaoParametros: string }> {
   const base = montarOpcoesMatriz(filialFocoId, tenant);
-  const publicados = await carregarParametrosPublicados(tenant.id);
+  const [publicados, mapaPrevisoesIa] = await Promise.all([
+    carregarParametrosPublicados(tenant.id),
+    carregarMapaPrevisoesIa(tenant.id),
+  ]);
+
+  const temIa = mapaPrevisoesIa && mapaPrevisoesIa.size > 0;
+  const versaoBase = publicados ? publicados.versao : "arquivo do tenant";
+  const versaoParametros = temIa
+    ? `IA Chronos-Bolt (${mapaPrevisoesIa.size} séries) + ${versaoBase}`
+    : versaoBase;
+
   if (!publicados || !base.parametrosMotor) {
-    return { ...base, versaoParametros: "arquivo do tenant" };
+    return { ...base, mapaPrevisoesIa, versaoParametros };
   }
   return {
     ...base,
+    mapaPrevisoesIa,
     parametrosMotor: {
       ...base.parametrosMotor,
       margens: publicados.margens,
       fatorCalibracao: publicados.fatorCalibracao,
     },
-    versaoParametros: publicados.versao,
+    versaoParametros,
   };
 }
