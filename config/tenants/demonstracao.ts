@@ -161,6 +161,14 @@ export const TENANT_DEMONSTRACAO: ConfiguracaoTenant = {
     },
   },
 
+  /**
+   * Catálogo sintético: só peça, nenhum serviço cadastrado como produto.
+   * A lista é declarada vazia de propósito — é uma afirmação conferida sobre o
+   * gerador, não ausência de análise (ver o levantamento do tenant Carreiro).
+   */
+  catalogo: {
+    classesNaoCompraveis: [],
+  },
   exportacao: {
     layoutPadraoId: "pedido_fornecedor",
     formatoPadrao: "csv",

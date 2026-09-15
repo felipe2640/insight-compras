@@ -141,3 +141,17 @@ create table if not exists exportacao_modelo (
 alter table exportacao_modelo enable row level security;
 revoke all on table exportacao_modelo from anon, authenticated;
 grant select, insert, update, delete on table exportacao_modelo to service_role;
+
+-- Regras operacionais de lote e exceções por SKU, editáveis sem novo deploy.
+create table if not exists configuracao_lotes (
+  tenant_id             text primary key,
+  usar_erp              boolean not null default true,
+  usar_historico        boolean not null default true,
+  usar_vocabulario      boolean not null default false,
+  multiplos_por_sku     jsonb not null default '{}'::jsonb,
+  atualizado_por        text,
+  updated_at            timestamptz not null default now()
+);
+alter table configuracao_lotes enable row level security;
+revoke all on table configuracao_lotes from anon, authenticated;
+grant select, insert, update, delete on table configuracao_lotes to service_role;

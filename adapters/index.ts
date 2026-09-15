@@ -88,7 +88,7 @@ export function obterAdaptadorInventario(
   }
 
   if (tenant.fonteDados === "powerbi-carreiro") {
-    const chave = `CARREIRO_${tenant.id}`;
+    const chave = `CARREIRO_${tenant.id}_${JSON.stringify(tenant.parametrosMotor.lotes)}`;
     const clienteDax = new ClienteDaxPowerBI(opcoes.carreiro?.configuracaoDax);
     if (clienteDax.possuiConfiguracaoAtiva() || opcoes.carreiro?.diretorioSnapshot) {
       if (!mapaInstanciasAdaptadores.has(chave) || opcoes.carreiro) {
@@ -96,6 +96,7 @@ export function obterAdaptadorInventario(
           ...opcoes.carreiro,
           clienteDax,
           configuracaoLotes: tenant.parametrosMotor.lotes,
+          classesNaoCompraveis: tenant.catalogo.classesNaoCompraveis,
         }));
       }
       return mapaInstanciasAdaptadores.get(chave)!;

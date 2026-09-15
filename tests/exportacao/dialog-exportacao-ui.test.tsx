@@ -377,8 +377,8 @@ describe("Interface de Exportação e CRUD de Modelos (DialogExportacao e Botoes
       expect(screen.getByText("1")).toBeTruthy(); // 1 item no escopo de compra
     });
 
-    // Botão Modelos deve acionar abertura
-    const btnModelos = screen.getByText("Modelos");
+    // Botão de configuração de exportação deve acionar abertura
+    const btnModelos = screen.getByRole("button", { name: /Configurar exportação|Modelos/i });
     fireEvent.click(btnModelos);
     expect(onAbrirConfigMock).toHaveBeenCalled();
   });

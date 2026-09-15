@@ -194,6 +194,37 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
    * coluna (ex.: "COD_PROD"), é só preencher `rotulosPersonalizados` — nada de
    * código muda.
    */
+  /**
+   * O que o cadastro do ERP guarda como produto mas não é mercadoria.
+   *
+   * A rede fatura mão de obra pela MESMA tabela PRODUTOS das peças, em nota de
+   * venda tipo 01 — para qualquer agregação, um balanceamento é igual a uma
+   * pastilha de freio. Como serviço nunca tem estoque e tem venda recorrente, o
+   * motor o lia como o item mais urgente do catálogo e mandava comprar 26
+   * unidades de "SERVICO BALANCEAMENTO".
+   *
+   * LEVANTAMENTO AO VIVO NO MODELO DO CLIENTE (15/09/2026):
+   * - 265 linhas na classe 1107 (53 SKUs x 5 lojas), e 100% delas são serviço:
+   *   não há um único item dessa classe com marca fora do padrão de serviço;
+   * - 51 serviços com venda nos últimos 180 dias, todos na Melo Distribuidora.
+   *   O balanceamento lidera com 192 unidades e 72 notas em 12 meses;
+   * - só 1 SKU de serviço fica fora da classe: 029455 "SERVICO TESTE 1000",
+   *   com classe nula e nenhuma venda — não gera sugestão e não vale uma regra.
+   *
+   * A regra é por CÓDIGO e não por texto de propósito: "REGENCE VEICULOS PECAS E
+   * SERVI" (classe 915), "PREMIUM CAR SERVICE" (314) e "I9 COMERCIO E SERVICOS
+   * EIRELI" (827) também têm "SERVI" no nome e são fornecedores de peça de verdade.
+   */
+  catalogo: {
+    classesNaoCompraveis: [
+      {
+        codigoBase: 1107,
+        nome: "SERVICOS MECANICOS",
+        motivo:
+          "Mão de obra faturada pela tabela de produtos. Não tem estoque, não tem fornecedor e não se compra.",
+      },
+    ],
+  },
   exportacao: {
     layoutPadraoId: "pedido_fornecedor",
     formatoPadrao: "csv",

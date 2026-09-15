@@ -33,6 +33,8 @@ export interface BotoesExportacaoProps {
   readonly itensSelecionados?: readonly LinhaCockpitMatriz[];
   readonly contexto: ContextoExportacao;
   readonly csvPadrao?: OpcoesCsv;
+  /** Só este layout de fábrica vira atalho; os demais continuam no diálogo. */
+  readonly modeloPadraoId?: string;
   readonly onAbrirConfiguracao: () => void;
   /** Muda quando um modelo é salvo, para a lista recarregar. */
   readonly versao?: number;
@@ -44,6 +46,7 @@ export function BotoesExportacao({
   itensSelecionados = [],
   contexto,
   csvPadrao,
+  modeloPadraoId,
   onAbrirConfiguracao,
   versao = 0,
   className,
@@ -52,6 +55,10 @@ export function BotoesExportacao({
   const [gerando, setGerando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const itensBase = itensSelecionados.length > 0 ? itensSelecionados : itens;
+  const modelosVisiveis = useMemo(
+    () => (modeloPadraoId ? modelos.filter((m) => !m.deFabrica || m.id === modeloPadraoId) : modelos),
+    [modelos, modeloPadraoId]
+  );
 
   useEffect(() => {
     let ativo = true;
@@ -68,9 +75,9 @@ export function BotoesExportacao({
 
   const contagemPorModelo = useMemo(() => {
     const mapa = new Map<string, number>();
-    for (const m of modelos) mapa.set(m.id, filtrarPorEscopo(itensBase, m.escopo).length);
+    for (const m of modelosVisiveis) mapa.set(m.id, filtrarPorEscopo(itensBase, m.escopo).length);
     return mapa;
-  }, [modelos, itensBase]);
+  }, [modelosVisiveis, itensBase]);
 
   const exportar = useCallback(
     async (modelo: ModeloExportacao) => {
@@ -110,7 +117,7 @@ export function BotoesExportacao({
 
   return (
     <div className={cn("flex flex-wrap items-center gap-1.5", className)}>
-      {modelos.map((modelo) => {
+      {modelosVisiveis.map((modelo) => {
         const quantas = contagemPorModelo.get(modelo.id) ?? 0;
         const vazio = quantas === 0;
         return (
@@ -157,7 +164,7 @@ export function BotoesExportacao({
         className="flex items-center gap-1.5 rounded-lg border border-dashed border-white/80 px-2.5 py-1 text-xs font-semibold text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
       >
         <SlidersHorizontal className="h-3.5 w-3.5" />
-        Modelos
+        Configurar exportação
       </button>
 
       {erro && (

@@ -125,7 +125,9 @@ export const TAMANHO_PAGINA_PRODUTOS = 12000;
 export function gerarConsultaDaxProdutosEstoque(
   filtro?: FiltroCargaInventario,
   /** Último ACODPRODUTO da página anterior. null = primeira página. */
-  cursor?: string | null
+  cursor?: string | null,
+  /** Nome exato da filial no CADEMP para recortar vendas na própria fonte. */
+  nomeFilialFoco?: string
 ): string {
   let clausulaFiltro = "";
 
@@ -139,7 +141,17 @@ export function gerarConsultaDaxProdutosEstoque(
   }
 
   if (filtro?.apenasComEstoqueOuVenda) {
-    clausulaFiltro += ` && (COALESCE('PRODUTOS'[NESTOQATUAL], 0) <> 0 || NOT ISBLANK('PRODUTOS'[DULTIMAVENDA]))`;
+    const filialSegura = nomeFilialFoco?.replace(/["\\]/g, "").trim();
+    if (filialSegura) {
+      clausulaFiltro += ` && CALCULATE(
+        [Quantidade Vendida Produto],
+        FILTER(ALL('CADEMP'[ANOMEFANTASIA]), 'CADEMP'[ANOMEFANTASIA] = "${filialSegura}"),
+        DATESINPERIOD('dCalendario'[Data], TODAY(), -180, DAY),
+        KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
+      ) > 0`;
+    } else {
+      clausulaFiltro += ` && (COALESCE('PRODUTOS'[NESTOQATUAL], 0) <> 0 || NOT ISBLANK('PRODUTOS'[DULTIMAVENDA]))`;
+    }
   }
 
   // Converte a cláusula de FILTER (sintaxe de linha) em filtros de SUMMARIZECOLUMNS.
@@ -379,7 +391,7 @@ VAR Periodo180d = DATESINPERIOD('dCalendario'[Data], DataLimite, -180, DAY)
 VAR Periodo90d = DATESINPERIOD('dCalendario'[Data], DataLimite, -90, DAY)
 VAR Periodo30d = DATESINPERIOD('dCalendario'[Data], DataLimite, -30, DAY)
 VAR Periodo365d = DATESINPERIOD('dCalendario'[Data], DataLimite, -365, DAY)
-RETURN
+VAR HistoricoComVenda =
 SUMMARIZECOLUMNS(
     'CADEMP'[ACODEMP],
     'CADEMP'[ANOMEFANTASIA],
@@ -447,7 +459,7 @@ SUMMARIZECOLUMNS(
         VAR LinhasValidas = FILTER('NOTAS_ITEMS', 'NOTAS_ITEMS'[NQTDE] > 0)
         VAR TotalLinhas = COUNTROWS(LinhasValidas)
         RETURN
-        IF(
+        IF(TotalLinhas = 0, BLANK(), IF(
             TotalLinhas >= 8,
             IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 12) = 0)), TotalLinhas) >= 0.7, 12,
             IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 10) = 0)), TotalLinhas) >= 0.7, 10,
@@ -459,12 +471,13 @@ SUMMARIZECOLUMNS(
             IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 2) = 0)), TotalLinhas) >= 0.7, 2,
             1)))))))),
             1
-        ),
+        )),
         ${FILTROS_VENDA_VALIDA}
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
-    ),
-    "DiasObservados", 180
+    )
 )
+RETURN
+FILTER(HistoricoComVenda, [VendasQtd180d] > 0)
   `.trim();
 }
 
@@ -832,4 +845,3 @@ TOPN(
 )
 `.trim();
 }
-

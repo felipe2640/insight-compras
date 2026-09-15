@@ -39,7 +39,8 @@ async function CarregarDadosCockpit() {
     ? fornecedoresRaw
     : Array.from(fornecedoresRaw);
 
-  const ehCompradorSemCarteira = ehComprador && (!fornecedoresPermitidos || fornecedoresPermitidos.length === 0);
+  const ehCompradorSemCarteira =
+    ehComprador && (!fornecedoresPermitidos || fornecedoresPermitidos.length === 0);
 
   const carga: RespostaCargaInventario = ehCompradorSemCarteira
     ? {
@@ -59,17 +60,13 @@ async function CarregarDadosCockpit() {
     : await adaptador.carregarInventarioCompleto({
         fornecedoresPermitidos,
         filialId: filialFoco,
-        // O comprador decide sobre o que tem saldo ou saiu recentemente. Trazer o
-        // catálogo inteiro enche a grade de item morto e atrasa a carga.
         apenasComEstoqueOuVenda: true,
       });
 
-  // Parâmetros calibrados do tenant (obtidos dinamicamente da configuração).
-  const linhas = converterParaLinhasCockpit(carga, await montarOpcoesMatrizComPublicados(filialFoco, tenant));
-
-  // A página entrega APENAS o que pede decisão hoje. O catálogo inteiro (19 mil
-  // itens) chega em segundo plano pela /api/compras: mandá-lo aqui significava
-  // 54 MB de HTML, porque o RSC serializa o dado duas vezes (SSR + hidratação).
+  const linhas = converterParaLinhasCockpit(
+    carga,
+    await montarOpcoesMatrizComPublicados(filialFoco, tenant)
+  );
   const { acionaveis } = separarAcionaveis(linhas);
 
   return (
@@ -95,17 +92,10 @@ async function CarregarDadosCockpit() {
 }
 
 /**
- * SEM <Suspense> DE PROPÓSITO.
- *
- * Com um limite de Suspense em volta deste componente de servidor assíncrono, o
- * React servia o HTML mas NUNCA terminava de hidratar esta subárvore sozinho —
- * medido: 30 s sem interação e nenhum efeito rodava. A grade parecia pronta e
- * respondia a cliques (hidratação seletiva), mas nada que dependesse de
- * useEffect acontecia: nem a carga do catálogo completo, nem a sessão no rodapé
- * do menu. Tirar o limite resolveu — efeitos rodam em ~1,3 s.
- *
- * A página é `force-dynamic` e espera o servidor de qualquer forma, então o
- * esqueleto que o limite exibia comprava pouco e custava a interatividade.
+ * A grade acionável inicial continua sendo resolvida no servidor. Ela garante
+ * que uma falha na carga complementar do navegador nunca transforme o cockpit
+ * em uma tabela vazia. As trocas de loja seguem aproveitando os caches do
+ * servidor e das três grades recentes no cliente.
  */
 export default function PaginaCockpitCompras() {
   return <CarregarDadosCockpit />;

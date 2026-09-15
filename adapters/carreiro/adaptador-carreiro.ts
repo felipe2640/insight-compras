@@ -56,7 +56,7 @@ import {
   localizarDiretorioSnapshot,
 } from "./carregador-snapshot-local";
 import { lerSnapshotNormalizado } from "./snapshot-normalizado";
-import type { ConfiguracaoLotesTenant } from "@config/tenants/tipos";
+import type { ClasseNaoCompravelTenant, ConfiguracaoLotesTenant } from "@config/tenants/tipos";
 
 export interface OpcoesAdaptadorCarreiro {
   readonly configuracaoDax?: ConfiguracaoClienteDax;
@@ -64,6 +64,8 @@ export interface OpcoesAdaptadorCarreiro {
   readonly gerenciadorCache?: GerenciadorCacheResiliente<RespostaCargaInventario>;
   readonly diretorioSnapshot?: string;
   readonly configuracaoLotes?: ConfiguracaoLotesTenant;
+  /** Classes do ERP que não são mercadoria (serviços). Declaradas pelo tenant. */
+  readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
 }
 
 export class AdaptadorInventarioCarreiro implements InventoryAdapter {
@@ -71,6 +73,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   private readonly gerenciadorCache: GerenciadorCacheResiliente<RespostaCargaInventario>;
   private readonly diretorioSnapshot?: string;
   private readonly configuracaoLotes?: ConfiguracaoLotesTenant;
+  private readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
 
   constructor(opcoes: OpcoesAdaptadorCarreiro = {}) {
     this.clienteDax =
@@ -79,6 +82,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
       opcoes.gerenciadorCache || new GerenciadorCacheResiliente<RespostaCargaInventario>();
     this.diretorioSnapshot = opcoes.diretorioSnapshot;
     this.configuracaoLotes = opcoes.configuracaoLotes;
+    this.classesNaoCompraveis = opcoes.classesNaoCompraveis;
   }
 
   /**
@@ -114,8 +118,16 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   private async carregarComResiliencia(
     filtro: FiltroCargaInventario
   ): Promise<RespostaCargaInventario> {
+    // Na carga irrestrita, filialId só muda a perspectiva do motor e a carga
+    // bruta pode ser compartilhada. Na grade operacional, porém, o catálogo é
+    // recortado na própria fonte pelas vendas da filial; nesse caso a filial
+    // precisa permanecer na chave para nunca servir o recorte de outra loja.
+    const filtroCargaRede: FiltroCargaInventario = {
+      ...filtro,
+      filialId: filtro.apenasComEstoqueOuVenda ? filtro.filialId : undefined,
+    };
     const resultadoResiliente = await this.gerenciadorCache.obterOuExecutar(
-      filtro,
+      filtroCargaRede,
       async () => {
         // 0. Modo demonstração: snapshot primeiro, sem tocar a rede.
         // Carga instantânea e imune a oscilação de conexão.
@@ -199,6 +211,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             mapearProdutosDax(linhasAtributos, {
               lotesPorProdutoId,
               configuracaoLotes: this.configuracaoLotes,
+              classesNaoCompraveis: this.classesNaoCompraveis,
             }),
             linhasUltimoPedido
           );
@@ -257,7 +270,9 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
         // 2. Carga Offline a partir de Snapshot Real Extraído
         const dirSnapshot = localizarDiretorioSnapshot(this.diretorioSnapshot);
         if (dirSnapshot) {
-          return await carregarSnapshotCarreiroLocal(dirSnapshot, filtro);
+          return await carregarSnapshotCarreiroLocal(dirSnapshot, filtro, {
+            classesNaoCompraveis: this.classesNaoCompraveis,
+          });
         }
 
         throw new Error(
@@ -456,7 +471,11 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
 
     for (let pagina = 0; pagina < MAXIMO_PAGINAS; pagina++) {
       const linhas = await this.clienteDax.executarConsultaDax(
-        gerarConsultaDaxProdutosEstoque(filtro, cursor)
+        gerarConsultaDaxProdutosEstoque(
+          filtro,
+          cursor,
+          filtro?.filialId ? NOMES_CADEMP_CARREIRO[filtro.filialId] : undefined
+        )
       );
       todas.push(...(linhas as Record<string, unknown>[]));
       if (linhas.length < TAMANHO_PAGINA_PRODUTOS) break;

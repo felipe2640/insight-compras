@@ -33,8 +33,6 @@ import {
   ArrowDownLeft,
 } from "lucide-react";
 import { AppSidebar } from "@/components/layout/app-sidebar";
-import { LinhaCockpitMatriz } from "@/tipos/cockpit";
-import { decodificarGradeTabular, PayloadGradeTabular } from "@/lib/cockpit/codificacao-tabular";
 import { TooltipTransferencia } from "@/components/tooltips/TooltipTransferencia";
 import { useNomesFiliais } from "@/lib/cockpit/contexto-tenant";
 import { cn } from "@/lib/utils";
@@ -91,74 +89,33 @@ export default function PaginaTransferencias() {
     setErro(null);
 
     try {
-      // Requisita a grade com escopo completo para cada filial do tenant
-      const promessas = LOJAS.map(async (loja) => {
-        const resposta = await fetch(
-          `/api/compras?filialId=${loja.id}&formato=tabular&escopo=todos`
-        );
+      const controlador = new AbortController();
+      const limite = window.setTimeout(() => controlador.abort(), 60_000);
+      try {
+        const resposta = await fetch("/api/transferencias", { signal: controlador.signal });
+        const corpo = (await resposta.json()) as {
+          dados?: ItemTransferenciaRede[];
+          mensagem?: string;
+        };
         if (!resposta.ok) {
           throw new Error(
             resposta.status === 401
               ? "Sessão expirada."
-              : `Erro ao consultar ${loja.nome} (${resposta.status})`
+              : corpo.mensagem ?? `Erro ao consultar transferências (${resposta.status})`
           );
         }
-        const corpo = (await resposta.json()) as { grade?: PayloadGradeTabular };
-        if (!corpo.grade) return { lojaId: loja.id, lojaNome: loja.nome, linhas: [] };
-        const linhas = decodificarGradeTabular<LinhaCockpitMatriz>(corpo.grade);
-        return { lojaId: loja.id, lojaNome: loja.nome, linhas };
-      });
-
-      const resultados = await Promise.all(promessas);
-
-      // Consolida todas as transferências sugeridas na rede
-      const itensConsolidados: ItemTransferenciaRede[] = [];
-
-      for (const res of resultados) {
-        const destinoId = res.lojaId;
-        const destinoNome = res.lojaNome;
-
-        for (const linha of res.linhas) {
-          const qtd = linha.quantidadeTransferenciaSugerida ?? 0;
-          const origemNome = linha.filialOrigemTransferenciaNome;
-          const origemId = linha.filialOrigemTransferenciaId ?? 0;
-
-          if (qtd > 0 && origemNome) {
-            const saldoOrigem = linha.saldoOrigemTransferencia ?? 0;
-            const sobraRealOrigem = linha.sobraRealOrigemTransferencia ?? 0;
-            const estoqueMinimo =
-              linha.estoqueMinimoOrigemTransferencia ??
-              Math.max(0, saldoOrigem - sobraRealOrigem);
-            const saldoApos = saldoOrigem - qtd;
-            const custo = linha.precoCusto ?? 0;
-
-            itensConsolidados.push({
-              id: `${linha.produtoId}:${origemId}:${destinoId}`,
-              produtoId: linha.produtoId,
-              codigoSku: linha.codigoSku,
-              descricao: linha.descricao,
-              marca: linha.marca || "—",
-              filialOrigemId: origemId,
-              filialOrigemNome: origemNome,
-              filialDestinoId: destinoId,
-              filialDestinoNome: destinoNome,
-              quantidade: qtd,
-              precoCusto: custo,
-              valorTotal: qtd * custo,
-              saldoOrigem,
-              estoqueMinimoOrigem: estoqueMinimo,
-              sobraRealOrigem,
-              saldoOrigemApos: saldoApos,
-              necessidadeDestino: linha.necessidadeDestinoTransferencia ?? qtd,
-              motivo: linha.motivoDecisao ?? undefined,
-            });
-          }
-        }
+        setTodasTransferencias(corpo.dados ?? []);
+      } finally {
+        window.clearTimeout(limite);
       }
-
-      setTodasTransferencias(itensConsolidados);
     } catch (err) {
-      setErro(err instanceof Error ? err.message : "Sem conexão com o servidor.");
+      setErro(
+        err instanceof DOMException && err.name === "AbortError"
+          ? "A consulta demorou mais de 60 segundos. Tente novamente."
+          : err instanceof Error
+          ? err.message
+          : "Sem conexão com o servidor."
+      );
     } finally {
       setCarregando(false);
     }
