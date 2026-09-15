@@ -927,6 +927,8 @@ export function criarColunasCockpit({
             ? "bg-indigo-100 text-indigo-800 border-indigo-300 font-bold"
             : mov === "Marca Zumbi"
             ? "bg-slate-800 text-rose-200 border-slate-700 font-bold"
+            : mov === "Sugestão ERP"
+            ? "bg-amber-100 text-amber-800 border-amber-300 font-bold"
             : "bg-slate-100 text-slate-700 border-slate-200";
 
         const temIa =

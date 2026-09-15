@@ -633,6 +633,8 @@ export function converterParaLinhasCockpit(
         ? "Transferir"
         : statusSugestao === "TRAVADO_MARCA_ZUMBI"
         ? "Marca Zumbi"
+        : temSugestaoErp
+        ? "Sugestão ERP"
         : "Estoque OK";
 
     linhas.push({
