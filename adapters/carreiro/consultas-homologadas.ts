@@ -845,3 +845,57 @@ TOPN(
 )
 `.trim();
 }
+
+/**
+ * 11. Sugestões e Solicitações de Compra Geradas Hoje no ERP.
+ * Permite que a plataforma white-label opere em paralelo com o processo de compras
+ * do ERP do cliente, trazendo os itens sugeridos hoje com a quantidade indicada pelo sistema.
+ */
+export const CONSULTA_DAX_SUGESTOES_ERP_HOJE = `
+EVALUATE
+SELECTCOLUMNS(
+    FILTER(
+        TBL_SOLICITACOES_COMPRAS,
+        TBL_SOLICITACOES_COMPRAS[DH_CRIACAO] >= TODAY()
+          && TBL_SOLICITACOES_COMPRAS[STATUS] <> "C"
+          && NOT ISBLANK(TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO])
+    ),
+    "Empresa", TBL_SOLICITACOES_COMPRAS[ACODEMPRESA],
+    "Produto", TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO],
+    "Quantidade", TBL_SOLICITACOES_COMPRAS[QTDE],
+    "DataHora", TBL_SOLICITACOES_COMPRAS[DH_CRIACAO],
+    "Tipo", TBL_SOLICITACOES_COMPRAS[TIPO],
+    "Descricao", TBL_SOLICITACOES_COMPRAS[DESCRICAO],
+    "Solicitador", TBL_SOLICITACOES_COMPRAS[NOME_SOLICITADOR]
+)
+`.trim();
+
+/**
+ * Gera consulta DAX parametrizada para listar sugestões do ERP por janela de dias.
+ */
+export function gerarConsultaDaxSugestoesErp(dias: number = 0): string {
+  const filtroData =
+    dias > 0
+      ? `TBL_SOLICITACOES_COMPRAS[DH_CRIACAO] >= TODAY() - ${Math.min(365, Math.max(1, Math.floor(dias)))}`
+      : `TBL_SOLICITACOES_COMPRAS[DH_CRIACAO] >= TODAY()`;
+
+  return `
+EVALUATE
+SELECTCOLUMNS(
+    FILTER(
+        TBL_SOLICITACOES_COMPRAS,
+        ${filtroData}
+          && TBL_SOLICITACOES_COMPRAS[STATUS] <> "C"
+          && NOT ISBLANK(TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO])
+    ),
+    "Empresa", TBL_SOLICITACOES_COMPRAS[ACODEMPRESA],
+    "Produto", TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO],
+    "Quantidade", TBL_SOLICITACOES_COMPRAS[QTDE],
+    "DataHora", TBL_SOLICITACOES_COMPRAS[DH_CRIACAO],
+    "Tipo", TBL_SOLICITACOES_COMPRAS[TIPO],
+    "Descricao", TBL_SOLICITACOES_COMPRAS[DESCRICAO],
+    "Solicitador", TBL_SOLICITACOES_COMPRAS[NOME_SOLICITADOR]
+)
+  `.trim();
+}
+

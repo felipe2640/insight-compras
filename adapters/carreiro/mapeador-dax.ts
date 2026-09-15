@@ -21,6 +21,7 @@ import { DIAS_JANELA_RUPTURA } from "./consultas-homologadas";
 import {
   EntradaNFeDoDia,
   ItemSimilarIntercambiavel,
+  SugestaoCompraERPItem,
 } from "../AdaptadorInventario";
 import { normalizarLinhaDax } from "./cliente-dax";
 
@@ -684,3 +685,65 @@ export function aplicarUltimoPedido(
     return data ? { ...p, dataUltimoPedido: data } : p;
   });
 }
+
+/**
+ * Mapeia as sugestões/solicitações de compra geradas no ERP para itens tipados.
+ * Indexado por chave `${produtoId}:${filialId}` para resolução O(1) na matriz do Cockpit.
+ * Quando há múltiplas solicitações para o mesmo SKU e loja no dia, soma as quantidades e preserva a data mais recente.
+ */
+export function mapearSugestoesErpDax(
+  linhasBrutas: readonly Record<string, unknown>[]
+): Map<string, SugestaoCompraERPItem> {
+  const mapa = new Map<string, SugestaoCompraERPItem>();
+
+  for (const linhaBruta of linhasBrutas) {
+    const linha = normalizarLinhaDax(linhaBruta);
+    const produtoId = extrairIdProduto(
+      linha.Produto ?? linha.CODIGO_PRODUTO ?? linha.ACODPRODUTO ?? linha.produtoId
+    );
+    if (!produtoId) continue;
+
+    const { filialId } = mapearFilialCarreiro(linha.Empresa ?? linha.ACODEMPRESA ?? linha.empresaId);
+    const quantidade = Math.max(
+      0,
+      Number(
+        linha.Quantidade ??
+          linha.QTDE ??
+          linha.QTD_SOLICITADA ??
+          linha.QUANTIDADE ??
+          linha.quantidade ??
+          0
+      )
+    );
+    if (quantidade <= 0) continue;
+
+    const dataIso = normalizarDataIso(linha.DataHora ?? linha.DH_CRIACAO ?? linha.dataHora) ?? new Date().toISOString();
+    const origem = String(linha.Tipo ?? linha.TIPO ?? linha.ORIGEM ?? "REPOSICAO_ESTOQUE").trim();
+    const descricao = String(linha.Descricao ?? linha.DESCRICAO ?? "Solicitação ERP").trim();
+    const solicitador = linha.Solicitador ? String(linha.Solicitador).trim() : undefined;
+
+    const chave = `${produtoId}:${filialId}`;
+    const existente = mapa.get(chave);
+
+    if (existente) {
+      mapa.set(chave, {
+        ...existente,
+        quantidadeSugerida: existente.quantidadeSugerida + quantidade,
+        dataSugestao: dataIso > existente.dataSugestao ? dataIso : existente.dataSugestao,
+      });
+    } else {
+      mapa.set(chave, {
+        produtoId,
+        filialId,
+        quantidadeSugerida: quantidade,
+        dataSugestao: dataIso,
+        origem,
+        descricao,
+        solicitador,
+      });
+    }
+  }
+
+  return mapa;
+}
+

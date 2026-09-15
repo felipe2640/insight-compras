@@ -25,6 +25,7 @@ import {
   CONSULTA_DAX_FRESCOR,
   CONSULTA_DAX_ENTRADAS_HOJE,
   CONSULTA_DAX_ULTIMO_PEDIDO,
+  CONSULTA_DAX_SUGESTOES_ERP_HOJE,
   gerarConsultaDaxSimilares,
   TAMANHO_PAGINA_SIMILARES,
   gerarConsultaDaxMovimentosEstoque,
@@ -47,6 +48,7 @@ import {
   mapearHistoricoVendasDax,
   mapearEntradasNFeDax,
   mapearSimilaresDax,
+  mapearSugestoesErpDax,
   aplicarRupturaReconstruida,
   aplicarUltimoPedido,
   extrairIdProduto,
@@ -160,6 +162,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             linhasSimilares,
             linhasMovimentos,
             linhasUltimoPedido,
+            linhasSugestoesErp,
           ] = await Promise.all([
             this.carregarCatalogoPaginado(filtro),
             this.clienteDax.executarConsultaDax(gerarConsultaDaxHistoricoVendas(filtro)),
@@ -191,6 +194,10 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             this.carregarMovimentosDaJanela(),
             this.clienteDax.executarConsultaDax(CONSULTA_DAX_ULTIMO_PEDIDO).catch((e) => {
               console.warn("[Adaptador Carreiro] Aviso ao consultar solicitações de compra:", e);
+              return [] as readonly Record<string, unknown>[];
+            }),
+            this.clienteDax.executarConsultaDax(CONSULTA_DAX_SUGESTOES_ERP_HOJE).catch((e) => {
+              console.warn("[Adaptador Carreiro] Aviso ao consultar sugestões de compra do ERP:", e);
               return [] as readonly Record<string, unknown>[];
             }),
           ]);
@@ -248,6 +255,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             mapaProdutosPorId,
             saldosPorProduto
           );
+          const sugestoesErp = mapearSugestoesErpDax(linhasSugestoesErp);
 
           const resposta: RespostaCargaInventario = {
             produtos,
@@ -255,6 +263,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             historicos,
             entradasHoje,
             similares,
+            sugestoesErp,
             metadados: {
               provedor: "POWERBI_FABRIC_DAX",
               timestampCarga: new Date().toISOString(),

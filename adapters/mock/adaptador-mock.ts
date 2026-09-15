@@ -116,6 +116,19 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
       }
     }
 
+    // Filtra sugestões do ERP
+    const sugestoesErpFiltradas = new Map();
+    if (base.sugestoesErp) {
+      for (const [chave, item] of base.sugestoesErp.entries()) {
+        if (idsProdutosFiltrados.has(item.produtoId)) {
+          if (filtro.filialId !== undefined && item.filialId !== filtro.filialId) {
+            continue;
+          }
+          sugestoesErpFiltradas.set(chave, item);
+        }
+      }
+    }
+
     const latenciaMs = Date.now() - inicio;
 
     return {
@@ -124,6 +137,7 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
       historicos: historicosFiltrados,
       entradasHoje: entradasFiltradas,
       similares: similaresFiltrados,
+      sugestoesErp: sugestoesErpFiltradas,
       metadados: {
         provedor: "MOCK_SINTETICO",
         timestampCarga: new Date().toISOString(),

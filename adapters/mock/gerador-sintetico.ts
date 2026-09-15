@@ -22,6 +22,7 @@ import { inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
 import {
   EntradaNFeDoDia,
   ItemSimilarIntercambiavel,
+  SugestaoCompraERPItem,
   RespostaCargaInventario,
 } from "../AdaptadorInventario";
 import { NOMES_FILIAIS_CARREIRO } from "../carreiro/mapeador-dax";
@@ -392,6 +393,24 @@ export function gerarDatasetSinteticoCarreiro(
     similares.set(pOrigem.id, [itemSimilar]);
   }
 
+  // Gera sugestões de compra do ERP para os primeiros 500 produtos (operação em paralelo)
+  const sugestoesErp = new Map<string, SugestaoCompraERPItem>();
+  const hojeIso = new Date().toISOString();
+  for (let i = 0; i < Math.min(500, totalSkus); i++) {
+    const p = produtos[i];
+    const filialId = (i % 2) + 1; // Distribui entre loja 1 e 2
+    const qtdSugerida = (i % 5) + 1;
+    sugestoesErp.set(`${p.id}:${filialId}`, {
+      produtoId: p.id,
+      filialId,
+      quantidadeSugerida: qtdSugerida,
+      dataSugestao: hojeIso,
+      origem: i % 4 === 0 ? "E" : "R",
+      descricao: i % 4 === 0 ? "SOLICITAÇÃO EMERGENCIAL DE BALCÃO" : "SOLICITAÇÃO PARA REPOSIÇÃO DE ESTOQUE",
+      solicitador: "COMPRAS ERP",
+    });
+  }
+
   const latenciaMs = Date.now() - inicio;
 
   return {
@@ -400,6 +419,7 @@ export function gerarDatasetSinteticoCarreiro(
     historicos,
     entradasHoje,
     similares,
+    sugestoesErp,
     metadados: {
       provedor: "MOCK_SINTETICO",
       timestampCarga: new Date().toISOString(),
