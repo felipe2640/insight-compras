@@ -33,6 +33,7 @@ from modelos.baseline_atual import ModeloBaselineAtual
 from modelos.chronos_bolt import ModeloChronosBolt
 from modelos.croston_sba import ModeloCrostonSBA
 from modelos.dlinear import ModeloDLinear
+from modelos.quantil_empirico import ModeloQuantilEmpirico
 from extratores import obter_extrator
 from normalizacao import (
     ALIASES_PRODUTOS,
@@ -120,6 +121,8 @@ def obter_modelo(nome_modelo: str):
         return ModeloCrostonSBA()
     elif 'dlinear' in nome_low:
         return ModeloDLinear()
+    elif 'quantil' in nome_low or 'empirico' in nome_low:
+        return ModeloQuantilEmpirico()
     elif 'baseline' in nome_low:
         return ModeloBaselineAtual()
     else:

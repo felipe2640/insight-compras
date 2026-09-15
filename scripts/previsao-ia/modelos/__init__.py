@@ -4,6 +4,7 @@ from .croston_sba import ModeloCrostonSBA
 from .dlinear import ModeloDLinear
 from .chronos_bolt import ModeloChronosBolt
 from .timesfm_model import ModeloTimesFM
+from .quantil_empirico import ModeloQuantilEmpirico
 
 __all__ = [
     'ModeloPrevisaoBase',
@@ -13,4 +14,5 @@ __all__ = [
     'ModeloDLinear',
     'ModeloChronosBolt',
     'ModeloTimesFM',
+    'ModeloQuantilEmpirico',
 ]
