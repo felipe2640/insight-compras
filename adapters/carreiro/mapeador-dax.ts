@@ -560,7 +560,11 @@ export function mapearSimilaresDax(
   produtosPorId: ReadonlyMap<number, Produto>,
   saldosPorProduto: ReadonlyMap<number, number>
 ): Map<number, readonly ItemSimilarIntercambiavel[]> {
-  const mapaSimilares = new Map<number, ItemSimilarIntercambiavel[]>();
+  // A tabela do ERP guarda pares direcionais, mas intercambiabilidade é uma
+  // relação de grupo. Um produto pode aparecer como origem em um registro e
+  // apenas como destino em outro. Tratar cada linha isoladamente fazia o modal
+  // mostrar listas diferentes para peças do mesmo conjunto.
+  const adjacencias = new Map<number, Set<number>>();
 
   for (const linhaBruta of linhasDax) {
     const linha = normalizarLinhaDax(linhaBruta);
@@ -570,27 +574,57 @@ export function mapearSimilaresDax(
 
     if (!idOrigem || !idSimilar || idOrigem === idSimilar) continue;
 
-    const produtoSimilar = produtosPorId.get(idSimilar);
-    if (!produtoSimilar) continue;
+    // Só relações inteiramente pertencentes ao catálogo carregado podem formar
+    // grupos; do contrário um código ausente poderia unir grupos indevidamente.
+    if (!produtosPorId.has(idOrigem) || !produtosPorId.has(idSimilar)) continue;
 
-    const saldoDisponivel = saldosPorProduto.get(idSimilar) ?? 0;
+    const vizinhosOrigem = adjacencias.get(idOrigem) ?? new Set<number>();
+    vizinhosOrigem.add(idSimilar);
+    adjacencias.set(idOrigem, vizinhosOrigem);
 
-    const itemSimilar: ItemSimilarIntercambiavel = {
-      produtoIdOrigem: idOrigem,
-      produtoIdSimilar: idSimilar,
-      codigoSkuSimilar: produtoSimilar.codigoSku,
-      descricaoSimilar: produtoSimilar.descricao,
-      marcaSimilar: produtoSimilar.marca,
-      saldoFisicoDisponivelRede: saldoDisponivel,
-    };
+    const vizinhosSimilar = adjacencias.get(idSimilar) ?? new Set<number>();
+    vizinhosSimilar.add(idOrigem);
+    adjacencias.set(idSimilar, vizinhosSimilar);
+  }
 
-    // O mesmo par aparece repetido em PRODUTOS_SEMELHANTES (uma vez por empresa).
-    // Sem deduplicar, o diálogo de intercambiáveis lista a mesma peça cinco
-    // vezes e o comprador acha que tem cinco alternativas onde só existe uma.
-    const existentes = mapaSimilares.get(idOrigem) ?? [];
-    if (!existentes.some((e) => e.produtoIdSimilar === idSimilar)) {
-      existentes.push(itemSimilar);
-      mapaSimilares.set(idOrigem, existentes);
+  const mapaSimilares = new Map<number, ItemSimilarIntercambiavel[]>();
+  const visitados = new Set<number>();
+
+  for (const inicio of adjacencias.keys()) {
+    if (visitados.has(inicio)) continue;
+
+    const componente: number[] = [];
+    const pendentes = [inicio];
+    let indicePendente = 0;
+    visitados.add(inicio);
+
+    while (indicePendente < pendentes.length) {
+      const atual = pendentes[indicePendente++];
+      componente.push(atual);
+      for (const vizinho of adjacencias.get(atual) ?? []) {
+        if (visitados.has(vizinho)) continue;
+        visitados.add(vizinho);
+        pendentes.push(vizinho);
+      }
+    }
+
+    for (const idOrigem of componente) {
+      mapaSimilares.set(
+        idOrigem,
+        componente
+          .filter((idSimilar) => idSimilar !== idOrigem)
+          .map((idSimilar) => {
+            const produtoSimilar = produtosPorId.get(idSimilar)!;
+            return {
+              produtoIdOrigem: idOrigem,
+              produtoIdSimilar: idSimilar,
+              codigoSkuSimilar: produtoSimilar.codigoSku,
+              descricaoSimilar: produtoSimilar.descricao,
+              marcaSimilar: produtoSimilar.marca,
+              saldoFisicoDisponivelRede: saldosPorProduto.get(idSimilar) ?? 0,
+            };
+          })
+      );
     }
   }
 

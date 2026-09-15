@@ -376,7 +376,10 @@ export function CockpitPrincipal({
   // 10. Estados da Tabela TanStack (Ordenação, Visibilidade, Fixação, Resizing, Altura)
   const [sorting, setSorting] = useState<SortingState>([]);
   const [sortValue, setSortValue] = useState<string>("custo-desc");
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
+    // Coluna virtual disponível no menu "Filtrar", sem ocupar espaço na grade.
+    codigoAgrupador: false,
+  });
   const [columnPinning, setColumnPinning] = useState<ColumnPinningState>({
     left: ["select", "codigo", "descricao"],
     right: ["pedido", "transferencia"],

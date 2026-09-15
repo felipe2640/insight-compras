@@ -82,6 +82,22 @@ describe("mapeamento de intercambiáveis", () => {
     expect(mapa.get(876)?.map((s) => s.codigoSkuSimilar)).toEqual(["018099", "018100"]);
   });
 
+  it("forma um grupo bidirecional e transitivo para todos os SKUs equivalentes", () => {
+    const mapa = mapearSimilaresDax(
+      [
+        { ProdutoOrigem: "000876", ProdutoSimilar: "018099" },
+        { ProdutoOrigem: "000876", ProdutoSimilar: "018100" },
+      ],
+      produtos,
+      new Map([[876, 1], [18099, 2], [18100, 3]])
+    );
+
+    expect(mapa.get(876)?.map((s) => s.codigoSkuSimilar)).toEqual(["018099", "018100"]);
+    expect(mapa.get(18099)?.map((s) => s.codigoSkuSimilar)).toEqual(["000876", "018100"]);
+    expect(mapa.get(18100)?.map((s) => s.codigoSkuSimilar)).toEqual(["000876", "018099"]);
+    expect(mapa.get(18099)?.map((s) => s.saldoFisicoDisponivelRede)).toEqual([1, 3]);
+  });
+
   it("aceita código com e sem sufixo de empresa", () => {
     const mapa = mapearSimilaresDax(
       [{ ProdutoOrigem: "000876|guid-a", ProdutoSimilar: "018099", TipoSimilaridade: "B" }],
