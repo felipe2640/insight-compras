@@ -46,18 +46,21 @@ import {
   localizarDiretorioSnapshot,
 } from "./carregador-snapshot-local";
 import { lerSnapshotNormalizado } from "./snapshot-normalizado";
+import type { ConfiguracaoLotesTenant } from "@config/tenants/tipos";
 
 export interface OpcoesAdaptadorCarreiro {
   readonly configuracaoDax?: ConfiguracaoClienteDax;
   readonly clienteDax?: ClienteDaxPowerBI;
   readonly gerenciadorCache?: GerenciadorCacheResiliente<RespostaCargaInventario>;
   readonly diretorioSnapshot?: string;
+  readonly configuracaoLotes?: ConfiguracaoLotesTenant;
 }
 
 export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   private readonly clienteDax: ClienteDaxPowerBI;
   private readonly gerenciadorCache: GerenciadorCacheResiliente<RespostaCargaInventario>;
   private readonly diretorioSnapshot?: string;
+  private readonly configuracaoLotes?: ConfiguracaoLotesTenant;
 
   constructor(opcoes: OpcoesAdaptadorCarreiro = {}) {
     this.clienteDax =
@@ -65,6 +68,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
     this.gerenciadorCache =
       opcoes.gerenciadorCache || new GerenciadorCacheResiliente<RespostaCargaInventario>();
     this.diretorioSnapshot = opcoes.diretorioSnapshot;
+    this.configuracaoLotes = opcoes.configuracaoLotes;
   }
 
   /**
@@ -182,7 +186,10 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
           }
 
           const produtos = aplicarUltimoPedido(
-            mapearProdutosDax(linhasAtributos, { lotesPorProdutoId }),
+            mapearProdutosDax(linhasAtributos, {
+              lotesPorProdutoId,
+              configuracaoLotes: this.configuracaoLotes,
+            }),
             linhasUltimoPedido
           );
 
@@ -377,4 +384,3 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   }
 
 }
-

@@ -95,6 +95,7 @@ export function obterAdaptadorInventario(
         mapaInstanciasAdaptadores.set(chave, new AdaptadorInventarioCarreiro({
           ...opcoes.carreiro,
           clienteDax,
+          configuracaoLotes: tenant.parametrosMotor.lotes,
         }));
       }
       return mapaInstanciasAdaptadores.get(chave)!;

@@ -75,17 +75,36 @@ export function descreverAjusteLoteAutopecas(lote: number): string | null {
  * Resolve o lote final aplicando a precedência recomendada.
  */
 export function resolverLoteAutopecas(parametros: {
+  readonly loteConfigurado?: number;
   readonly loteCadastradoErp?: number;
   readonly loteDetectadoHistograma?: number;
   readonly descricao: string;
-}): { lote: number; origem: "ERP" | "HISTOGRAMA" | "VOCABULARIO" } {
-  const { loteCadastradoErp = 0, loteDetectadoHistograma = 0, descricao } = parametros;
+  readonly usarErp?: boolean;
+  readonly usarHistorico?: boolean;
+  readonly usarVocabulario?: boolean;
+}): { lote: number; origem: "CONFIGURACAO" | "ERP" | "HISTOGRAMA" | "VOCABULARIO" | "PADRAO" } {
+  const {
+    loteConfigurado = 0,
+    loteCadastradoErp = 0,
+    loteDetectadoHistograma = 0,
+    descricao,
+    usarErp = true,
+    usarHistorico = true,
+    usarVocabulario = true,
+  } = parametros;
 
-  if (loteCadastradoErp > 1) {
+  if (loteConfigurado >= 1) {
+    return { lote: Math.floor(loteConfigurado), origem: "CONFIGURACAO" };
+  }
+  if (usarErp && loteCadastradoErp > 1) {
     return { lote: Math.floor(loteCadastradoErp), origem: "ERP" };
   }
-  if (loteDetectadoHistograma > 1) {
+  if (usarHistorico && loteDetectadoHistograma > 1) {
     return { lote: Math.floor(loteDetectadoHistograma), origem: "HISTOGRAMA" };
   }
-  return { lote: inferirLotePadraoPorCategoria(descricao), origem: "VOCABULARIO" };
+  if (usarVocabulario) {
+    const lote = inferirLotePadraoPorCategoria(descricao);
+    return { lote, origem: "VOCABULARIO" };
+  }
+  return { lote: 1, origem: "PADRAO" };
 }

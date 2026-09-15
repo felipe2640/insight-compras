@@ -680,6 +680,7 @@ export function converterParaLinhasCockpit(
 
       // Ajustes e Múltiplos
       loteMultiplo,
+      origemLoteMultiplo: p.origemLoteMultiplo,
       embalagemMinima,
       pedidoCustom: sugestaoFinalCompra,
       transferenciaCustom: quantidadeTransferenciaSugerida,

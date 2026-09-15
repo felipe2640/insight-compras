@@ -122,6 +122,7 @@ export interface LinhaCockpitMatriz {
 
   // Ajuste Humano e Múltiplos
   readonly loteMultiplo: number; // ex: 1 avulso, 2 par, 4 jogo
+  readonly origemLoteMultiplo?: "CONFIGURACAO" | "ERP" | "HISTOGRAMA" | "VOCABULARIO" | "PADRAO";
   readonly embalagemMinima?: number;
   readonly pedidoCustom: number;
   readonly transferenciaCustom: number;
