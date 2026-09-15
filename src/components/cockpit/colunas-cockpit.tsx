@@ -57,6 +57,26 @@ function formatarNumero(valor: number, decimais = 0): string {
   });
 }
 
+/**
+ * Índice textual usado apenas pelo filtro "Código agrupador". Além dos SKUs
+ * formatados, inclui a forma sem zeros à esquerda para o comprador poder
+ * digitar tanto 006534 quanto 6534.
+ */
+export function codigosDoGrupoSimilar(linha: LinhaCockpitCompras): string {
+  const codigos = new Set([
+    linha.codigo,
+    ...linha.similares.map((similar) => similar.codigoSkuSimilar),
+  ]);
+
+  return Array.from(codigos)
+    .flatMap((codigo) => {
+      const normalizado = String(codigo ?? "").trim();
+      const semZeros = normalizado.replace(/^0+(?=\d)/, "");
+      return semZeros === normalizado ? [normalizado] : [normalizado, semZeros];
+    })
+    .join(" ");
+}
+
 export function criarColunasCockpit({
   // Rótulo neutro: quem chama sempre passa o nome vindo do cadastro do tenant.
   // O padrão era "Pedro II" — uma loja de um cliente específico, que aparecia
@@ -160,6 +180,21 @@ export function criarColunasCockpit({
         pinned: "left",
       },
       enableSorting: true,
+    },
+
+    // Campo virtual: fica oculto na grade, mas aparece no construtor central de
+    // filtros e reúne o SKU da linha com todos os seus intercambiáveis.
+    {
+      id: "codigoAgrupador",
+      accessorFn: codigosDoGrupoSimilar,
+      header: "Código agrupador",
+      meta: {
+        variante: "texto",
+        label: "Código agrupador",
+        align: "left",
+      },
+      enableSorting: false,
+      enableHiding: false,
     },
 
     // 3. Descrição
