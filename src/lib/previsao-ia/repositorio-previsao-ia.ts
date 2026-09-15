@@ -101,6 +101,43 @@ export function contarProjecoesIa(mapa: ReadonlyMap<string, PrevisaoDemandaIaIte
   return total;
 }
 
+/**
+ * Rótulo honesto da origem das projeções carregadas.
+ *
+ * O campeão do benchmark pode ser a PRÓPRIA régua heurística — foi o que
+ * aconteceu quando a eleição passou a ser por custo financeiro. Nesse caso o
+ * pipeline republica a heurística recalculada em Python, e chamar isso de
+ * "previsão probabilística" no cockpit seria falso: não há distribuição
+ * nenhuma, é a mesma conta do motor analítico.
+ *
+ * Devolve null quando não há projeção utilizável.
+ */
+export function descreverOrigemPrevisoesIa(
+  mapa: ReadonlyMap<string, PrevisaoDemandaIaItem>
+): { readonly rotulo: string; readonly series: number } | null {
+  const series = contarProjecoesIa(mapa);
+  if (series === 0) return null;
+
+  const contagemPorModelo = new Map<string, number>();
+  for (const [chave, item] of mapa) {
+    if (chave !== `${item.produtoId}:${item.filialId}`) continue;
+    const nome = item.modeloUtilizado || "modelo não identificado";
+    contagemPorModelo.set(nome, (contagemPorModelo.get(nome) ?? 0) + 1);
+  }
+
+  const [modeloDominante] = [...contagemPorModelo.entries()].sort((a, b) => b[1] - a[1])[0] ?? [
+    "modelo não identificado",
+  ];
+
+  // A heurística não é distribuição: o rótulo diz o que ela é.
+  const ehHeuristica = /baseline|heuris/i.test(modeloDominante);
+  const rotulo = ehHeuristica
+    ? `Régua analítica recalculada (${series} séries)`
+    : `Previsão probabilística — ${modeloDominante} (${series} séries)`;
+
+  return { rotulo, series };
+}
+
 /** Data mínima aceita (YYYY-MM-DD) para uma projeção ser considerada vigente. */
 export function dataMinimaPrevisaoVigente(
   validadeDias = VALIDADE_MAXIMA_DIAS,

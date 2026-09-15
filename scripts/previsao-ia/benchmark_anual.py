@@ -12,6 +12,7 @@ from modelos.quantil_empirico import ModeloQuantilEmpirico
 from modelos.croston_sba import ModeloCrostonSBA
 from modelos.dlinear import ModeloDLinear
 from modelos.chronos_bolt import ModeloChronosBolt
+from modelos.combinado import ModeloCombinadoPiso
 from normalizacao import ALIASES_VENDAS, normalizar_colunas
 
 def carregar_dados():
@@ -112,16 +113,28 @@ def executar_benchmark_anual(incluir_small: bool = False):
     ]
     horizonte_dias = 30
 
+    chronos_tiny = ModeloChronosBolt(model_id='amazon/chronos-bolt-tiny', nome='Chronos-Bolt (Tiny)')
+    dlinear = ModeloDLinear()
+    quantil_empirico = ModeloQuantilEmpirico(percentil_cobertura=80.0)
+
     modelos = [
         ModeloBaselineAtual(),
-        ModeloQuantilEmpirico(percentil_cobertura=80.0),
+        quantil_empirico,
         ModeloCrostonSBA(),
-        ModeloDLinear(),
-        ModeloChronosBolt(model_id='amazon/chronos-bolt-tiny', nome='Chronos-Bolt (Tiny)'),
+        dlinear,
+        chronos_tiny,
+        # As combinações abaixo são o que a PRODUÇÃO executa: a trava de piso em
+        # core/calculo/necessidade.ts usa max(régua analítica, modelo). Avaliar só
+        # os modelos isolados não dizia se o modelo se paga como upside.
+        ModeloCombinadoPiso(ModeloBaselineAtual(), dlinear),
+        ModeloCombinadoPiso(ModeloBaselineAtual(), chronos_tiny),
+        ModeloCombinadoPiso(ModeloBaselineAtual(), quantil_empirico),
     ]
 
     if incluir_small:
-        modelos.append(ModeloChronosBolt(model_id='amazon/chronos-bolt-small', nome='Chronos-Bolt (Small)'))
+        chronos_small = ModeloChronosBolt(model_id='amazon/chronos-bolt-small', nome='Chronos-Bolt (Small)')
+        modelos.append(chronos_small)
+        modelos.append(ModeloCombinadoPiso(ModeloBaselineAtual(), chronos_small))
 
     print('\n' + '='*95)
     print('INICIANDO ROLLING BACKTEST ANUAL COM SIMULAÇÃO DE ESTOQUE E CRITÉRIO FINANCEIRO (R$)')

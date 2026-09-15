@@ -13,7 +13,7 @@ import { montarOpcoesMatriz, obterTenantAtivo } from "@/lib/cockpit/opcoes-tenan
 import { carregarParametrosPublicados } from "./repositorio";
 import {
   carregarMapaPrevisoesIa,
-  contarProjecoesIa,
+  descreverOrigemPrevisoesIa,
 } from "@/lib/previsao-ia/repositorio-previsao-ia";
 
 export async function montarOpcoesMatrizComPublicados(
@@ -26,12 +26,11 @@ export async function montarOpcoesMatrizComPublicados(
     carregarMapaPrevisoesIa(tenant.id),
   ]);
 
-  const totalProjecoesIa = mapaPrevisoesIa ? contarProjecoesIa(mapaPrevisoesIa) : 0;
-  const temIa = totalProjecoesIa > 0;
+  // O rótulo nomeia o que realmente gerou as projeções: se o campeão do
+  // benchmark for a própria heurística, dizer "probabilística" seria falso.
+  const origemIa = mapaPrevisoesIa ? descreverOrigemPrevisoesIa(mapaPrevisoesIa) : null;
   const versaoBase = publicados ? publicados.versao : "arquivo do tenant";
-  const versaoParametros = temIa
-    ? `Previsão probabilística (${totalProjecoesIa} séries) + ${versaoBase}`
-    : versaoBase;
+  const versaoParametros = origemIa ? `${origemIa.rotulo} + ${versaoBase}` : versaoBase;
 
   if (!publicados || !base.parametrosMotor) {
     return { ...base, mapaPrevisoesIa, versaoParametros };
