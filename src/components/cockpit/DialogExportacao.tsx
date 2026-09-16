@@ -91,12 +91,20 @@ function lerColunasSalvas(tenantId: string, layout: LayoutExportacao): Set<strin
     const lista = JSON.parse(bruto) as unknown;
     if (!Array.isArray(lista)) return new Set(layout.colunas);
     const validas = lista.filter(
-      (id): id is string => typeof id === "string" && layout.colunas.includes(id)
+      (id): id is string => typeof id === "string" && CATALOGO_COLUNAS_EXPORTACAO.has(id)
     );
     return validas.length > 0 ? new Set(validas) : new Set(layout.colunas);
   } catch {
     return new Set(layout.colunas);
   }
+}
+
+function ordenarColunasSelecionadas(layout: LayoutExportacao, selecionadas: ReadonlySet<string>): string[] {
+  const doLayout = layout.colunas.filter((id) => selecionadas.has(id));
+  const adicionais = Array.from(CATALOGO_COLUNAS_EXPORTACAO.keys()).filter(
+    (id) => selecionadas.has(id) && !layout.colunas.includes(id)
+  );
+  return [...doLayout, ...adicionais];
 }
 
 function salvarColunas(tenantId: string, layoutId: string, colunas: ReadonlySet<string>): void {
@@ -214,7 +222,7 @@ export function DialogExportacao({
   // Agrupamento de colunas disponíveis
   const colunasPorGrupo = useMemo(() => {
     const mapa = new Map<string, string[]>();
-    for (const id of layout.colunas) {
+    for (const id of CATALOGO_COLUNAS_EXPORTACAO.keys()) {
       const col = CATALOGO_COLUNAS_EXPORTACAO.get(id);
       if (!col) continue;
       const lista = mapa.get(col.grupo) ?? [];
@@ -276,7 +284,7 @@ export function DialogExportacao({
           nome,
           escopo: layout.escopo,
           formato,
-          colunas: layout.colunas.filter((c) => colunas.has(c)),
+          colunas: ordenarColunasSelecionadas(layout, colunas),
           rotulosPersonalizados: layout.rotulosPersonalizados,
           csv: layout.csv,
           nomeArquivo: layout.nomeArquivo,
@@ -332,9 +340,7 @@ export function DialogExportacao({
     setSalvandoModelo(true);
     try {
       // Mantém a ordem original das colunas conhecidas
-      const colunasOrdenadas = layout.colunas.filter((c) => colunas.has(c));
-      const colunasFinais =
-        colunasOrdenadas.length > 0 ? colunasOrdenadas : Array.from(colunas);
+      const colunasFinais = ordenarColunasSelecionadas(layout, colunas);
 
       const r = await fetch("/api/exportacao/modelos", {
         method: "POST",
@@ -751,7 +757,8 @@ export function DialogExportacao({
                       <div className="grid grid-cols-2 gap-x-3 gap-y-1">
                         {ids.map((id) => {
                           const col = CATALOGO_COLUNAS_EXPORTACAO.get(id)!;
-                          const rotulo = layout.rotulosPersonalizados?.[id] ?? col.rotulo;
+                          const rotuloArquivo = layout.rotulosPersonalizados?.[id] ?? col.rotulo;
+                          const rotulo = id === "sku" ? "Código do produto (SKU)" : rotuloArquivo;
                           return (
                             <label
                               key={id}
@@ -764,7 +771,7 @@ export function DialogExportacao({
                               />
                               <span
                                 className="truncate"
-                                title={rotulo !== col.rotulo ? `${rotulo} (${col.rotulo})` : rotulo}
+                                title={rotuloArquivo !== col.rotulo ? `${rotulo} — sairá como ${rotuloArquivo}` : rotulo}
                               >
                                 {rotulo}
                               </span>

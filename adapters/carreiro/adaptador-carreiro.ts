@@ -46,7 +46,7 @@ import {
   localizarDiretorioSnapshot,
 } from "./carregador-snapshot-local";
 import { lerSnapshotNormalizado } from "./snapshot-normalizado";
-import type { ConfiguracaoLotesTenant } from "@config/tenants/tipos";
+import type { ClasseNaoCompravelTenant, ConfiguracaoLotesTenant } from "@config/tenants/tipos";
 
 export interface OpcoesAdaptadorCarreiro {
   readonly configuracaoDax?: ConfiguracaoClienteDax;
@@ -54,6 +54,8 @@ export interface OpcoesAdaptadorCarreiro {
   readonly gerenciadorCache?: GerenciadorCacheResiliente<RespostaCargaInventario>;
   readonly diretorioSnapshot?: string;
   readonly configuracaoLotes?: ConfiguracaoLotesTenant;
+  /** Classes do ERP que não são mercadoria (serviços). Declaradas pelo tenant. */
+  readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
 }
 
 export class AdaptadorInventarioCarreiro implements InventoryAdapter {
@@ -61,6 +63,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   private readonly gerenciadorCache: GerenciadorCacheResiliente<RespostaCargaInventario>;
   private readonly diretorioSnapshot?: string;
   private readonly configuracaoLotes?: ConfiguracaoLotesTenant;
+  private readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
 
   constructor(opcoes: OpcoesAdaptadorCarreiro = {}) {
     this.clienteDax =
@@ -69,6 +72,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
       opcoes.gerenciadorCache || new GerenciadorCacheResiliente<RespostaCargaInventario>();
     this.diretorioSnapshot = opcoes.diretorioSnapshot;
     this.configuracaoLotes = opcoes.configuracaoLotes;
+    this.classesNaoCompraveis = opcoes.classesNaoCompraveis;
   }
 
   /**
@@ -104,8 +108,17 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   private async carregarComResiliencia(
     filtro: FiltroCargaInventario
   ): Promise<RespostaCargaInventario> {
+    // A carga Carreiro é sempre da rede inteira: filialId define apenas qual
+    // loja o motor apresentará depois. Se a filial participar da chave, cada
+    // troca de loja refaz todas as consultas DAX apesar de o inventário bruto
+    // ser idêntico. Compartilhar a chave mantém RBAC/seção/estoque isolados e
+    // permite que a troca reutilize imediatamente a carga já aquecida.
+    const filtroCargaRede: FiltroCargaInventario = {
+      ...filtro,
+      filialId: undefined,
+    };
     const resultadoResiliente = await this.gerenciadorCache.obterOuExecutar(
-      filtro,
+      filtroCargaRede,
       async () => {
         // 0. Modo demonstração: snapshot primeiro, sem tocar a rede.
         // Carga instantânea e imune a oscilação de conexão.
@@ -189,6 +202,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             mapearProdutosDax(linhasAtributos, {
               lotesPorProdutoId,
               configuracaoLotes: this.configuracaoLotes,
+              classesNaoCompraveis: this.classesNaoCompraveis,
             }),
             linhasUltimoPedido
           );
@@ -247,7 +261,9 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
         // 2. Carga Offline a partir de Snapshot Real Extraído
         const dirSnapshot = localizarDiretorioSnapshot(this.diretorioSnapshot);
         if (dirSnapshot) {
-          return await carregarSnapshotCarreiroLocal(dirSnapshot, filtro);
+          return await carregarSnapshotCarreiroLocal(dirSnapshot, filtro, {
+            classesNaoCompraveis: this.classesNaoCompraveis,
+          });
         }
 
         throw new Error(

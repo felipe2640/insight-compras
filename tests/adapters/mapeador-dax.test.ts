@@ -290,3 +290,93 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
   });
 });
 
+
+/**
+ * Trava de catálogo: serviço não é mercadoria.
+ *
+ * A Rede Carreiro fatura mão de obra (balanceamento, troca de amortecedor) pela
+ * MESMA tabela PRODUTOS das peças, com nota de venda tipo 01. Medido ao vivo no
+ * modelo do cliente em 15/09/2026: 265 linhas na classe 1107 "SERVICOS MECANICOS"
+ * (53 SKUs x 5 lojas), 51 deles com venda nos últimos 180 dias — o balanceamento
+ * sozinho com 192 unidades e 72 notas em 12 meses.
+ *
+ * Para o motor, um serviço é o item perfeito de compra: demanda recorrente
+ * comprovada e saldo físico eternamente zero. Ele sugeria comprar 26 balanceamentos.
+ * A trava tem de agir na FRONTEIRA DE ENTRADA — serviço não vira Produto —,
+ * senão ele continua contando nas KPIs de peças sugeridas e de ruptura.
+ */
+describe("Catálogo: classes do ERP que não são mercadoria comprável", () => {
+  // Códigos reais lidos do modelo semântico da Carreiro em 15/09/2026.
+  const CLASSES_NAO_COMPRAVEIS = [
+    { codigoBase: 1107, nome: "SERVICOS MECANICOS", motivo: "Mão de obra faturada como produto." },
+  ];
+
+  /** Linha de serviço como o DAX devolve (prefixo da loja embutido na classe). */
+  const linhaServico = (prefixoLoja: number) => ({
+    "[Produto]": `029521|guid-loja-${prefixoLoja}`,
+    "[Descricao]": "SERVICO BALANCEAMENTO",
+    "[Marca]": "SERVICO MECANICO",
+    "[Secao]": prefixoLoja * 1_000_000_000_000 + 1107,
+    "[NomeSecao]": "SERVICOS MECANICOS",
+    "[Fornecedor]": null,
+    "[PrecoCompraERP]": 0,
+    "[PrecoVenda]": 12.5,
+  });
+
+  const linhaPeca = {
+    "[Produto]": "005174|guid-loja-1",
+    "[Descricao]": "INFORCA GATO 400X4.80MM",
+    "[Marca]": "FRONTEC",
+    "[Secao]": 1_000_000_000_260,
+    "[NomeSecao]": "ABRACADEIRA ESCAPAMENTO",
+    "[Fornecedor]": 98,
+    "[PrecoCompraERP]": 0.42,
+    "[PrecoVenda]": 1.2,
+  };
+
+  it("deve descartar o serviço declarado pelo tenant e preservar a peça", () => {
+    const produtos = mapearProdutosDax([linhaServico(1), linhaPeca], {
+      classesNaoCompraveis: CLASSES_NAO_COMPRAVEIS,
+    });
+
+    expect(produtos.map((p) => p.codigoSku)).toEqual(["005174"]);
+  });
+
+  it("deve descartar a classe em TODAS as lojas, apesar do prefixo de empresa no código", () => {
+    // O ERP prefixa a classe com a empresa: 1107 chega como 1000000001107 na loja 1
+    // e 5000000001107 na loja 5. Comparar o código cru deixaria 4 lojas passarem.
+    const linhas = [1, 2, 3, 4, 5].map(linhaServico);
+    const produtos = mapearProdutosDax(linhas, { classesNaoCompraveis: CLASSES_NAO_COMPRAVEIS });
+
+    expect(produtos).toHaveLength(0);
+  });
+
+  it("não deve descartar nada quando o tenant não declara classe alguma", () => {
+    // Sem declaração não há regra: o mapeador NÃO adivinha serviço pela descrição.
+    const produtos = mapearProdutosDax([linhaServico(1), linhaPeca], { classesNaoCompraveis: [] });
+
+    expect(produtos).toHaveLength(2);
+  });
+
+  it("deve preservar fornecedor cujo nome de classe contém SERVI", () => {
+    // "REGENCE VEICULOS PECAS E SERVI" (classe 915) e "PREMIUM CAR SERVICE" (314)
+    // são fornecedores de peça de verdade cadastrados como classe. Uma regra por
+    // texto os derrubaria junto; a regra é por CÓDIGO declarado.
+    const linhaRegence = {
+      "[Produto]": "012345|guid-loja-1",
+      "[Descricao]": "PARABRISA GOL G5",
+      "[Marca]": "REGENCE VEICULOS PECAS E SERVI",
+      "[Secao]": 1_000_000_000_915,
+      "[NomeSecao]": "REGENCE VEICULOS PECAS E SERVI",
+      "[Fornecedor]": 77,
+      "[PrecoCompraERP]": 320,
+      "[PrecoVenda]": 480,
+    };
+
+    const produtos = mapearProdutosDax([linhaRegence, linhaServico(1)], {
+      classesNaoCompraveis: CLASSES_NAO_COMPRAVEIS,
+    });
+
+    expect(produtos.map((p) => p.codigoSku)).toEqual(["012345"]);
+  });
+});

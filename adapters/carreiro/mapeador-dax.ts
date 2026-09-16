@@ -15,7 +15,7 @@ import {
 } from "@core/dominio";
 import { resolverLoteAutopecas, inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
 import { detectarLotePorHistograma } from "@core/travas/lote-multiplo";
-import type { ConfiguracaoLotesTenant } from "@config/tenants/tipos";
+import type { ClasseNaoCompravelTenant, ConfiguracaoLotesTenant } from "@config/tenants/tipos";
 import { agruparMovimentosPorDia, calcularDiasEmRuptura } from "@core/calculo/ruptura";
 import { DIAS_JANELA_RUPTURA } from "./consultas-homologadas";
 import {
@@ -136,8 +136,34 @@ function mesclarDatasProduto(a: Produto, b: Produto): Produto {
   };
 }
 
+/**
+ * Divisor do prefixo de empresa no código de classe do ERP.
+ *
+ * PRODUTOS[ACLASSE] chega como <loja><classe>: a classe 1107 é 1000000001107 na
+ * loja 1 e 5000000001107 na loja 5; a classe 743 ("ASSIS & ASSIS") é 1000000000743.
+ * O resto da divisão por 10^12 devolve o código base, igual em todas as lojas.
+ */
+const DIVISOR_PREFIXO_EMPRESA_CLASSE = 1_000_000_000_000;
+
+/**
+ * Código base da classe do ERP, sem o prefixo de empresa.
+ * Devolve null quando o item não tem classe cadastrada — acontece no catálogo real.
+ */
+export function extrairCodigoBaseClasse(valor: unknown): number | null {
+  if (valor === null || valor === undefined || valor === "") return null;
+  const numero = Number(valor);
+  if (!Number.isFinite(numero)) return null;
+  return Math.abs(Math.trunc(numero)) % DIVISOR_PREFIXO_EMPRESA_CLASSE;
+}
+
 export interface OpcoesMapeamentoProdutos {
   readonly lotesPorProdutoId?: ReadonlyMap<number, number>;
+  /**
+   * Classes do ERP que não são mercadoria (serviços, mão de obra).
+   * Lista vazia ou ausente = nenhuma exclusão: o mapeador não adivinha serviço
+   * pela descrição, porque o cadastro tem fornecedor de peça com "SERVI" no nome.
+   */
+  readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
   readonly configuracaoLotes?: ConfiguracaoLotesTenant;
 }
 
@@ -146,6 +172,9 @@ export function mapearProdutosDax(
   opcoes?: OpcoesMapeamentoProdutos
 ): readonly Produto[] {
   const produtosPorId = new Map<number, Produto>();
+  const codigosNaoCompraveis = new Set(
+    (opcoes?.classesNaoCompraveis ?? []).map((c) => c.codigoBase)
+  );
 
   for (const linhaBruta of linhasDax) {
     const linha = normalizarLinhaDax(linhaBruta);
@@ -168,6 +197,15 @@ export function mapearProdutosDax(
 
     const secaoVal = linha.Secao ?? linha.ASECAO ?? linha.secaoId;
     const secaoId = secaoVal !== undefined && secaoVal !== null ? Number(secaoVal) : null;
+
+    // Serviço não é mercadoria: sai aqui, na fronteira de entrada, e não vira
+    // Produto. Filtrar depois — no motor ou na grade — deixaria a mão de obra
+    // contando nas KPIs de peças sugeridas, de ruptura e no pedido exportado.
+    const classeBase = extrairCodigoBaseClasse(secaoVal);
+    if (classeBase !== null && codigosNaoCompraveis.has(classeBase)) {
+      continue;
+    }
+
     const nomeSecao = linha.NomeSecao ?? linha.nomeSecao ? String(linha.NomeSecao ?? linha.nomeSecao).trim() : null;
 
     // Sub-grupo: tipo da peça. Ausente em ~12% do catálogo da Carreiro — fica

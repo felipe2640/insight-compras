@@ -694,6 +694,7 @@ export function converterParaLinhasCockpit(
       origemPrevisao: resultadoNecessidade.origemPrevisao,
       previsaoIaP50: itemIaFoco?.demandaP50 ?? null,
       previsaoIaP80: itemIaFoco?.demandaP80 ?? null,
+      previsaoIaHorizonteDias: itemIaFoco?.horizonteDias ?? null,
       motivoInelegibilidade:
         perfilGiro === "SEM_HISTORICO_SUFICIENTE"
           ? temHistoricoFoco

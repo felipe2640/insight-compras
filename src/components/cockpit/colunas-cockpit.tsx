@@ -15,6 +15,19 @@ import {
 import { DataGridColumnHeader } from "@/components/ui/data-grid";
 import { LinhaCockpitCompras } from "@/tipos/cockpit";
 import { cn } from "@/lib/utils";
+
+/**
+ * Unidades para leitura humana. O banco guarda numeric(12,4) e o tooltip exibia
+ * "12.3723 un" — peça não tem quatro casas decimais.
+ */
+function arredondarUnidades(valor: number | null | undefined): string {
+  if (valor === null || valor === undefined || !Number.isFinite(valor)) return "—";
+  const arredondado = Math.round(valor * 10) / 10;
+  return Number.isInteger(arredondado)
+    ? String(arredondado)
+    : arredondado.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 import {
   TooltipCriterio,
   TooltipFrequencia,
@@ -959,15 +972,32 @@ export function criarColunasCockpit({
                         Previsão de demanda
                       </p>
                       <p className="text-[11px] text-slate-300">
-                        Demanda P80 (Conservadora): <strong className="text-white">{item.previsaoIaP80} un</strong>
+                        Faixa conservadora (P80):{" "}
+                        <strong className="text-white">{arredondarUnidades(item.previsaoIaP80)} un</strong>
+                        {item.previsaoIaHorizonteDias ? (
+                          <span className="text-slate-400"> em {item.previsaoIaHorizonteDias} dias</span>
+                        ) : null}
                       </p>
                       {item.previsaoIaP50 !== null && item.previsaoIaP50 !== undefined && (
                         <p className="text-[11px] text-slate-300">
-                          Demanda P50 (Mediana): <strong className="text-white">{item.previsaoIaP50} un</strong>
+                          Mediana (P50):{" "}
+                          <strong className="text-white">{arredondarUnidades(item.previsaoIaP50)} un</strong>
+                          {item.previsaoIaHorizonteDias ? (
+                            <span className="text-slate-400"> em {item.previsaoIaHorizonteDias} dias</span>
+                          ) : null}
                         </p>
                       )}
+                      {/* Sem esta linha o comprador lê a faixa e não entende por que a
+                          sugestão é outra: a projeção é um TOTAL do período do modelo,
+                          reescalado para o horizonte do item, e a régua analítica é piso. */}
                       <p className="text-[10px] text-slate-400 border-t border-slate-700/60 pt-1">
-                        Horizonte: 30 dias • Cálculo probabilístico sobre o histórico de vendas
+                        {item.origemPrevisao === "IA"
+                          ? "Esta projeção definiu a meta de cobertura do item."
+                          : "A régua analítica prevaleceu: ela é o piso e ficou acima desta projeção."}
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        Cálculo probabilístico sobre o histórico de vendas. A faixa é o total do
+                        período, reescalado para o horizonte de cobertura do item.
                       </p>
                     </TooltipContent>
                   </Tooltip>
