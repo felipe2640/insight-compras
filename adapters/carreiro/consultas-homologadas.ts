@@ -125,7 +125,9 @@ export const TAMANHO_PAGINA_PRODUTOS = 12000;
 export function gerarConsultaDaxProdutosEstoque(
   filtro?: FiltroCargaInventario,
   /** Último ACODPRODUTO da página anterior. null = primeira página. */
-  cursor?: string | null
+  cursor?: string | null,
+  /** Nome exato da filial no CADEMP para recortar vendas na própria fonte. */
+  nomeFilialFoco?: string
 ): string {
   let clausulaFiltro = "";
 
@@ -139,7 +141,17 @@ export function gerarConsultaDaxProdutosEstoque(
   }
 
   if (filtro?.apenasComEstoqueOuVenda) {
-    clausulaFiltro += ` && (COALESCE('PRODUTOS'[NESTOQATUAL], 0) <> 0 || NOT ISBLANK('PRODUTOS'[DULTIMAVENDA]))`;
+    const filialSegura = nomeFilialFoco?.replace(/["\\]/g, "").trim();
+    if (filialSegura) {
+      clausulaFiltro += ` && CALCULATE(
+        [Quantidade Vendida Produto],
+        FILTER(ALL('CADEMP'[ANOMEFANTASIA]), 'CADEMP'[ANOMEFANTASIA] = "${filialSegura}"),
+        DATESINPERIOD('dCalendario'[Data], TODAY(), -180, DAY),
+        KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
+      ) > 0`;
+    } else {
+      clausulaFiltro += ` && (COALESCE('PRODUTOS'[NESTOQATUAL], 0) <> 0 || NOT ISBLANK('PRODUTOS'[DULTIMAVENDA]))`;
+    }
   }
 
   // Converte a cláusula de FILTER (sintaxe de linha) em filtros de SUMMARIZECOLUMNS.
@@ -379,7 +391,7 @@ VAR Periodo180d = DATESINPERIOD('dCalendario'[Data], DataLimite, -180, DAY)
 VAR Periodo90d = DATESINPERIOD('dCalendario'[Data], DataLimite, -90, DAY)
 VAR Periodo30d = DATESINPERIOD('dCalendario'[Data], DataLimite, -30, DAY)
 VAR Periodo365d = DATESINPERIOD('dCalendario'[Data], DataLimite, -365, DAY)
-RETURN
+VAR HistoricoComVenda =
 SUMMARIZECOLUMNS(
     'CADEMP'[ACODEMP],
     'CADEMP'[ANOMEFANTASIA],
@@ -447,7 +459,7 @@ SUMMARIZECOLUMNS(
         VAR LinhasValidas = FILTER('NOTAS_ITEMS', 'NOTAS_ITEMS'[NQTDE] > 0)
         VAR TotalLinhas = COUNTROWS(LinhasValidas)
         RETURN
-        IF(
+        IF(TotalLinhas = 0, BLANK(), IF(
             TotalLinhas >= 8,
             IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 12) = 0)), TotalLinhas) >= 0.7, 12,
             IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 10) = 0)), TotalLinhas) >= 0.7, 10,
@@ -459,12 +471,13 @@ SUMMARIZECOLUMNS(
             IF(DIVIDE(COUNTROWS(FILTER(LinhasValidas, MOD('NOTAS_ITEMS'[NQTDE], 2) = 0)), TotalLinhas) >= 0.7, 2,
             1)))))))),
             1
-        ),
+        )),
         ${FILTROS_VENDA_VALIDA}
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
-    ),
-    "DiasObservados", 180
+    )
 )
+RETURN
+FILTER(HistoricoComVenda, [VendasQtd180d] > 0)
   `.trim();
 }
 
@@ -712,4 +725,177 @@ FILTER(
 )
 ORDER BY [DataEmissao] DESC
 `.trim();
+
+/**
+ * Gera consulta DAX parametrizada para listar pedidos de compra oficiais do ERP.
+ */
+export function gerarConsultaDaxPedidosCompra(opcoes: {
+  dias?: number;
+  filialCademp?: string;
+  fornecedorId?: number;
+  limite?: number;
+} = {}): string {
+  const limite = Math.min(500, Math.max(1, opcoes.limite ?? 100));
+  const dias = Math.min(365, Math.max(1, opcoes.dias ?? 60));
+  let filtros = `[Tipo] = "C" && [DataEmissao] >= TODAY() - ${dias}`;
+  if (opcoes.fornecedorId) {
+    filtros += ` && [FornecedorId] = ${Math.floor(opcoes.fornecedorId)}`;
+  }
+
+  return `
+EVALUATE
+TOPN(
+    ${limite},
+    FILTER(
+        SELECTCOLUMNS(
+            PEDIDOS,
+            "PedidoId", PEDIDOS[ID],
+            "Numero", PEDIDOS[NUMERO],
+            "DataEmissao", PEDIDOS[DATAEMISSAO],
+            "FornecedorId", PEDIDOS[ACODFORNECEDOR],
+            "Tipo", PEDIDOS[TIPO],
+            "CotacaoId", PEDIDOS[COTACAO_ID],
+            "Status", PEDIDOS[STATUS],
+            "ValorTotal", PEDIDOS[VALORPEDIDO],
+            "EmpresaId", PEDIDOS[ACODEMPRESA]
+        ),
+        ${filtros}
+    ),
+    [DataEmissao],
+    DESC
+)
+`.trim();
+}
+
+/**
+ * Gera consulta DAX parametrizada para listar itens de pedidos de compra no ERP.
+ */
+export function gerarConsultaDaxItensPedidosCompra(opcoes: {
+  pedidoId?: number;
+  dias?: number;
+  limite?: number;
+} = {}): string {
+  const limite = Math.min(5000, Math.max(1, opcoes.limite ?? 500));
+  const dias = Math.min(365, Math.max(1, opcoes.dias ?? 60));
+  let filtros = `NOT ISBLANK(ITEMSPEDIDO[PRODUTO_ID])`;
+  if (opcoes.pedidoId) {
+    filtros += ` && ITEMSPEDIDO[PEDIDO_ID] = ${Math.floor(opcoes.pedidoId)}`;
+  } else {
+    filtros += ` && RELATED(PEDIDOS[TIPO]) = "C" && COALESCE(RELATED(PEDIDOS[DATAEMISSAO]), ITEMSPEDIDO[DATAINCLUSAO]) >= TODAY() - ${dias}`;
+  }
+
+  return `
+EVALUATE
+TOPN(
+    ${limite},
+    SELECTCOLUMNS(
+        FILTER(
+            ITEMSPEDIDO,
+            ${filtros}
+        ),
+        "ItemId", ITEMSPEDIDO[ITEM_ID],
+        "PedidoId", ITEMSPEDIDO[PEDIDO_ID],
+        "ProdutoId", ITEMSPEDIDO[PRODUTO_ID],
+        "SkuBase", RELATED(PRODUTOS[ACODPRODUTO_BASE]),
+        "Descricao", COALESCE(ITEMSPEDIDO[DESCR_SERVICO], RELATED(PRODUTOS[ADESCRICAO]), ITEMSPEDIDO[DESCRICAO]),
+        "Quantidade", ITEMSPEDIDO[QTDE],
+        "ValorUnitario", ITEMSPEDIDO[VALORUNIT],
+        "ValorTotal", ITEMSPEDIDO[QTDE] * ITEMSPEDIDO[VALORUNIT],
+        "DataEmissao", COALESCE(RELATED(PEDIDOS[DATAEMISSAO]), ITEMSPEDIDO[DATAINCLUSAO]),
+        "FornecedorId", RELATED(PEDIDOS[ACODFORNECEDOR]),
+        "EmpresaId", ITEMSPEDIDO[ACODEMPRESA]
+    ),
+    [DataEmissao],
+    DESC
+)
+`.trim();
+}
+
+/**
+ * Gera consulta DAX para listar cotações de compra abertas e concluídas.
+ */
+export function gerarConsultaDaxCotacoes(opcoes: {
+  dias?: number;
+  limite?: number;
+} = {}): string {
+  const limite = Math.min(500, Math.max(1, opcoes.limite ?? 100));
+  const dias = Math.min(365, Math.max(1, opcoes.dias ?? 60));
+
+  return `
+EVALUATE
+TOPN(
+    ${limite},
+    FILTER(
+        SUMMARIZECOLUMNS(
+            TBL_COTACAO[ROW_ID],
+            TBL_COTACAO[CODIGO],
+            TBL_COTACAO[DESCRICAO],
+            TBL_COTACAO[DATAHORA],
+            TBL_COTACAO[STATUS],
+            TBL_COTACAO[ACODEMPRESA],
+            "TotalItens", COUNTROWS(TBL_COTACAO_ITENS),
+            "TotalPropostas", COUNTROWS(TBL_COTACAO_FORN),
+            "PropostasVencedoras", CALCULATE(COUNTROWS(TBL_COTACAO_FORN), KEEPFILTERS(TBL_COTACAO_FORN[GANHADOR] = "T")),
+            "MenorValorCotado", MIN(TBL_COTACAO_FORN[VR_UNIT])
+        ),
+        TBL_COTACAO[DATAHORA] >= TODAY() - ${dias}
+    ),
+    TBL_COTACAO[DATAHORA],
+    DESC
+)
+`.trim();
+}
+
+/**
+ * 11. Sugestões e Solicitações de Compra Geradas Hoje no ERP.
+ * Permite que a plataforma white-label opere em paralelo com o processo de compras
+ * do ERP do cliente, trazendo os itens sugeridos hoje com a quantidade indicada pelo sistema.
+ */
+export const CONSULTA_DAX_SUGESTOES_ERP_HOJE = `
+EVALUATE
+SELECTCOLUMNS(
+    FILTER(
+        TBL_SOLICITACOES_COMPRAS,
+        TBL_SOLICITACOES_COMPRAS[DH_CRIACAO] >= TODAY()
+          && TBL_SOLICITACOES_COMPRAS[STATUS] <> "C"
+          && NOT ISBLANK(TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO])
+    ),
+    "Empresa", TBL_SOLICITACOES_COMPRAS[ACODEMPRESA],
+    "Produto", TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO],
+    "Quantidade", TBL_SOLICITACOES_COMPRAS[QTDE],
+    "DataHora", TBL_SOLICITACOES_COMPRAS[DH_CRIACAO],
+    "Tipo", TBL_SOLICITACOES_COMPRAS[TIPO],
+    "Descricao", TBL_SOLICITACOES_COMPRAS[DESCRICAO],
+    "Solicitador", TBL_SOLICITACOES_COMPRAS[NOME_SOLICITADOR]
+)
+`.trim();
+
+/**
+ * Gera consulta DAX parametrizada para listar sugestões do ERP por janela de dias.
+ */
+export function gerarConsultaDaxSugestoesErp(dias: number = 0): string {
+  const filtroData =
+    dias > 0
+      ? `TBL_SOLICITACOES_COMPRAS[DH_CRIACAO] >= TODAY() - ${Math.min(365, Math.max(1, Math.floor(dias)))}`
+      : `TBL_SOLICITACOES_COMPRAS[DH_CRIACAO] >= TODAY()`;
+
+  return `
+EVALUATE
+SELECTCOLUMNS(
+    FILTER(
+        TBL_SOLICITACOES_COMPRAS,
+        ${filtroData}
+          && TBL_SOLICITACOES_COMPRAS[STATUS] <> "C"
+          && NOT ISBLANK(TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO])
+    ),
+    "Empresa", TBL_SOLICITACOES_COMPRAS[ACODEMPRESA],
+    "Produto", TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO],
+    "Quantidade", TBL_SOLICITACOES_COMPRAS[QTDE],
+    "DataHora", TBL_SOLICITACOES_COMPRAS[DH_CRIACAO],
+    "Tipo", TBL_SOLICITACOES_COMPRAS[TIPO],
+    "Descricao", TBL_SOLICITACOES_COMPRAS[DESCRICAO],
+    "Solicitador", TBL_SOLICITACOES_COMPRAS[NOME_SOLICITADOR]
+)
+  `.trim();
+}
 

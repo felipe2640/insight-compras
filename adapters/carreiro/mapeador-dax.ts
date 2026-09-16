@@ -21,6 +21,7 @@ import { DIAS_JANELA_RUPTURA } from "./consultas-homologadas";
 import {
   EntradaNFeDoDia,
   ItemSimilarIntercambiavel,
+  SugestaoCompraERPItem,
 } from "../AdaptadorInventario";
 import { normalizarLinhaDax } from "./cliente-dax";
 
@@ -560,7 +561,11 @@ export function mapearSimilaresDax(
   produtosPorId: ReadonlyMap<number, Produto>,
   saldosPorProduto: ReadonlyMap<number, number>
 ): Map<number, readonly ItemSimilarIntercambiavel[]> {
-  const mapaSimilares = new Map<number, ItemSimilarIntercambiavel[]>();
+  // A tabela do ERP guarda pares direcionais, mas intercambiabilidade é uma
+  // relação de grupo. Um produto pode aparecer como origem em um registro e
+  // apenas como destino em outro. Tratar cada linha isoladamente fazia o modal
+  // mostrar listas diferentes para peças do mesmo conjunto.
+  const adjacencias = new Map<number, Set<number>>();
 
   for (const linhaBruta of linhasDax) {
     const linha = normalizarLinhaDax(linhaBruta);
@@ -570,27 +575,57 @@ export function mapearSimilaresDax(
 
     if (!idOrigem || !idSimilar || idOrigem === idSimilar) continue;
 
-    const produtoSimilar = produtosPorId.get(idSimilar);
-    if (!produtoSimilar) continue;
+    // Só relações inteiramente pertencentes ao catálogo carregado podem formar
+    // grupos; do contrário um código ausente poderia unir grupos indevidamente.
+    if (!produtosPorId.has(idOrigem) || !produtosPorId.has(idSimilar)) continue;
 
-    const saldoDisponivel = saldosPorProduto.get(idSimilar) ?? 0;
+    const vizinhosOrigem = adjacencias.get(idOrigem) ?? new Set<number>();
+    vizinhosOrigem.add(idSimilar);
+    adjacencias.set(idOrigem, vizinhosOrigem);
 
-    const itemSimilar: ItemSimilarIntercambiavel = {
-      produtoIdOrigem: idOrigem,
-      produtoIdSimilar: idSimilar,
-      codigoSkuSimilar: produtoSimilar.codigoSku,
-      descricaoSimilar: produtoSimilar.descricao,
-      marcaSimilar: produtoSimilar.marca,
-      saldoFisicoDisponivelRede: saldoDisponivel,
-    };
+    const vizinhosSimilar = adjacencias.get(idSimilar) ?? new Set<number>();
+    vizinhosSimilar.add(idOrigem);
+    adjacencias.set(idSimilar, vizinhosSimilar);
+  }
 
-    // O mesmo par aparece repetido em PRODUTOS_SEMELHANTES (uma vez por empresa).
-    // Sem deduplicar, o diálogo de intercambiáveis lista a mesma peça cinco
-    // vezes e o comprador acha que tem cinco alternativas onde só existe uma.
-    const existentes = mapaSimilares.get(idOrigem) ?? [];
-    if (!existentes.some((e) => e.produtoIdSimilar === idSimilar)) {
-      existentes.push(itemSimilar);
-      mapaSimilares.set(idOrigem, existentes);
+  const mapaSimilares = new Map<number, ItemSimilarIntercambiavel[]>();
+  const visitados = new Set<number>();
+
+  for (const inicio of adjacencias.keys()) {
+    if (visitados.has(inicio)) continue;
+
+    const componente: number[] = [];
+    const pendentes = [inicio];
+    let indicePendente = 0;
+    visitados.add(inicio);
+
+    while (indicePendente < pendentes.length) {
+      const atual = pendentes[indicePendente++];
+      componente.push(atual);
+      for (const vizinho of adjacencias.get(atual) ?? []) {
+        if (visitados.has(vizinho)) continue;
+        visitados.add(vizinho);
+        pendentes.push(vizinho);
+      }
+    }
+
+    for (const idOrigem of componente) {
+      mapaSimilares.set(
+        idOrigem,
+        componente
+          .filter((idSimilar) => idSimilar !== idOrigem)
+          .map((idSimilar) => {
+            const produtoSimilar = produtosPorId.get(idSimilar)!;
+            return {
+              produtoIdOrigem: idOrigem,
+              produtoIdSimilar: idSimilar,
+              codigoSkuSimilar: produtoSimilar.codigoSku,
+              descricaoSimilar: produtoSimilar.descricao,
+              marcaSimilar: produtoSimilar.marca,
+              saldoFisicoDisponivelRede: saldosPorProduto.get(idSimilar) ?? 0,
+            };
+          })
+      );
     }
   }
 
@@ -684,3 +719,65 @@ export function aplicarUltimoPedido(
     return data ? { ...p, dataUltimoPedido: data } : p;
   });
 }
+
+/**
+ * Mapeia as sugestões/solicitações de compra geradas no ERP para itens tipados.
+ * Indexado por chave `${produtoId}:${filialId}` para resolução O(1) na matriz do Cockpit.
+ * Quando há múltiplas solicitações para o mesmo SKU e loja no dia, soma as quantidades e preserva a data mais recente.
+ */
+export function mapearSugestoesErpDax(
+  linhasBrutas: readonly Record<string, unknown>[]
+): Map<string, SugestaoCompraERPItem> {
+  const mapa = new Map<string, SugestaoCompraERPItem>();
+
+  for (const linhaBruta of linhasBrutas) {
+    const linha = normalizarLinhaDax(linhaBruta);
+    const produtoId = extrairIdProduto(
+      linha.Produto ?? linha.CODIGO_PRODUTO ?? linha.ACODPRODUTO ?? linha.produtoId
+    );
+    if (!produtoId) continue;
+
+    const { filialId } = mapearFilialCarreiro(linha.Empresa ?? linha.ACODEMPRESA ?? linha.empresaId);
+    const quantidade = Math.max(
+      0,
+      Number(
+        linha.Quantidade ??
+          linha.QTDE ??
+          linha.QTD_SOLICITADA ??
+          linha.QUANTIDADE ??
+          linha.quantidade ??
+          0
+      )
+    );
+    if (quantidade <= 0) continue;
+
+    const dataIso = normalizarDataIso(linha.DataHora ?? linha.DH_CRIACAO ?? linha.dataHora) ?? new Date().toISOString();
+    const origem = String(linha.Tipo ?? linha.TIPO ?? linha.ORIGEM ?? "REPOSICAO_ESTOQUE").trim();
+    const descricao = String(linha.Descricao ?? linha.DESCRICAO ?? "Solicitação ERP").trim();
+    const solicitador = linha.Solicitador ? String(linha.Solicitador).trim() : undefined;
+
+    const chave = `${produtoId}:${filialId}`;
+    const existente = mapa.get(chave);
+
+    if (existente) {
+      mapa.set(chave, {
+        ...existente,
+        quantidadeSugerida: existente.quantidadeSugerida + quantidade,
+        dataSugestao: dataIso > existente.dataSugestao ? dataIso : existente.dataSugestao,
+      });
+    } else {
+      mapa.set(chave, {
+        produtoId,
+        filialId,
+        quantidadeSugerida: quantidade,
+        dataSugestao: dataIso,
+        origem,
+        descricao,
+        solicitador,
+      });
+    }
+  }
+
+  return mapa;
+}
+

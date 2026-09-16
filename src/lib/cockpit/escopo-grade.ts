@@ -16,6 +16,7 @@ export interface ContagensStatusGrade {
   readonly transferir: number;
   readonly ruptura: number;
   readonly zumbi: number;
+  readonly sugestaoErp?: number;
 }
 
 export const CONTAGENS_STATUS_ZERADAS: ContagensStatusGrade = {
@@ -24,16 +25,19 @@ export const CONTAGENS_STATUS_ZERADAS: ContagensStatusGrade = {
   transferir: 0,
   ruptura: 0,
   zumbi: 0,
+  sugestaoErp: 0,
 };
 
-/** Linha que pede decisão: comprar, transferir, ruptura ou trava anti-encalhe. */
+/** Linha que pede decisão: comprar, transferir, ruptura, trava anti-encalhe ou sugestão ativa do ERP. */
 export function ehLinhaAcionavel(linha: LinhaCockpitMatriz): boolean {
   return (
     linha.sugestaoFinalCompra > 0 ||
     linha.quantidadeTransferenciaSugerida > 0 ||
     linha.isMarcaZumbi ||
     linha.classificacaoRuptura === "Grave" ||
-    linha.classificacaoRuptura === "Atenção"
+    linha.classificacaoRuptura === "Atenção" ||
+    Boolean(linha.sugestaoQtdErp && linha.sugestaoQtdErp > 0) ||
+    Boolean(linha.temSugestaoErp)
   );
 }
 
@@ -54,11 +58,15 @@ export function contarStatusGrade(linhas: readonly LinhaCockpitMatriz[]): Contag
   let transferir = 0;
   let ruptura = 0;
   let zumbi = 0;
+  let sugestaoErp = 0;
   for (const linha of linhas) {
     if (linha.sugestaoFinalCompra > 0) pedir++;
     if (linha.quantidadeTransferenciaSugerida > 0) transferir++;
     if (linha.classificacaoRuptura === "Grave" || linha.classificacaoRuptura === "Atenção") ruptura++;
     if (linha.isMarcaZumbi) zumbi++;
+    if (Boolean(linha.sugestaoQtdErp && linha.sugestaoQtdErp > 0) || Boolean(linha.temSugestaoErp)) {
+      sugestaoErp++;
+    }
   }
-  return { total: linhas.length, pedir, transferir, ruptura, zumbi };
+  return { total: linhas.length, pedir, transferir, ruptura, zumbi, sugestaoErp };
 }

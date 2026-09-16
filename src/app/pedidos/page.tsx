@@ -68,6 +68,7 @@ export default function PaginaPedidos() {
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [configurado, setConfigurado] = useState(true);
   const [dias, setDias] = useState(30);
+  const [origem, setOrigem] = useState<string>("erp");
   const [filtroStatus, setFiltroStatus] = useState<string>("todos");
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -84,12 +85,15 @@ export default function PaginaPedidos() {
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
-      const url =
-        filtroStatus && filtroStatus !== "todos"
-          ? `/api/pedidos/historico?dias=${dias}&status=${filtroStatus}`
-          : `/api/pedidos/historico?dias=${dias}`;
+      const params = new URLSearchParams({
+        dias: String(dias),
+        origem,
+      });
+      if (filtroStatus && filtroStatus !== "todos") {
+        params.set("status", filtroStatus);
+      }
 
-      const r = await fetch(url);
+      const r = await fetch(`/api/pedidos/historico?${params.toString()}`);
       const corpo = (await r.json()) as {
         configurado?: boolean;
         pedidos?: Pedido[];
@@ -107,7 +111,7 @@ export default function PaginaPedidos() {
     } finally {
       setCarregando(false);
     }
-  }, [dias, filtroStatus]);
+  }, [dias, origem, filtroStatus]);
 
   useEffect(() => {
     void carregar();
@@ -312,37 +316,78 @@ export default function PaginaPedidos() {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
-            <label className="flex items-center gap-1.5">
-              <span className="font-semibold text-slate-600">Período</span>
-              <select
-                value={dias}
-                onChange={(e) => setDias(Number(e.target.value))}
-                className="rounded border border-slate-300 px-2 py-1 outline-none focus:border-blue-500"
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+            <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1 border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setOrigem("erp")}
+                className={cn(
+                  "rounded-md px-3 py-1 text-xs font-semibold transition-all",
+                  origem === "erp"
+                    ? "bg-white text-blue-900 shadow-xs border border-blue-200"
+                    : "text-slate-600 hover:text-slate-900"
+                )}
               >
-                <option value={7}>7 dias</option>
-                <option value={30}>30 dias</option>
-                <option value={90}>90 dias</option>
-                <option value={365}>1 ano</option>
-              </select>
-            </label>
-
-            <label className="flex items-center gap-1.5">
-              <span className="font-semibold text-slate-600">Filtro de Estado</span>
-              <select
-                value={filtroStatus}
-                onChange={(e) => setFiltroStatus(e.target.value)}
-                className="rounded border border-slate-300 px-2 py-1 outline-none focus:border-blue-500"
+                Pedidos do ERP (Tempo Real)
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrigem("exportacao")}
+                className={cn(
+                  "rounded-md px-3 py-1 text-xs font-semibold transition-all",
+                  origem === "exportacao"
+                    ? "bg-white text-slate-900 shadow-xs border border-slate-300"
+                    : "text-slate-600 hover:text-slate-900"
+                )}
               >
-                <option value="todos">Todos os Estados</option>
-                <option value="exportado">Apenas Exportados</option>
-                <option value="enviado">Apenas Enviados</option>
-                <option value="confirmado">Apenas Confirmados</option>
-                <option value="recebido">Apenas Recebidos</option>
-              </select>
-            </label>
+                Exportações Cockpit
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrigem("todos")}
+                className={cn(
+                  "rounded-md px-2.5 py-1 text-xs font-semibold transition-all",
+                  origem === "todos"
+                    ? "bg-white text-slate-900 shadow-xs border border-slate-300"
+                    : "text-slate-600 hover:text-slate-900"
+                )}
+              >
+                Todos
+              </button>
+            </div>
 
-            <span className="ml-auto text-slate-500">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1.5">
+                <span className="font-semibold text-slate-600">Período</span>
+                <select
+                  value={dias}
+                  onChange={(e) => setDias(Number(e.target.value))}
+                  className="rounded border border-slate-300 px-2 py-1 outline-none focus:border-blue-500"
+                >
+                  <option value={7}>7 dias</option>
+                  <option value={30}>30 dias</option>
+                  <option value={90}>90 dias</option>
+                  <option value={365}>1 ano</option>
+                </select>
+              </label>
+
+              <label className="flex items-center gap-1.5">
+                <span className="font-semibold text-slate-600">Filtro de Estado</span>
+                <select
+                  value={filtroStatus}
+                  onChange={(e) => setFiltroStatus(e.target.value)}
+                  className="rounded border border-slate-300 px-2 py-1 outline-none focus:border-blue-500"
+                >
+                  <option value="todos">Todos os Estados</option>
+                  <option value="exportado">Apenas Exportados</option>
+                  <option value="enviado">Apenas Enviados</option>
+                  <option value="confirmado">Apenas Confirmados</option>
+                  <option value="recebido">Apenas Recebidos</option>
+                </select>
+              </label>
+            </div>
+
+            <span className="text-slate-500 text-[11px]">
               {carregando
                 ? "carregando..."
                 : `${pedidos.length} pedido(s) listado(s) • ${totalItens.toLocaleString(
@@ -400,24 +445,53 @@ export default function PaginaPedidos() {
                             )}
                           </td>
                           <td className="px-3 py-2 text-slate-800">
-                            <span className="font-mono font-bold text-slate-900 block">
-                              #{p.id}
-                            </span>
-                            <span className="text-[10px] text-slate-500">
-                              {new Date(p.exportadoEm).toLocaleString("pt-BR")}
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-slate-900">
+                                {p.origem === "erp" ? `Pedido ERP #${p.numeroPedidoERP ?? p.id}` : `#${p.id}`}
+                              </span>
+                              <span
+                                className={cn(
+                                  "rounded px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider",
+                                  p.origem === "erp"
+                                    ? "bg-blue-100 text-blue-800 border border-blue-200"
+                                    : "bg-slate-100 text-slate-600 border border-slate-200"
+                                )}
+                              >
+                                {p.origem === "erp" ? "ERP Real" : "Exportação"}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-slate-500 block">
+                              {p.dataEmissao ? new Date(p.dataEmissao).toLocaleDateString("pt-BR") : new Date(p.exportadoEm).toLocaleString("pt-BR")}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-slate-700">{p.usuario ?? "—"}</td>
                           <td className="px-3 py-2 text-slate-700">
-                            {p.filialId ? nomesFiliais[p.filialId] ?? `Loja ${p.filialId}` : "—"}
+                            {p.fornecedorNome ?? p.usuario ?? "ERP Integrado"}
+                          </td>
+                          <td className="px-3 py-2 text-slate-700">
+                            {p.filialNome ?? (p.filialId ? nomesFiliais[p.filialId] ?? `Loja ${p.filialId}` : "—")}
                           </td>
                           <td className="px-3 py-2">
-                            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
-                              {p.modeloId}
-                            </span>
-                            <span className="ml-1 text-[10px] uppercase text-slate-400">
-                              {p.formato}
-                            </span>
+                            {p.origem === "erp" ? (
+                              <div>
+                                <span className="font-mono font-semibold text-slate-900 block">
+                                  {p.valorTotal ? dinheiro(p.valorTotal) : "—"}
+                                </span>
+                                {p.cotacaoId ? (
+                                  <span className="text-[10px] text-blue-700">
+                                    Cotação #{p.cotacaoId}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <>
+                                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-700">
+                                  {p.modeloId}
+                                </span>
+                                <span className="ml-1 text-[10px] uppercase text-slate-400">
+                                  {p.formato}
+                                </span>
+                              </>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-right font-mono font-semibold text-slate-800">
                             {p.totalItens.toLocaleString("pt-BR")}

@@ -97,6 +97,7 @@ const CONTAGENS_VAZIAS: ContagensStatusGrade = {
   transferir: 0,
   ruptura: 0,
   zumbi: 0,
+  sugestaoErp: 0,
 };
 
 
@@ -376,7 +377,10 @@ export function CockpitPrincipal({
   // 10. Estados da Tabela TanStack (Ordenação, Visibilidade, Fixação, Resizing, Altura)
   const [sorting, setSorting] = useState<SortingState>([]);
   const [sortValue, setSortValue] = useState<string>("custo-desc");
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
+    // Coluna virtual disponível no menu "Filtrar", sem ocupar espaço na grade.
+    codigoAgrupador: false,
+  });
   const [columnPinning, setColumnPinning] = useState<ColumnPinningState>({
     left: ["select", "codigo", "descricao"],
     right: ["pedido", "transferencia"],
@@ -748,6 +752,7 @@ export function CockpitPrincipal({
                 { id: "ALL", rotulo: "Todos", count: facetas.contagensStatus.total },
                 { id: "PEDIR", rotulo: "Comprar", count: facetas.contagensStatus.pedir, cor: "text-emerald-700" },
                 { id: "TRANSFERIR", rotulo: "Transferir", count: facetas.contagensStatus.transferir, cor: "text-indigo-700" },
+                { id: "SUGESTAO_ERP", rotulo: "Sugestão ERP", count: facetas.contagensStatus.sugestaoErp, cor: "text-amber-700" },
                 { id: "RUPTURA", rotulo: "Ruptura", count: facetas.contagensStatus.ruptura, cor: "text-rose-700" },
                 { id: "ZUMBI", rotulo: "Trava Zumbi", count: facetas.contagensStatus.zumbi, cor: "text-amber-700" },
               ].map((opcao) => {

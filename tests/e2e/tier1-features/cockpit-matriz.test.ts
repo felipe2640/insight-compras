@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from "vitest";
 import { criarColunasCockpit } from "@/components/cockpit";
+import { codigosDoGrupoSimilar } from "@/components/cockpit/colunas-cockpit";
 import { LinhaCockpitCompras } from "@/tipos/cockpit";
 import {
   EntradaNotaFiscalHojeDto,
@@ -24,6 +25,7 @@ describe("Tier 1 — Feature 1: Cockpit do Comprador & Matriz de Decisão (colun
     // Seleção e Identificação
     expect(ids).toContain("select");
     expect(ids).toContain("codigo");
+    expect(ids).toContain("codigoAgrupador");
     expect(ids).toContain("descricao");
     expect(ids).toContain("aplicacao");
     expect(ids).toContain("marca");
@@ -43,6 +45,22 @@ describe("Tier 1 — Feature 1: Cockpit do Comprador & Matriz de Decisão (colun
     expect(ids).toContain("estoqueRede");
     expect(ids).toContain("pedido");
     expect(ids).toContain("transferencia");
+  });
+
+  it("T1.1.0a — código agrupador indexa o próprio SKU e todos os similares", () => {
+    const linha = {
+      codigo: "006534",
+      similares: [
+        { codigoSkuSimilar: "028593" },
+        { codigoSkuSimilar: "000678" },
+      ],
+    } as unknown as LinhaCockpitCompras;
+
+    const indice = codigosDoGrupoSimilar(linha);
+    expect(indice).toContain("006534");
+    expect(indice).toContain("6534");
+    expect(indice).toContain("028593");
+    expect(indice).toContain("000678");
   });
 
   // T1.1.1: Diagnóstico de Ruptura

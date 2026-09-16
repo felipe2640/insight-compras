@@ -3,17 +3,22 @@
  * Camada: Adapters / Mock
  * 100% em Português do Brasil (pt-BR).
  *
- * Provê acesso de altíssima performance aos 25.000+ SKUs sintéticos da Rede Carreiro
+ * Provê acesso de altíssima performance aos 25.000+ SKUs sintéticos de Demonstração
  * com suporte completo a filtros RBAC de carteira, seções e status de estoque.
  */
 
 import {
   InventoryAdapter,
   FiltroCargaInventario,
+  FiltroRastreamentoERP,
+  PedidoCompraERP,
+  ItemPedidoCompraERP,
+  CotacaoCompraERP,
   RespostaCargaInventario,
 } from "../AdaptadorInventario";
 import {
-  gerarDatasetSinteticoCarreiro,
+  gerarDatasetSintetico,
+  NOMES_FILIAIS_SINTETICAS,
   OpcoesGeradorSintetico,
 } from "./gerador-sintetico";
 
@@ -30,7 +35,7 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
    */
   private obterDatasetBase(): RespostaCargaInventario {
     if (!this.datasetBase) {
-      this.datasetBase = gerarDatasetSinteticoCarreiro(this.opcoesGerador);
+      this.datasetBase = gerarDatasetSintetico(this.opcoesGerador);
     }
     return this.datasetBase;
   }
@@ -112,6 +117,19 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
       }
     }
 
+    // Filtra sugestões do ERP
+    const sugestoesErpFiltradas = new Map();
+    if (base.sugestoesErp) {
+      for (const [chave, item] of base.sugestoesErp.entries()) {
+        if (idsProdutosFiltrados.has(item.produtoId)) {
+          if (filtro.filialId !== undefined && item.filialId !== filtro.filialId) {
+            continue;
+          }
+          sugestoesErpFiltradas.set(chave, item);
+        }
+      }
+    }
+
     const latenciaMs = Date.now() - inicio;
 
     return {
@@ -120,6 +138,7 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
       historicos: historicosFiltrados,
       entradasHoje: entradasFiltradas,
       similares: similaresFiltrados,
+      sugestoesErp: sugestoesErpFiltradas,
       metadados: {
         provedor: "MOCK_SINTETICO",
         timestampCarga: new Date().toISOString(),
@@ -142,5 +161,123 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
    */
   public recarregar(): void {
     this.datasetBase = null;
+  }
+
+  /**
+   * Rastreia pedidos de compra formalizados no ERP (mock sintético).
+   */
+  public async listarPedidosCompraERP(filtro: FiltroRastreamentoERP = {}): Promise<readonly PedidoCompraERP[]> {
+    const base = this.obterDatasetBase();
+    const fornecedores = Array.from(new Set(base.produtos.map((p) => p.fornecedorId)));
+    const dias = filtro.dias ?? 30;
+    const pedidos: PedidoCompraERP[] = [];
+
+    const nomesLojas = NOMES_FILIAIS_SINTETICAS;
+    const nomesFornecedores: Record<number, string> = {
+      101: "Distribuidora Pellegrino",
+      102: "DPaschoal Distribuição",
+      103: "Compecas Distribuidora",
+      104: "Fortbras Distribuidora",
+      105: "Distribuidora Central",
+      106: "Auto Peças União",
+    };
+
+    let idContador = 1000;
+    const agora = Date.now();
+
+    for (let d = 0; d < Math.min(dias, 15); d++) {
+      const data = new Date(agora - d * 86400000).toISOString().split("T")[0];
+      for (let filial = 1; filial <= 5; filial++) {
+        if (filtro.filialId && filtro.filialId !== filial) continue;
+        const forn = fornecedores[(idContador + filial) % fornecedores.length];
+        if (filtro.fornecedorId && filtro.fornecedorId !== forn) continue;
+
+        pedidos.push({
+          id: idContador++,
+          numero: 5000 + idContador,
+          dataEmissao: data,
+          fornecedorId: forn,
+          fornecedorNome: nomesFornecedores[forn] ?? `Distribuidora Nacional ${forn}`,
+          cotacaoId: idContador % 3 === 0 ? idContador * 10 : null,
+          status: d < 3 ? "Aberto" : "Concluído",
+          valorTotal: 1500 + (idContador * 37) % 4500,
+          filialId: filial,
+          filialNome: nomesLojas[filial] ?? `Loja ${filial}`,
+          totalItens: 3 + (idContador % 5),
+        });
+      }
+    }
+
+    return pedidos.slice(0, filtro.limite ?? 100);
+  }
+
+  /**
+   * Lista itens de um pedido de compra específico do ERP (mock sintético).
+   */
+  public async listarItensPedidoCompraERP(pedidoId: number): Promise<readonly ItemPedidoCompraERP[]> {
+    const base = this.obterDatasetBase();
+    const skus = base.produtos.slice(0, 5);
+    return skus.map((p, idx) => ({
+      id: pedidoId * 100 + idx,
+      pedidoId,
+      produtoId: p.id,
+      sku: p.codigoSku,
+      descricao: p.descricao,
+      quantidade: 10 * (idx + 1),
+      valorUnitario: p.precoCusto,
+      valorTotal: 10 * (idx + 1) * p.precoCusto,
+      dataEmissao: new Date().toISOString().split("T")[0],
+      filialId: 1,
+      fornecedorId: p.fornecedorId,
+    }));
+  }
+
+  /**
+   * Lista cotações de compra abertas ou concluídas no ERP (mock sintético).
+   */
+  public async listarCotacoesERP(filtro: FiltroRastreamentoERP = {}): Promise<readonly CotacaoCompraERP[]> {
+    const cotacoes: CotacaoCompraERP[] = [];
+    const nomesLojas = NOMES_FILIAIS_SINTETICAS;
+
+    for (let i = 1; i <= 10; i++) {
+      const filial = (i % 5) + 1;
+      if (filtro.filialId && filtro.filialId !== filial) continue;
+      cotacoes.push({
+        rowId: 2000 + i,
+        codigo: 100 + i,
+        descricao: `COTAÇÃO DE REPOSIÇÃO #${100 + i}`,
+        dataHora: new Date(Date.now() - i * 86400000).toISOString(),
+        status: i <= 3 ? "Em Aberto" : "Concluída",
+        filialId: filial,
+        filialNome: nomesLojas[filial],
+        totalItens: 15 + i * 2,
+        totalPropostas: 45 + i * 5,
+        propostasVencedoras: i > 3 ? 15 + i * 2 : 0,
+        menorValorCotado: 12.5 + i,
+      });
+    }
+
+    return cotacoes;
+  }
+
+  /**
+   * Lista todas as compras faturadas/emitidas no ERP na janela para calibração do aprendizado (mock sintético).
+   */
+  public async listarTodasComprasERPNaJanela(dias: number, filialId?: number): Promise<readonly ItemPedidoCompraERP[]> {
+    const base = this.obterDatasetBase();
+    const produtos = base.produtos.slice(0, 50);
+    return produtos.map((p, idx) => ({
+      id: 90000 + idx,
+      pedidoId: 8000 + (idx % 10),
+      produtoId: p.id,
+      sku: p.codigoSku,
+      descricao: p.descricao,
+      quantidade: 5 + (idx % 15),
+      valorUnitario: p.precoCusto,
+      valorTotal: (5 + (idx % 15)) * p.precoCusto,
+      dataEmissao: new Date(Date.now() - (idx % dias) * 86400000).toISOString().split("T")[0],
+      filialId: filialId ?? ((idx % 5) + 1),
+      fornecedorId: p.fornecedorId,
+    }));
   }
 }

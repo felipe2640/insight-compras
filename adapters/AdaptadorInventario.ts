@@ -66,6 +66,19 @@ export interface ItemSimilarIntercambiavel {
 export type ItemSimiliarIntercambiavel = ItemSimilarIntercambiavel;
 
 /**
+ * Sugestão de compra ou reposição gerada pelo ERP do cliente (operação em paralelo).
+ */
+export interface SugestaoCompraERPItem {
+  readonly produtoId: number;
+  readonly filialId: number;
+  readonly quantidadeSugerida: number;
+  readonly dataSugestao: string;
+  readonly origem?: string;
+  readonly descricao?: string;
+  readonly solicitador?: string;
+}
+
+/**
  * Metadados operacionais de diagnóstico e observabilidade do adaptador.
  */
 export interface MetadadosStatusAdapter {
@@ -89,7 +102,58 @@ export interface RespostaCargaInventario {
   readonly entradasHoje: readonly EntradaNFeDoDia[];
   /** Chave do mapa de similares: `produtoId` */
   readonly similares: ReadonlyMap<number, readonly ItemSimilarIntercambiavel[]>;
+  /** Chave do mapa de sugestões ERP: `${produtoId}:${filialId}` */
+  readonly sugestoesErp?: ReadonlyMap<string, SugestaoCompraERPItem>;
   readonly metadados: MetadadosStatusAdapter;
+}
+
+export interface FiltroRastreamentoERP {
+  readonly dias?: number;
+  readonly filialId?: number;
+  readonly fornecedorId?: number;
+  readonly limite?: number;
+}
+
+export interface PedidoCompraERP {
+  readonly id: number;
+  readonly numero: number | string;
+  readonly dataEmissao: string;
+  readonly fornecedorId: number;
+  readonly fornecedorNome?: string;
+  readonly cotacaoId?: number | null;
+  readonly status: string;
+  readonly valorTotal: number;
+  readonly filialId: number;
+  readonly filialNome: string;
+  readonly totalItens?: number;
+}
+
+export interface ItemPedidoCompraERP {
+  readonly id: number;
+  readonly pedidoId: number;
+  readonly produtoId: number;
+  readonly sku?: string;
+  readonly descricao: string;
+  readonly quantidade: number;
+  readonly valorUnitario: number;
+  readonly valorTotal: number;
+  readonly dataEmissao: string;
+  readonly filialId: number;
+  readonly fornecedorId: number;
+}
+
+export interface CotacaoCompraERP {
+  readonly rowId: number;
+  readonly codigo: number;
+  readonly descricao: string;
+  readonly dataHora: string;
+  readonly status: string;
+  readonly filialId: number;
+  readonly filialNome: string;
+  readonly totalItens: number;
+  readonly totalPropostas: number;
+  readonly propostasVencedoras: number;
+  readonly menorValorCotado: number;
 }
 
 /**
@@ -105,4 +169,24 @@ export interface InventoryAdapter {
    * Verifica a conectividade e saúde da fonte de dados (Power BI ou Mock).
    */
   verificarSaudeConexao(): Promise<boolean>;
+
+  /**
+   * Rastreia pedidos de compra formalizados no ERP (opcional).
+   */
+  listarPedidosCompraERP?(filtro?: FiltroRastreamentoERP): Promise<readonly PedidoCompraERP[]>;
+
+  /**
+   * Lista itens de um pedido de compra específico do ERP (opcional).
+   */
+  listarItensPedidoCompraERP?(pedidoId: number): Promise<readonly ItemPedidoCompraERP[]>;
+
+  /**
+   * Lista cotações de compras abertas ou concluídas no ERP (opcional).
+   */
+  listarCotacoesERP?(filtro?: FiltroRastreamentoERP): Promise<readonly CotacaoCompraERP[]>;
+
+  /**
+   * Lista todas as compras faturadas/emitidas no ERP na janela para calibração do aprendizado (opcional).
+   */
+  listarTodasComprasERPNaJanela?(dias: number, filialId?: number): Promise<readonly ItemPedidoCompraERP[]>;
 }

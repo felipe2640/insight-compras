@@ -173,6 +173,12 @@ export interface LinhaCockpitMatriz {
   readonly temSimilarComEstoque?: boolean;
   readonly exigeMultiploEmbalagem?: boolean;
 
+  // Sugestão Hoje do ERP (Operação em paralelo / White-Label)
+  readonly sugestaoQtdErp?: number | null;
+  readonly temSugestaoErp?: boolean;
+  readonly origemSugestaoErp?: string | null;
+  readonly dataSugestaoErp?: string | null;
+
   // Índice de busca pré-computado em memória para busca < 250ms
   _searchIndex?: string;
 }
@@ -309,7 +315,7 @@ export interface DraftSaveError {
 // 5. ESTADO DE FILTROS DO COCKPIT
 // ============================================================================
 
-export type StatusFilterOption = "ALL" | "PEDIR" | "TRANSFERIR" | "RUPTURA" | "ZUMBI";
+export type StatusFilterOption = "ALL" | "PEDIR" | "TRANSFERIR" | "RUPTURA" | "ZUMBI" | "SUGESTAO_ERP";
 
 export interface FiltrosCockpitState {
   readonly queryBusca: string;

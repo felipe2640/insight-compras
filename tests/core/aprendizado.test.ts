@@ -23,11 +23,20 @@ describe("Ciclo de aprendizado — base comum", () => {
 
     it("valida motivos pela taxonomia", () => {
       expect(motivoValido("sem_verba")).toBe(true);
+      expect(motivoValido("promocao_fornecedor")).toBe(true);
+      expect(motivoValido("decisao_interna")).toBe(true);
       expect(motivoValido("qualquer")).toBe(false);
+
+      const motivosComerciais = MOTIVOS_DIVERGENCIA.filter((m) => m.grupo === "comercial");
+      expect(motivosComerciais.every((m) => !m.afetaCalibracao)).toBe(true);
+
       expect(MOTIVOS_DIVERGENCIA.filter((m) => m.afetaCalibracao).map((m) => m.id)).toEqual([
-        "concordo_com_modelo",
+        "modelo_superestimou",
+        "modelo_subestimou",
         "quantidade_errada",
+        "item_obsoleto",
         "item_errado",
+        "concordo_com_modelo",
       ]);
     });
   });

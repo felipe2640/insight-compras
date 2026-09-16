@@ -1,5 +1,7 @@
-import "server-only";
-
+/**
+ * Repositório de configuração de múltiplos de lote por tenant.
+ * Camada: Aplicação / Configuração (src/lib/configuracao) — server-only.
+ */
 import type { ConfiguracaoLotesTenant } from "@config/tenants/tipos";
 import { sbSelecionar, sbUpsert, supabaseConfigurado } from "@/lib/aprendizado/supabase";
 

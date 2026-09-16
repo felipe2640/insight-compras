@@ -9,6 +9,7 @@ import { confirmarEntrada, janelaFechou, JANELA_CONFIRMACAO } from "@core/aprend
 import { obterUsuarioDaRequisicao, podeGerirAprendizado, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { listarItensParaConfirmar, gravarConfirmacoes } from "@/lib/aprendizado/repositorio";
 import { aprendizadoConfigurado } from "@/lib/aprendizado/repositorio";
+import { obterConfiguracaoTenant } from "@config/tenants";
 import { ClienteDaxPowerBI } from "@adapters/carreiro/cliente-dax";
 import { buscarEntradasCarreiro } from "@adapters/carreiro/entradas-confirmacao";
 
@@ -31,6 +32,30 @@ export async function POST(request: NextRequest) {
     Math.max(JANELA_CONFIRMACAO.MIN_DIAS, parseInt(searchParams.get("janela") ?? "", 10) || JANELA_CONFIRMACAO.PADRAO_DIAS)
   );
   const dias = Math.min(180, Math.max(janela, parseInt(searchParams.get("dias") ?? "45", 10) || 45));
+
+  const tenant = obterConfiguracaoTenant(usuario.tenantId);
+
+  // Blindagem estrita: tenants com fonteDados sintética (ex: demonstração) nunca tocam no Power BI do cliente real
+  if (tenant.fonteDados !== "powerbi-carreiro") {
+    const pendentes = await listarItensParaConfirmar({ tenantId: usuario.tenantId, dias });
+    const confirmacoes = pendentes.map((item) => ({
+      itemId: item.id,
+      janelaDias: janela,
+      qtdEntrada: item.qtdPedida,
+      qtdTransferida: 0,
+      status: "confirmado" as const,
+    }));
+    if (confirmacoes.length > 0) {
+      await gravarConfirmacoes(usuario.tenantId, confirmacoes);
+    }
+    return NextResponse.json({
+      processados: confirmacoes.length,
+      consultasPowerBI: 0,
+      janelaDias: janela,
+      diasAnalisados: dias,
+      origem: "simulada",
+    });
+  }
 
   const cliente = new ClienteDaxPowerBI();
   if (!cliente.possuiConfiguracaoAtiva()) {
