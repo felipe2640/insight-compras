@@ -582,6 +582,14 @@ export function converterParaLinhasCockpit(
         ? (carga.similares.get(p.id) ?? [])
         : [];
 
+    // Sugestão de Compra ativa do ERP para a loja em foco (operação em paralelo)
+    const chaveSugestaoErp = `${p.id}:${filialFocoId}`;
+    const sugestaoErpItem = carga.sugestoesErp?.get(chaveSugestaoErp);
+    const sugestaoQtdErp = sugestaoErpItem ? sugestaoErpItem.quantidadeSugerida : null;
+    const temSugestaoErp = (sugestaoQtdErp ?? 0) > 0;
+    const origemSugestaoErp = sugestaoErpItem?.origem ?? null;
+    const dataSugestaoErp = sugestaoErpItem?.dataSugestao ?? null;
+
     // Cálculo das métricas das 29 colunas fiéis
     const dtUltVenda = p.dataUltimaVenda ?? null;
     const dtUltimaCompra = p.dataUltimaCompra ?? null;
@@ -625,6 +633,8 @@ export function converterParaLinhasCockpit(
         ? "Transferir"
         : statusSugestao === "TRAVADO_MARCA_ZUMBI"
         ? "Marca Zumbi"
+        : temSugestaoErp
+        ? "Sugestão ERP"
         : "Estoque OK";
 
     linhas.push({
@@ -749,6 +759,10 @@ export function converterParaLinhasCockpit(
       statusMovimentacao,
       sugestaoCompra: sugestaoFinalCompra,
       sugestaoTransferencia: quantidadeTransferenciaSugerida,
+      sugestaoQtdErp,
+      temSugestaoErp,
+      origemSugestaoErp,
+      dataSugestaoErp,
       // COM ESTOQUE, não "existe similar cadastrado". A linha roxa manda o
       // comprador conferir antes de comprar porque há equivalente disponível na
       // rede; se todos estão zerados, não há nada para conferir e o aviso vira

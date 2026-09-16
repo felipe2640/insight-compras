@@ -66,6 +66,19 @@ export interface ItemSimilarIntercambiavel {
 export type ItemSimiliarIntercambiavel = ItemSimilarIntercambiavel;
 
 /**
+ * Sugestão de compra ou reposição gerada pelo ERP do cliente (operação em paralelo).
+ */
+export interface SugestaoCompraERPItem {
+  readonly produtoId: number;
+  readonly filialId: number;
+  readonly quantidadeSugerida: number;
+  readonly dataSugestao: string;
+  readonly origem?: string;
+  readonly descricao?: string;
+  readonly solicitador?: string;
+}
+
+/**
  * Metadados operacionais de diagnóstico e observabilidade do adaptador.
  */
 export interface MetadadosStatusAdapter {
@@ -89,6 +102,8 @@ export interface RespostaCargaInventario {
   readonly entradasHoje: readonly EntradaNFeDoDia[];
   /** Chave do mapa de similares: `produtoId` */
   readonly similares: ReadonlyMap<number, readonly ItemSimilarIntercambiavel[]>;
+  /** Chave do mapa de sugestões ERP: `${produtoId}:${filialId}` */
+  readonly sugestoesErp?: ReadonlyMap<string, SugestaoCompraERPItem>;
   readonly metadados: MetadadosStatusAdapter;
 }
 

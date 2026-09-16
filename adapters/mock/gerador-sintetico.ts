@@ -22,9 +22,17 @@ import { inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
 import {
   EntradaNFeDoDia,
   ItemSimilarIntercambiavel,
+  SugestaoCompraERPItem,
   RespostaCargaInventario,
 } from "../AdaptadorInventario";
-import { NOMES_FILIAIS_CARREIRO } from "../carreiro/mapeador-dax";
+
+export const NOMES_FILIAIS_SINTETICAS: Readonly<Record<number, string>> = {
+  1: "Loja Matriz",
+  2: "Loja Norte",
+  3: "Loja Sul",
+  4: "Loja Leste",
+  5: "Loja Oeste",
+};
 
 /**
  * Algoritmo Mulberry32: PRNG de alta velocidade e distribuição uniforme.
@@ -104,7 +112,7 @@ export interface OpcoesGeradorSintetico {
  * Nenhum nome aqui pode remeter a cliente real: este dado é o que aparece na
  * demonstração pública da plataforma.
  */
-export function gerarDatasetSinteticoCarreiro(
+export function gerarDatasetSintetico(
   opcoes: OpcoesGeradorSintetico = {}
 ): RespostaCargaInventario {
   const inicio = Date.now();
@@ -300,11 +308,11 @@ export function gerarDatasetSinteticoCarreiro(
       });
     }
 
-    // Popula Filial 1 (Pedro II / Matriz)
+    // Popula Filial 1 (Loja Matriz)
     const chave1 = `${produtoId}:1`;
     estoques.set(chave1, {
       filialId: 1,
-      nomeFilial: NOMES_FILIAIS_CARREIRO[1],
+      nomeFilial: NOMES_FILIAIS_SINTETICAS[1],
       produtoId,
       saldoFisico: saldo1,
       estoqueMinimoSeguranca: min1,
@@ -335,11 +343,11 @@ export function gerarDatasetSinteticoCarreiro(
       dataPrimeiraVendaRegistrada: "2024-01-10",
     });
 
-    // Popula Filial 2 (Melo / Piripiri)
+    // Popula Filial 2 (Loja Norte)
     const chave2 = `${produtoId}:2`;
     estoques.set(chave2, {
       filialId: 2,
-      nomeFilial: NOMES_FILIAIS_CARREIRO[2],
+      nomeFilial: NOMES_FILIAIS_SINTETICAS[2],
       produtoId,
       saldoFisico: saldo2,
       estoqueMinimoSeguranca: min2,
@@ -372,7 +380,7 @@ export function gerarDatasetSinteticoCarreiro(
   }
 
   // Gera relações de similares intercambiáveis para os primeiros 2.000 produtos
-  for (let i = 0; i < 2_000; i++) {
+  for (let i = 0; i < Math.min(2_000, totalSkus); i++) {
     const pOrigem = produtos[i];
     // Encontra um similar (ex: i + 2 com a mesma categoria)
     const pSimilar = produtos[(i + 2) % totalSkus];
@@ -392,6 +400,24 @@ export function gerarDatasetSinteticoCarreiro(
     similares.set(pOrigem.id, [itemSimilar]);
   }
 
+  // Gera sugestões de compra do ERP para os primeiros 500 produtos (operação em paralelo)
+  const sugestoesErp = new Map<string, SugestaoCompraERPItem>();
+  const hojeIso = new Date().toISOString();
+  for (let i = 0; i < Math.min(500, totalSkus); i++) {
+    const p = produtos[i];
+    const filialId = (i % 2) + 1; // Distribui entre loja 1 e 2
+    const qtdSugerida = (i % 5) + 1;
+    sugestoesErp.set(`${p.id}:${filialId}`, {
+      produtoId: p.id,
+      filialId,
+      quantidadeSugerida: qtdSugerida,
+      dataSugestao: hojeIso,
+      origem: i % 4 === 0 ? "E" : "R",
+      descricao: i % 4 === 0 ? "SOLICITAÇÃO EMERGENCIAL DE BALCÃO" : "SOLICITAÇÃO PARA REPOSIÇÃO DE ESTOQUE",
+      solicitador: "COMPRAS ERP",
+    });
+  }
+
   const latenciaMs = Date.now() - inicio;
 
   return {
@@ -400,6 +426,7 @@ export function gerarDatasetSinteticoCarreiro(
     historicos,
     entradasHoje,
     similares,
+    sugestoesErp,
     metadados: {
       provedor: "MOCK_SINTETICO",
       timestampCarga: new Date().toISOString(),
@@ -409,3 +436,7 @@ export function gerarDatasetSinteticoCarreiro(
     },
   };
 }
+
+/** Alias de compatibilidade regressiva */
+export const gerarDatasetSinteticoCarreiro = gerarDatasetSintetico;
+

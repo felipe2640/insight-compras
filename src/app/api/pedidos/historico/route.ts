@@ -119,6 +119,10 @@ export async function GET(request: NextRequest) {
         filialId: Number.isInteger(filialId) && (filialId as number) > 0 ? filialId : undefined,
       });
 
+      const ehConnectsoft = tenant.processoCompra?.tipoERP === "connectsoft-shopcash";
+      const rotuloErp = ehConnectsoft ? "ERP Connectsoft" : "ERP Integrado";
+      const modeloErpId = ehConnectsoft ? "erp-connectsoft" : "erp-integrado";
+
       const pedidosMapeados: Pedido[] = pedidosErp.map((pErp) => {
         const statusNormalizado: StatusPedido =
           pErp.status.toLowerCase().includes("conc") || pErp.status === "F"
@@ -129,10 +133,10 @@ export async function GET(request: NextRequest) {
           id: pErp.id,
           tenantId: usuario.tenantId,
           exportadoEm: pErp.dataEmissao,
-          usuario: "ERP Connectsoft",
+          usuario: rotuloErp,
           filialId: pErp.filialId,
           filialNome: pErp.filialNome,
-          modeloId: "erp-connectsoft",
+          modeloId: modeloErpId,
           formato: "ERP",
           totalItens: pErp.totalItens ?? 1,
           status: statusNormalizado,

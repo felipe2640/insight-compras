@@ -199,6 +199,7 @@ describe("Cockpit — Virtualização da Grade Viva (CockpitPrincipal & colunas-
 
     expect(screen.getByText("SKU-0001")).toBeTruthy();
     expect(screen.getByText("AMORTECEDOR TESTE NÚMERO 1")).toBeTruthy();
+    expect(screen.getByText("Sugestão ERP")).toBeTruthy();
   });
 
   it("deve abrir diálogo de similares ao clicar no badge Sparkles no CockpitPrincipal", () => {

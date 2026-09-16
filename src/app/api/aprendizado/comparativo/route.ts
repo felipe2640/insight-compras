@@ -33,6 +33,9 @@ export async function GET(request: NextRequest) {
     const adaptador = obterAdaptadorInventario({ tenant: usuario.tenantId });
     if (adaptador.listarTodasComprasERPNaJanela) {
       const comprasErp = await adaptador.listarTodasComprasERPNaJanela(dias, filialId);
+      const ehConnectsoft = tenant.processoCompra?.tipoERP === "connectsoft-shopcash";
+      const rotuloUsuario = ehConnectsoft ? "ERP Connectsoft (Compra Real)" : "ERP Integrado (Compra Real)";
+
       const itensErp: ItemComparativo[] = comprasErp.map((c) => {
         const mod = c.produtoId % 5;
         const fatorModelo = mod === 0 ? 1 : mod === 1 ? 0.6 : mod === 2 ? 1.4 : mod === 3 ? 0 : 0.8;
@@ -43,7 +46,7 @@ export async function GET(request: NextRequest) {
           id: c.id,
           snapshotId: c.pedidoId,
           exportadoEm: c.dataEmissao,
-          usuario: "ERP Connectsoft (Compra Real)",
+          usuario: rotuloUsuario,
           produtoId: c.produtoId,
           sku: c.sku ?? (c.produtoId ? String(c.produtoId).padStart(6, "0") : `PROD-${c.produtoId}`),
           descricao: c.descricao || "Item de Compra ERP",

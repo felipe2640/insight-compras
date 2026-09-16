@@ -85,7 +85,7 @@ export function useGradeProgressiva(opcoes: OpcoesGradeProgressiva): RetornoGrad
     if (filialAnterior.current !== filialId) {
       filialAnterior.current = filialId;
       setItens([]);
-      setContagens({ total: 0, pedir: 0, transferir: 0, ruptura: 0, zumbi: 0 });
+      setContagens({ total: 0, pedir: 0, transferir: 0, ruptura: 0, zumbi: 0, sugestaoErp: 0 });
       setEstadoCatalogo("carregando");
       setErro(null);
     }

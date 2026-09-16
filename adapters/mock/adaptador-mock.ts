@@ -3,7 +3,7 @@
  * Camada: Adapters / Mock
  * 100% em Português do Brasil (pt-BR).
  *
- * Provê acesso de altíssima performance aos 25.000+ SKUs sintéticos da Rede Carreiro
+ * Provê acesso de altíssima performance aos 25.000+ SKUs sintéticos de Demonstração
  * com suporte completo a filtros RBAC de carteira, seções e status de estoque.
  */
 
@@ -17,7 +17,8 @@ import {
   RespostaCargaInventario,
 } from "../AdaptadorInventario";
 import {
-  gerarDatasetSinteticoCarreiro,
+  gerarDatasetSintetico,
+  NOMES_FILIAIS_SINTETICAS,
   OpcoesGeradorSintetico,
 } from "./gerador-sintetico";
 
@@ -34,7 +35,7 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
    */
   private obterDatasetBase(): RespostaCargaInventario {
     if (!this.datasetBase) {
-      this.datasetBase = gerarDatasetSinteticoCarreiro(this.opcoesGerador);
+      this.datasetBase = gerarDatasetSintetico(this.opcoesGerador);
     }
     return this.datasetBase;
   }
@@ -116,6 +117,19 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
       }
     }
 
+    // Filtra sugestões do ERP
+    const sugestoesErpFiltradas = new Map();
+    if (base.sugestoesErp) {
+      for (const [chave, item] of base.sugestoesErp.entries()) {
+        if (idsProdutosFiltrados.has(item.produtoId)) {
+          if (filtro.filialId !== undefined && item.filialId !== filtro.filialId) {
+            continue;
+          }
+          sugestoesErpFiltradas.set(chave, item);
+        }
+      }
+    }
+
     const latenciaMs = Date.now() - inicio;
 
     return {
@@ -124,6 +138,7 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
       historicos: historicosFiltrados,
       entradasHoje: entradasFiltradas,
       similares: similaresFiltrados,
+      sugestoesErp: sugestoesErpFiltradas,
       metadados: {
         provedor: "MOCK_SINTETICO",
         timestampCarga: new Date().toISOString(),
@@ -157,12 +172,14 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
     const dias = filtro.dias ?? 30;
     const pedidos: PedidoCompraERP[] = [];
 
-    const nomesLojas: Record<number, string> = {
-      1: "Carreiro Pedro II (Matriz)",
-      2: "Melo / Piripiri",
-      3: "Carreiro Poranga",
-      4: "Ceará Auto Peças (Campo Maior)",
-      5: "Carreiro José de Freitas",
+    const nomesLojas = NOMES_FILIAIS_SINTETICAS;
+    const nomesFornecedores: Record<number, string> = {
+      101: "Distribuidora Pellegrino",
+      102: "DPaschoal Distribuição",
+      103: "Compecas Distribuidora",
+      104: "Fortbras Distribuidora",
+      105: "Distribuidora Central",
+      106: "Auto Peças União",
     };
 
     let idContador = 1000;
@@ -180,7 +197,7 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
           numero: 5000 + idContador,
           dataEmissao: data,
           fornecedorId: forn,
-          fornecedorNome: `Distribuidora Fornecedor ${forn}`,
+          fornecedorNome: nomesFornecedores[forn] ?? `Distribuidora Nacional ${forn}`,
           cotacaoId: idContador % 3 === 0 ? idContador * 10 : null,
           status: d < 3 ? "Aberto" : "Concluído",
           valorTotal: 1500 + (idContador * 37) % 4500,
@@ -220,13 +237,7 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
    */
   public async listarCotacoesERP(filtro: FiltroRastreamentoERP = {}): Promise<readonly CotacaoCompraERP[]> {
     const cotacoes: CotacaoCompraERP[] = [];
-    const nomesLojas: Record<number, string> = {
-      1: "Carreiro Pedro II (Matriz)",
-      2: "Melo / Piripiri",
-      3: "Carreiro Poranga",
-      4: "Ceará Auto Peças (Campo Maior)",
-      5: "Carreiro José de Freitas",
-    };
+    const nomesLojas = NOMES_FILIAIS_SINTETICAS;
 
     for (let i = 1; i <= 10; i++) {
       const filial = (i % 5) + 1;

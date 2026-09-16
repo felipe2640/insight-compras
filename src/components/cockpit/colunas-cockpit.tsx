@@ -962,6 +962,8 @@ export function criarColunasCockpit({
             ? "bg-indigo-100 text-indigo-800 border-indigo-300 font-bold"
             : mov === "Marca Zumbi"
             ? "bg-slate-800 text-rose-200 border-slate-700 font-bold"
+            : mov === "Sugestão ERP"
+            ? "bg-amber-100 text-amber-800 border-amber-300 font-bold"
             : "bg-slate-100 text-slate-700 border-slate-200";
 
         const temIa =
@@ -977,6 +979,14 @@ export function criarColunasCockpit({
               <span>
                 P {item.sugestaoCompra} / T {item.sugestaoTransferencia}
               </span>
+              {item.sugestaoQtdErp != null && item.sugestaoQtdErp > 0 && (
+                <span
+                  className="rounded bg-amber-100 px-1 text-[9px] font-semibold text-amber-800 border border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
+                  title={`Sugestão do ERP: ${item.sugestaoQtdErp} un${item.origemSugestaoErp ? ` (${item.origemSugestaoErp})` : ""}`}
+                >
+                  ERP {item.sugestaoQtdErp}
+                </span>
+              )}
               {temIa && (
                 <TooltipProvider delayDuration={150}>
                   <Tooltip>
@@ -1027,9 +1037,10 @@ export function criarColunasCockpit({
       cell: ({ row }) => {
         const item = row.original;
         const exigeMultiplo = item.exigeMultiploEmbalagem;
+        const temSugestaoErp = (item.sugestaoQtdErp ?? 0) > 0;
 
         return (
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center justify-center">
             <div className="relative inline-flex items-center justify-center">
               <input
                 // `key` pela SKU: a grade é virtualizada e o React reaproveita o
@@ -1073,6 +1084,14 @@ export function criarColunasCockpit({
                 </span>
               )}
             </div>
+            {temSugestaoErp && (
+              <span
+                className="mt-0.5 inline-flex items-center rounded px-1 text-[9px] font-mono font-semibold bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
+                title={`Sugestão hoje do ERP: ${item.sugestaoQtdErp} un${item.origemSugestaoErp ? ` (${item.origemSugestaoErp})` : ""}`}
+              >
+                ERP: {item.sugestaoQtdErp}
+              </span>
+            )}
           </div>
         );
       },
