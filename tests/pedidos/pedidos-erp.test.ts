@@ -39,7 +39,7 @@ describe("Rastreamento de Pedidos e Ciclo de Compras pelo ERP", () => {
       expect(p.numero).toBeDefined();
       expect(p.valorTotal).toBeGreaterThan(0);
       expect(p.filialId).toBe(1);
-      expect(p.filialNome).toContain("Carreiro");
+      expect(p.filialNome).toContain("Loja");
     });
 
     it("deve listar itens de um pedido de compra do ERP", async () => {

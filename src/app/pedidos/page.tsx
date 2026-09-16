@@ -465,7 +465,7 @@ export default function PaginaPedidos() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-slate-700">
-                            {p.fornecedorNome ?? p.usuario ?? "ERP Connectsoft"}
+                            {p.fornecedorNome ?? p.usuario ?? "ERP Integrado"}
                           </td>
                           <td className="px-3 py-2 text-slate-700">
                             {p.filialNome ?? (p.filialId ? nomesFiliais[p.filialId] ?? `Loja ${p.filialId}` : "—")}
