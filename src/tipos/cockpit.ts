@@ -118,6 +118,8 @@ export interface LinhaCockpitMatriz {
   readonly origemPrevisao?: "IA" | "ANALITICA";
   readonly previsaoIaP50?: number | null;
   readonly previsaoIaP80?: number | null;
+  /** Horizonte, em dias, a que a projeção se refere. A faixa é um TOTAL de período. */
+  readonly previsaoIaHorizonteDias?: number | null;
 
   // Ajuste Humano e Múltiplos
   readonly loteMultiplo: number; // ex: 1 avulso, 2 par, 4 jogo

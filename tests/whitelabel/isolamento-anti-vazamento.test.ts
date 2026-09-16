@@ -32,7 +32,10 @@ const TERMOS_PROIBIDOS_DEMONSTRACAO = [
   "melo / piripiri",
 ] as const;
 
-function contemTermoProibido(texto: string): string | null {
+// Campo ausente não vaza nada: `fornecedorNome` e `cidade` são opcionais nos
+// respectivos tipos, e exigir `string` aqui deixava o typecheck vermelho.
+function contemTermoProibido(texto: string | null | undefined): string | null {
+  if (!texto) return null;
   const normalizado = texto.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   for (const termo of TERMOS_PROIBIDOS_DEMONSTRACAO) {
     const termoNormalizado = termo.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
