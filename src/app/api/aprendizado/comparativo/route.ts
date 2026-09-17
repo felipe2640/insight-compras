@@ -9,6 +9,10 @@ import { listarComparativo, ItemComparativo } from "@/lib/aprendizado/repositori
 import { aprendizadoConfigurado } from "@/lib/aprendizado/repositorio";
 import { ErroContexto, contextoDaRequisicao } from "@/lib/contexto/contexto-requisicao";
 import { respostaErroContexto } from "@/lib/contexto/resposta-erro";
+import {
+  indexarSugestoesRegistradas,
+  sugestaoQueAntecedeuACompra,
+} from "@/lib/aprendizado/cruzamento-compras-erp";
 
 export const dynamic = "force-dynamic";
 
@@ -40,17 +44,25 @@ export async function GET(request: NextRequest) {
         ? `ERP ${tenant.fonte.nomeERP} (compra real)`
         : "ERP integrado (compra real)";
 
+      // O lado do modelo vem do que o motor EFETIVAMENTE sugeriu, registrado na
+      // exportação que antecedeu a compra — nunca de um fator fabricado. Sem
+      // sugestão registrada, qtdModelo fica null e a classificação diz
+      // "sem_sugestao". Ver src/lib/aprendizado/cruzamento-compras-erp.ts.
+      const sugestoesRegistradas = aprendizadoConfigurado()
+        ? await listarComparativo({ tenantId: usuario.tenantId, dias, filialId })
+        : [];
+      const indiceSugestoes = indexarSugestoesRegistradas(sugestoesRegistradas);
+
       const itensErp: ItemComparativo[] = comprasErp.map((c) => {
-        /**
-         * A quantidade do MODELO não é medida aqui.
-         *
-         * Havia um `produtoId % 5` inventando o número do modelo e um perfil de
-         * giro a partir do mesmo resto: para um cliente real, a tela mostrava
-         * divergência fabricada como se fosse medição. Sem o dado, é "não
-         * medido" (null), que a grade exibe como "—". A comparação de verdade
-         * vem do snapshot de exportação, onde a sugestão do modelo foi gravada.
-         */
-        const qtdModelo = null;
+        const sugestao = sugestaoQueAntecedeuACompra(
+          indiceSugestoes,
+          c.produtoId,
+          // Fonte sem granularidade por loja devolve `null`: a sugestão é
+          // casada por produto E loja, então sem loja não há casamento — o que
+          // é o comportamento certo, e não um casamento por aproximação.
+          c.filialId,
+          c.dataEmissao
+        );
 
         return {
           id: c.id,
@@ -63,23 +75,18 @@ export async function GET(request: NextRequest) {
           filialId: c.filialId ?? 0,
           custo: c.valorUnitario,
           qtdComprador: c.quantidade,
-          qtdModelo,
+          qtdModelo: sugestao?.qtdModelo ?? null,
           qtdTransferenciaComprador: 0,
-          qtdTransferenciaModelo: 0,
-          perfil: null,
-          elegivel: true,
-          motivoInelegibilidade: null,
+          qtdTransferenciaModelo: sugestao?.qtdTransferenciaModelo ?? 0,
+          perfil: sugestao?.perfil ?? null,
+          elegivel: sugestao?.elegivel ?? true,
+          motivoInelegibilidade: sugestao?.motivoInelegibilidade ?? null,
           sinalGovernanca: "COMPRA_ERP",
-          feedback: null,
-          /**
-           * Compra emitida no ERP não é entrada CONFERIDA: o que foi pedido
-           * não é o que chegou. Fica "aguardando" até a confirmação real.
-           */
-          confirmacao: {
-            status: "aguardando" as StatusConfirmacao,
-            qtdEntrada: 0,
-            qtdTransferida: 0,
-          },
+          feedback: sugestao?.feedback ?? null,
+          // Pedido emitido não é mercadoria recebida: só há confirmação quando a
+          // exportação correspondente foi confirmada. Antes vinha "confirmado"
+          // fixo, com entrada igual à quantidade pedida.
+          confirmacao: sugestao?.confirmacao ?? null,
         };
       });
 

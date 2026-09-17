@@ -81,6 +81,12 @@ export interface OpcoesAdaptadorCarreiro {
   readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
 }
 
+/**
+ * Teto de linhas das compras do ERP numa janela. Bater nele significa que a
+ * janela tem mais compras do que o que voltou — e quem chama precisa saber.
+ */
+const LIMITE_LINHAS_COMPRAS = 5000;
+
 /** Fora de produção, snapshot e dado vencido seguem valendo para desenvolver. */
 function ehAmbienteProducao(): boolean {
   return process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
@@ -455,10 +461,29 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
     try {
       const dax = gerarConsultaDaxItensPedidosCompra({
         dias,
-        limite: 5000,
+        limite: LIMITE_LINHAS_COMPRAS,
+        // O filtro de loja vai DENTRO da consulta. Aplicado depois, em memória,
+        // o TOPN já teria cortado olhando a rede inteira: pedindo uma loja,
+        // sobravam pouquíssimas linhas dela sem nada indicar o corte.
         identificadorFilial: filialId ? mapaLojas.identificadorDeFiltro(filialId) : undefined,
       });
       const linhas = await this.clienteDax.executarConsultaDax(dax);
+
+      /**
+       * Teto atingido: existe mais compra na janela do que o que voltou.
+       * Com o filtro já aplicado na fonte, isto agora significa o que diz —
+       * e não "o corte pode ter sido de outra loja". A correção definitiva é
+       * paginar por janela de data, como a extração de vendas já faz.
+       */
+      if (linhas.length >= LIMITE_LINHAS_COMPRAS) {
+        console.warn(
+          `[Adaptador Carreiro] Compras do ERP atingiram o teto de ${LIMITE_LINHAS_COMPRAS} linhas ` +
+            `em ${dias} dias` +
+            (filialId ? ` para a loja ${filialId}` : " na rede") +
+            ": as mais antigas da janela ficaram de fora."
+        );
+      }
+
       return this.mapearItensPedido(linhas, 0, mapaLojas);
     } catch (e) {
       console.warn("[Adaptador Carreiro] Falha ao listar compras do ERP na janela:", e);

@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   carregarMapaPrevisoesIa,
   contarProjecoesIa,
+  descreverOrigemPrevisoesIa,
+  PrevisaoDemandaIaItem,
   dataMinimaPrevisaoVigente,
   limparCachePrevisoesIa,
 } from "@/lib/previsao-ia/repositorio-previsao-ia";
@@ -187,6 +189,62 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     limparCachePrevisoesIa();
     await carregarMapaPrevisoesIa("carreiro");
     expect(fetchFalso).toHaveBeenCalledTimes(2);
+  });
+
+  describe("descreverOrigemPrevisoesIa", () => {
+    function item(produtoId: number, modelo: string): PrevisaoDemandaIaItem {
+      return {
+        filialId: 1,
+        produtoId,
+        sku: `SKU-${produtoId}`,
+        previsaoCentral: 5,
+        demandaP50: 5,
+        demandaP80: 9,
+        horizonteDias: 30,
+        modeloUtilizado: modelo,
+        dataPrevisao: "2026-09-15",
+      };
+    }
+
+    function mapaCom(...itens: PrevisaoDemandaIaItem[]) {
+      const m = new Map<string, PrevisaoDemandaIaItem>();
+      for (const i of itens) {
+        m.set(`${i.produtoId}:${i.filialId}`, i);
+        m.set(`${i.sku}:${i.filialId}`, i);
+      }
+      return m;
+    }
+
+    it("nomeia o modelo quando a projeção vem de um", () => {
+      const r = descreverOrigemPrevisoesIa(mapaCom(item(1, "Chronos-Bolt (Small)")));
+      expect(r?.series).toBe(1);
+      expect(r?.rotulo).toContain("Previsão probabilística");
+      expect(r?.rotulo).toContain("Chronos-Bolt (Small)");
+    });
+
+    it("NÃO chama de probabilística a heurística recalculada", () => {
+      // Quando o critério financeiro elege a própria régua, o pipeline
+      // republica a heurística: o rótulo tem de dizer isso.
+      const r = descreverOrigemPrevisoesIa(mapaCom(item(1, "Baseline Heuristico (Atual)")));
+      expect(r?.rotulo).toContain("Régua analítica recalculada");
+      expect(r?.rotulo).not.toContain("probabilística");
+    });
+
+    it("usa o modelo dominante quando há mistura", () => {
+      const r = descreverOrigemPrevisoesIa(
+        mapaCom(
+          item(1, "Chronos-Bolt (Small)"),
+          item(2, "Chronos-Bolt (Small)"),
+          item(3, "Baseline Heuristico (Atual)")
+        )
+      );
+      expect(r?.series).toBe(3);
+      expect(r?.rotulo).toContain("Chronos-Bolt (Small)");
+    });
+
+    it("devolve null sem projeção alguma", () => {
+      expect(descreverOrigemPrevisoesIa(new Map())).toBeNull();
+    });
   });
 
   it("usa o teto de idade como filtro no banco", () => {
