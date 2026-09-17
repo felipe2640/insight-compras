@@ -424,8 +424,25 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
       return [];
     }
     try {
-      const dax = gerarConsultaDaxItensPedidosCompra({ dias, limite: 5000 });
+      const LIMITE_LINHAS_COMPRAS = 5000;
+      const dax = gerarConsultaDaxItensPedidosCompra({ dias, limite: LIMITE_LINHAS_COMPRAS });
       const linhas = await this.clienteDax.executarConsultaDax(dax);
+
+      // O TOPN corta nas N linhas mais recentes da REDE, e o filtro de loja só é
+      // aplicado depois, em memória. Se o teto foi atingido, as compras mais
+      // antigas da janela ficaram de fora — e, pedindo uma loja só, podem sobrar
+      // pouquíssimas linhas dela. Não há como empurrar o filtro para o DAX com
+      // segurança: o mapeamento empresa -> loja é por prefixo de GUID, sem
+      // caminho inverso. A correção definitiva é paginar por janela de data,
+      // como a extração de vendas do pipeline já faz.
+      if (linhas.length >= LIMITE_LINHAS_COMPRAS) {
+        console.warn(
+          `[Adaptador Carreiro] Compras do ERP atingiram o teto de ${LIMITE_LINHAS_COMPRAS} linhas ` +
+            `em ${dias} dias: as mais antigas da janela foram descartadas` +
+            (filialId ? ` antes do filtro da loja ${filialId}.` : ".")
+        );
+      }
+
       return linhas.map((linhaBruta) => {
         const l = normalizarLinhaDax(linhaBruta);
         const filialInfo = mapearFilialCarreiro(l.EmpresaId ?? l.ACODEMPRESA);
