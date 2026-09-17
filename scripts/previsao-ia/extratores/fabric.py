@@ -238,19 +238,29 @@ class ExtratorFabric(ExtratorDadosBase):
             )
             df_vendas = pd.DataFrame(rows_vendas)
 
+            # SUMMARIZECOLUMNS em vez de SELECTCOLUMNS: PRODUTOS tem uma linha por
+            # produto POR EMPRESA, e a consulta crua batia nas 100.000 linhas do
+            # teto da API (foi o que derrubou a execução de 16/09). Agrupando pelo
+            # código, sobra uma linha por produto — bem abaixo do teto para um
+            # catálogo de ~20 mil itens.
             dax_produtos = """
             EVALUATE
-            SELECTCOLUMNS(
-                'PRODUTOS',
-                "SKU", 'PRODUTOS'[ACODPRODUTO],
-                "Descricao", 'PRODUTOS'[ADESCRICAO]
+            SUMMARIZECOLUMNS(
+                'PRODUTOS'[ACODPRODUTO],
+                "Descricao", MAX('PRODUTOS'[ADESCRICAO])
             )
             """
             rows_produtos = self._executar_dax_fabric(token, workspace_id, dataset_id, dax_produtos)
+
+            # Truncamento aqui NÃO aborta a execução, ao contrário das vendas.
+            # Este cadastro alimenta somente o campo `descricao` das projeções —
+            # é metadado de exibição. Perder previsão do dia inteiro por causa de
+            # descrição incompleta é trocar o essencial pelo cosmético.
             if len(rows_produtos) >= LIMITE_LINHAS_EXECUTEQUERIES:
-                raise RuntimeError(
-                    f'[{self.nome_fonte}] Cadastro de produtos retornou {len(rows_produtos):,} linhas, '
-                    f'no limite da API: o resultado está truncado.'
+                print(
+                    f'[{self.nome_fonte}] AVISO: cadastro de produtos retornou '
+                    f'{len(rows_produtos):,} linhas, no teto da API — as descrições '
+                    f'vêm incompletas. A previsão segue normalmente.'
                 )
             print(f'[{self.nome_fonte}] Produtos extraídos: {len(rows_produtos):,} itens.')
             df_produtos = pd.DataFrame(rows_produtos)

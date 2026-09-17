@@ -352,6 +352,36 @@ def executar_pipeline(
             lotes_falhos.append((i, len(lote), str(ultimo_erro)))
 
     print(f'[Pipeline] Upsert concluído: {total_enviados:,}/{len(registros):,} registros salvos no Supabase em {time.time()-t_upsert:.1f}s.')
+
+    # Limpeza das projeções que não fazem mais parte do lote de hoje.
+    #
+    # O upsert é por (tenant, filial, produto) e NUNCA apaga: item que saiu do
+    # lote — porque parou de vender no último ano, ou porque a loja mudou de nome
+    # no ERP — deixava a linha antiga viva no banco. O cockpit a tratava como
+    # vigente enquanto ela couber na janela de validade, e comprava contra demanda
+    # que não existe mais.
+    #
+    # Só roda quando TODOS os lotes subiram: apagar o resto depois de uma
+    # publicação parcial deixaria a rede com meio catálogo.
+    if not lotes_falhos:
+        try:
+            resposta = (
+                supabase.table('demanda_ia_previsao')
+                .delete()
+                .eq('tenant_id', tenant_id)
+                .lt('data_previsao', data_hoje)
+                .execute()
+            )
+            removidas = len(resposta.data or [])
+            if removidas:
+                print(f'[Pipeline] Limpeza: {removidas:,} projeções anteriores a {data_hoje} removidas.')
+            else:
+                print('[Pipeline] Limpeza: nenhuma projeção obsoleta a remover.')
+        except Exception as e:
+            # Não falha a execução: as projeções de hoje já estão publicadas, e a
+            # janela de validade ainda barra o que for velho demais.
+            print(f'[Pipeline] AVISO: limpeza de projeções obsoletas falhou: {e}')
+
     print(f'[Pipeline] Tempo total de execução: {time.time()-t_inicio:.1f}s.')
 
     if lotes_falhos:
