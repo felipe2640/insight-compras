@@ -10,6 +10,10 @@ import { listarComparativo, ItemComparativo } from "@/lib/aprendizado/repositori
 import { aprendizadoConfigurado } from "@/lib/aprendizado/repositorio";
 import { obterAdaptadorInventario } from "@adapters/index";
 import { obterConfiguracaoTenant } from "@config/tenants";
+import {
+  indexarSugestoesRegistradas,
+  sugestaoQueAntecedeuACompra,
+} from "@/lib/aprendizado/cruzamento-compras-erp";
 
 export const dynamic = "force-dynamic";
 
@@ -36,11 +40,22 @@ export async function GET(request: NextRequest) {
       const ehConnectsoft = tenant.processoCompra?.tipoERP === "connectsoft-shopcash";
       const rotuloUsuario = ehConnectsoft ? "ERP Connectsoft (Compra Real)" : "ERP Integrado (Compra Real)";
 
+      // O lado do modelo vem do que o motor EFETIVAMENTE sugeriu, registrado na
+      // exportação que antecedeu a compra — nunca de um fator fabricado. Sem
+      // sugestão registrada, qtdModelo fica null e a classificação diz
+      // "sem_sugestao". Ver src/lib/aprendizado/cruzamento-compras-erp.ts.
+      const sugestoesRegistradas = aprendizadoConfigurado()
+        ? await listarComparativo({ tenantId: usuario.tenantId, dias, filialId })
+        : [];
+      const indiceSugestoes = indexarSugestoesRegistradas(sugestoesRegistradas);
+
       const itensErp: ItemComparativo[] = comprasErp.map((c) => {
-        const mod = c.produtoId % 5;
-        const fatorModelo = mod === 0 ? 1 : mod === 1 ? 0.6 : mod === 2 ? 1.4 : mod === 3 ? 0 : 0.8;
-        const qtdModelo = Math.max(0, Math.round(c.quantidade * fatorModelo));
-        const perfil = mod === 0 ? "ALTO_GIRO" : mod === 1 ? "BAIXO_GIRO" : "MEDIO_GIRO";
+        const sugestao = sugestaoQueAntecedeuACompra(
+          indiceSugestoes,
+          c.produtoId,
+          c.filialId,
+          c.dataEmissao
+        );
 
         return {
           id: c.id,
@@ -53,19 +68,18 @@ export async function GET(request: NextRequest) {
           filialId: c.filialId,
           custo: c.valorUnitario,
           qtdComprador: c.quantidade,
-          qtdModelo,
+          qtdModelo: sugestao?.qtdModelo ?? null,
           qtdTransferenciaComprador: 0,
-          qtdTransferenciaModelo: 0,
-          perfil,
-          elegivel: true,
-          motivoInelegibilidade: null,
+          qtdTransferenciaModelo: sugestao?.qtdTransferenciaModelo ?? 0,
+          perfil: sugestao?.perfil ?? null,
+          elegivel: sugestao?.elegivel ?? true,
+          motivoInelegibilidade: sugestao?.motivoInelegibilidade ?? null,
           sinalGovernanca: "COMPRA_ERP",
-          feedback: null,
-          confirmacao: {
-            status: "confirmado" as StatusConfirmacao,
-            qtdEntrada: c.quantidade,
-            qtdTransferida: 0,
-          },
+          feedback: sugestao?.feedback ?? null,
+          // Pedido emitido não é mercadoria recebida: só há confirmação quando a
+          // exportação correspondente foi confirmada. Antes vinha "confirmado"
+          // fixo, com entrada igual à quantidade pedida.
+          confirmacao: sugestao?.confirmacao ?? null,
         };
       });
 
