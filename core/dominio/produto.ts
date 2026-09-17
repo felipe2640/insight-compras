@@ -32,6 +32,19 @@ export interface Produto {
   readonly precoVenda: number;
   readonly loteMultiplo: number; // 1 = avulso, 2 = par, 4 = jogo
   readonly origemLoteMultiplo?: "CONFIGURACAO" | "ERP" | "HISTOGRAMA" | "VOCABULARIO" | "PADRAO";
+  /**
+   * ENTRADAS CRUAS da resolução do múltiplo, preservadas.
+   *
+   * O múltiplo final depende da configuração do cliente (quais fontes valem,
+   * exceções por SKU), que é editável em tela e mesclada por requisição. Sem
+   * guardar as entradas, trocar a configuração exigia recarregar a fonte — e o
+   * adaptador ficava preso a uma configuração de lotes, com cache frio a cada
+   * edição. Com elas, o múltiplo é recalculado sobre a carga em cache.
+   *
+   * 0 = a fonte não informou.
+   */
+  readonly loteErp?: number;
+  readonly loteHistograma?: number;
   readonly dataUltimaVenda?: string | null;
   readonly dataUltimaCompra?: string | null;
   /**

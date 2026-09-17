@@ -15,7 +15,7 @@ import {
 } from "@core/dominio";
 import { resolverLoteAutopecas, inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
 import { detectarLotePorHistograma } from "@core/travas/lote-multiplo";
-import type { ClasseNaoCompravelTenant, ConfiguracaoLotesTenant } from "@config/tenants/tipos";
+import type { ClasseNaoCompravelTenant } from "@config/tenants/tipos";
 import { agruparMovimentosPorDia, calcularDiasEmRuptura } from "@core/calculo/ruptura";
 import { DIAS_JANELA_RUPTURA } from "./consultas-homologadas";
 import {
@@ -24,72 +24,7 @@ import {
   SugestaoCompraERPItem,
 } from "../AdaptadorInventario";
 import { normalizarLinhaDax } from "./cliente-dax";
-
-/**
- * Nomes e códigos oficiais das filiais da Rede Carreiro mapeados no M0.
- */
-export const NOMES_FILIAIS_CARREIRO: Readonly<Record<number, string>> = {
-  1: "Carreiro Pedro II (Matriz)",
-  2: "Melo / Piripiri",
-  3: "Carreiro Poranga",
-  4: "Ceará Auto Peças (Campo Maior)",
-  5: "Carreiro José de Freitas",
-};
-
-/**
- * Nome EXATO de cada filial na tabela CADEMP do modelo semântico.
- *
- * Difere do rótulo de exibição em `NOMES_FILIAIS_CARREIRO`: as consultas que
- * filtram por loja precisam do valor literal de 'CADEMP'[ANOMEFANTASIA],
- * conferido ao vivo em 07/09/2026.
- */
-export const NOMES_CADEMP_CARREIRO: Readonly<Record<number, string>> = {
-  1: "CARREIRO PEDRO II",
-  2: "MELO DISTRIBUIDORA",
-  3: "CARREIRO PORANGA",
-  4: "CEARA AUTO PECAS CAMPO MAIOR",
-  5: "CARREIRO JOSE DE FREITAS",
-};
-
-/**
- * Identifica o código inteiro (1 a 5) e o nome oficial da filial a partir
- * de GUIDs do CADEMP, códigos numéricos ou strings de nome.
- */
-export function mapearFilialCarreiro(valor: unknown): { filialId: number; nomeFilial: string } {
-  if (typeof valor === "number") {
-    const id = Math.floor(valor);
-    if (id >= 1 && id <= 5) {
-      return { filialId: id, nomeFilial: NOMES_FILIAIS_CARREIRO[id] };
-    }
-  }
-
-  const texto = String(valor ?? "").trim();
-
-  // Mapeamento por GUIDs oficiais do CADEMP auditados no M0
-  if (texto.includes("e2adc241") || texto === "1" || /pedro\s*ii/i.test(texto) || /matriz/i.test(texto)) {
-    return { filialId: 1, nomeFilial: NOMES_FILIAIS_CARREIRO[1] };
-  }
-  if (texto.includes("cd87703f") || texto === "2" || /piripiri|melo/i.test(texto)) {
-    return { filialId: 2, nomeFilial: NOMES_FILIAIS_CARREIRO[2] };
-  }
-  if (texto.includes("a5172ddc") || texto === "3" || /poranga/i.test(texto)) {
-    return { filialId: 3, nomeFilial: NOMES_FILIAIS_CARREIRO[3] };
-  }
-  if (texto.includes("c9432abf") || texto === "4" || /campo\s*maior|cear[aá]/i.test(texto)) {
-    return { filialId: 4, nomeFilial: NOMES_FILIAIS_CARREIRO[4] };
-  }
-  if (texto.includes("d624d502") || texto === "5" || /jos[eé]\s*de\s*freitas/i.test(texto)) {
-    return { filialId: 5, nomeFilial: NOMES_FILIAIS_CARREIRO[5] };
-  }
-
-  // Fallback numérico
-  const numeroExtraido = parseInt(texto, 10);
-  if (!isNaN(numeroExtraido) && numeroExtraido >= 1 && numeroExtraido <= 5) {
-    return { filialId: numeroExtraido, nomeFilial: NOMES_FILIAIS_CARREIRO[numeroExtraido] };
-  }
-
-  return { filialId: 1, nomeFilial: NOMES_FILIAIS_CARREIRO[1] };
-}
+import type { MapaLojasFonte } from "../comum/mapa-lojas";
 
 /**
  * Extrai o ID numérico do produto de forma resiliente, suportando chaves compostas
@@ -165,7 +100,6 @@ export interface OpcoesMapeamentoProdutos {
    * pela descrição, porque o cadastro tem fornecedor de peça com "SERVI" no nome.
    */
   readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
-  readonly configuracaoLotes?: ConfiguracaoLotesTenant;
 }
 
 export function mapearProdutosDax(
@@ -267,15 +201,17 @@ export function mapearProdutosDax(
       loteDetectadoHistograma = detectarLotePorHistograma(linha.quantidadesPorLinha as number[]);
     }
 
-    const configuracaoLotes = opcoes?.configuracaoLotes;
+    /**
+     * O adaptador resolve com o PADRÃO (todas as fontes ligadas, sem exceção
+     * por SKU) e guarda as entradas cruas no produto. A configuração do
+     * cliente, que é editável em tela, é aplicada depois da carga, no contexto
+     * da requisição — assim uma edição de múltiplos não invalida o cache da
+     * fonte nem faz página e API mostrarem números diferentes.
+     */
     const { lote: loteMultiplo, origem: origemLoteMultiplo } = resolverLoteAutopecas({
-      loteConfigurado: Number(configuracaoLotes?.multiplosPorSku[codigoSku] ?? 0),
       loteCadastradoErp,
       loteDetectadoHistograma,
       descricao,
-      usarErp: configuracaoLotes?.usarErp,
-      usarHistorico: configuracaoLotes?.usarHistorico,
-      usarVocabulario: configuracaoLotes?.usarVocabulario,
     });
 
     const produto: Produto = {
@@ -297,6 +233,8 @@ export function mapearProdutosDax(
       precoVenda,
       loteMultiplo,
       origemLoteMultiplo,
+      loteErp: loteCadastradoErp > 1 ? Math.floor(loteCadastradoErp) : 0,
+      loteHistograma: loteDetectadoHistograma > 1 ? Math.floor(loteDetectadoHistograma) : 0,
       dataUltimaVenda,
       dataUltimaCompra,
     };
@@ -341,7 +279,7 @@ export function normalizarDecisaoCompraCarreiro(valor: unknown): SinalGovernanca
  */
 export function mapearEstoquesDax(
   linhasDax: readonly Record<string, unknown>[],
-  contexto?: { filialId?: number; nomeFilial?: string }
+  contexto: { filialId?: number; nomeFilial?: string; mapaLojas: MapaLojasFonte }
 ): Map<string, EstoqueFilial> {
   const mapaEstoques = new Map<string, EstoqueFilial>();
 
@@ -353,15 +291,24 @@ export function mapearEstoquesDax(
 
     // A consulta de posição é paginada POR LOJA e não repete a coluna da filial em
     // cada linha, então o contexto da página é a fonte primária da filial.
-    const filial =
-      contexto?.filialId !== undefined
-        ? {
-            filialId: contexto.filialId,
-            nomeFilial: contexto.nomeFilial ?? NOMES_FILIAIS_CARREIRO[contexto.filialId],
-          }
-        : mapearFilialCarreiro(
-            linha.Empresa ?? linha.ACODEMP ?? linha.ACODEMPRESA ?? linha.ANOMEFANTASIA ?? linha.filialId ?? 1
-          );
+    let filial: { filialId: number; nomeFilial: string };
+    if (contexto.filialId !== undefined) {
+      filial = {
+        filialId: contexto.filialId,
+        nomeFilial: contexto.nomeFilial ?? contexto.mapaLojas.nomeExibicao(contexto.filialId),
+      };
+    } else {
+      const bruto =
+        linha.Empresa ?? linha.ACODEMP ?? linha.ACODEMPRESA ?? linha.ANOMEFANTASIA ?? linha.filialId;
+      const filialId = contexto.mapaLojas.resolver(bruto);
+      if (filialId === null) {
+        // Loja que a fonte devolveu e o cadastro não reconhece: descarta e
+        // registra. Antes virava a matriz e o estoque de duas lojas se somava.
+        contexto.mapaLojas.registrarNaoMapeada(bruto);
+        continue;
+      }
+      filial = { filialId, nomeFilial: contexto.mapaLojas.nomeExibicao(filialId) };
+    }
 
     const chave = `${produtoId}:${filial.filialId}`;
 
@@ -428,7 +375,8 @@ export function mapearEstoquesDax(
  * Chave do Map: `${produtoId}:${filialId}`
  */
 export function mapearHistoricoVendasDax(
-  linhasDax: readonly Record<string, unknown>[]
+  linhasDax: readonly Record<string, unknown>[],
+  mapaLojas: MapaLojasFonte
 ): Map<string, HistoricoVendasFilial> {
   const mapaHistoricos = new Map<string, HistoricoVendasFilial>();
 
@@ -438,9 +386,12 @@ export function mapearHistoricoVendasDax(
     const produtoId = extrairIdProduto(linha.Produto ?? linha.ACODPRODUTO ?? linha.id ?? 0);
     if (!produtoId || produtoId <= 0) continue;
 
-    const { filialId } = mapearFilialCarreiro(
-      linha.Empresa ?? linha.ACODEMP ?? linha.ACODEMPRESA ?? linha.filialId ?? 1
-    );
+    const brutoLoja = linha.Empresa ?? linha.ACODEMP ?? linha.ACODEMPRESA ?? linha.filialId;
+    const filialId = mapaLojas.resolver(brutoLoja);
+    if (filialId === null) {
+      mapaLojas.registrarNaoMapeada(brutoLoja);
+      continue;
+    }
 
     const chave = `${produtoId}:${filialId}`;
 
@@ -519,6 +470,7 @@ export function mapearHistoricoVendasDax(
  */
 export function mapearEntradasNFeDax(
   linhasDax: readonly Record<string, unknown>[],
+  mapaLojas: MapaLojasFonte,
   produtosPorId?: ReadonlyMap<number, Produto>
 ): readonly EntradaNFeDoDia[] {
   const entradas: EntradaNFeDoDia[] = [];
@@ -529,9 +481,12 @@ export function mapearEntradasNFeDax(
     const produtoId = extrairIdProduto(linha.Produto ?? linha.ACODPRODUTO ?? 0);
     if (!produtoId || produtoId <= 0) continue;
 
-    const { filialId } = mapearFilialCarreiro(
-      linha.Filial ?? linha.ACODEMPRESA ?? linha.filialId ?? 1
-    );
+    const brutoLoja = linha.Filial ?? linha.ACODEMPRESA ?? linha.filialId;
+    const filialId = mapaLojas.resolver(brutoLoja);
+    if (filialId === null) {
+      mapaLojas.registrarNaoMapeada(brutoLoja);
+      continue;
+    }
 
     const produto = produtosPorId?.get(produtoId);
     const obs = String(linha.Observacao ?? linha.AOBSERVACAO ?? "").trim();
@@ -648,6 +603,7 @@ export function aplicarRupturaReconstruida(
   historicos: Map<string, HistoricoVendasFilial>,
   estoques: ReadonlyMap<string, EstoqueFilial>,
   linhasMovimentos: readonly Record<string, unknown>[],
+  mapaLojas: MapaLojasFonte,
   hoje: Date = new Date()
 ): void {
   if (linhasMovimentos.length === 0) return;
@@ -664,7 +620,11 @@ export function aplicarRupturaReconstruida(
     const data = linha.Data ?? linha.DATA_HORA;
     if (data === null || data === undefined || data === "") continue;
 
-    const { filialId } = mapearFilialCarreiro(linha.Empresa ?? linha.ACODEMPRESA);
+    const filialId = mapaLojas.resolver(linha.Empresa ?? linha.ACODEMPRESA);
+    if (filialId === null) {
+      mapaLojas.registrarNaoMapeada(linha.Empresa ?? linha.ACODEMPRESA);
+      continue;
+    }
     const chave = `${produtoId}:${filialId}`;
     const lista = movimentosPorChave.get(chave);
     if (lista) lista.push({ data: String(data), delta });
@@ -726,7 +686,8 @@ export function aplicarUltimoPedido(
  * Quando há múltiplas solicitações para o mesmo SKU e loja no dia, soma as quantidades e preserva a data mais recente.
  */
 export function mapearSugestoesErpDax(
-  linhasBrutas: readonly Record<string, unknown>[]
+  linhasBrutas: readonly Record<string, unknown>[],
+  mapaLojas: MapaLojasFonte
 ): Map<string, SugestaoCompraERPItem> {
   const mapa = new Map<string, SugestaoCompraERPItem>();
 
@@ -737,7 +698,12 @@ export function mapearSugestoesErpDax(
     );
     if (!produtoId) continue;
 
-    const { filialId } = mapearFilialCarreiro(linha.Empresa ?? linha.ACODEMPRESA ?? linha.empresaId);
+    const brutoLoja = linha.Empresa ?? linha.ACODEMPRESA ?? linha.empresaId;
+    const filialId = mapaLojas.resolver(brutoLoja);
+    if (filialId === null) {
+      mapaLojas.registrarNaoMapeada(brutoLoja);
+      continue;
+    }
     const quantidade = Math.max(
       0,
       Number(

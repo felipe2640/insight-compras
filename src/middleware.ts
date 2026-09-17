@@ -12,6 +12,7 @@
  */
 
 import { processarRequisicaoTenant } from "./lib/middleware-tenant";
+import { ErroTenant } from "@config/tenants/erros";
 import { CABECALHOS_SEGURANCA_HTTP } from "./lib/seguranca/headers";
 import { NextResponse } from "next/server";
 import {
@@ -43,9 +44,15 @@ export type MiddlewareResponse = NextResponse & {
   decisaoSessao: "publica" | "autenticada" | "renovada" | "redirecionar_login" | "nao_autenticado_api";
 };
 
-const PREFIXOS_PUBLICOS = ["/login", "/api/auth/", "/api/health"];
+/**
+ * `/api/health` é público e simples. `/api/health/fonte` NÃO entra aqui: ele
+ * toca a fonte do cliente e exige sessão de gestor/admin ou HEALTH_TOKEN.
+ */
+const PREFIXOS_PUBLICOS = ["/login", "/api/auth/"];
+const ROTAS_PUBLICAS_EXATAS = ["/api/health"];
 
 export function rotaPublica(pathname: string): boolean {
+  if (ROTAS_PUBLICAS_EXATAS.includes(pathname)) return true;
   return PREFIXOS_PUBLICOS.some((p) => pathname === p || pathname === p.replace(/\/$/, "") || pathname.startsWith(p));
 }
 
@@ -69,11 +76,28 @@ export async function middleware(request: NextRequestLike): Promise<MiddlewareRe
     cookiesMap["x-tenant-id"] = cookieTenant.value;
   }
 
-  const resultado = processarRequisicaoTenant({
-    hostname: host,
-    searchParams,
-    cookies: cookiesMap,
-  });
+  /**
+   * Em produção, cliente desconhecido e instalação sem TENANT_ATIVO são erro
+   * (ADR-0001). O middleware não pode deixar isso virar uma página em branco:
+   * responde 503 com um texto curto, sem detalhe de infraestrutura.
+   */
+  let resultado;
+  try {
+    resultado = processarRequisicaoTenant({
+      hostname: host,
+      searchParams,
+      cookies: cookiesMap,
+    });
+  } catch (erro) {
+    if (erro instanceof ErroTenant) {
+      console.error("[middleware] resolução de tenant falhou:", erro.message);
+      return new NextResponse(
+        "Instalação sem cliente configurado. Fale com o suporte do Insight Direto.",
+        { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } }
+      ) as unknown as MiddlewareResponse;
+    }
+    throw erro;
+  }
 
   // Clona e enriquece os cabeçalhos para os Server Components / RSC
   const requestHeaders = new Headers(request.headers);
@@ -172,6 +196,6 @@ export const config = {
      * - assets estáticos públicos (/tenants/, /logos/)
      * - rotas de healthcheck (/api/health)
      */
-    "/((?!api/health|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|tenants/|logos/).*)",
+    "/((?!api/health$|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt|tenants/|logos/).*)",
   ],
 };

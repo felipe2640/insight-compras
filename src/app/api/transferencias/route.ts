@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { obterAdaptadorInventario } from "@adapters/index";
-import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
+import { ErroContexto, contextoDaRequisicao } from "@/lib/contexto/contexto-requisicao";
+import { respostaErroContexto } from "@/lib/contexto/resposta-erro";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
 import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { aplicarGuardrailInventarioServerSide } from "@/lib/rbac/validador-carteira";
 import { ErroAcessoNegado } from "@/lib/rbac/tipos";
 import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
-import { obterConfiguracaoTenant } from "@config/tenants";
-import { carregarConfiguracaoLotes } from "@/lib/configuracao/lotes-repositorio";
 
 export const dynamic = "force-dynamic";
 // Compatível com o teto do plano Hobby mesmo quando Fluid Compute está desativado.
@@ -23,15 +21,10 @@ export const maxDuration = 60;
  */
 export async function GET(request: NextRequest) {
   try {
-    const usuario = await obterUsuarioDaRequisicao(request);
-    if (!usuario) return respostaNaoAutenticado();
-
-    const tenantBase = obterConfiguracaoTenant(usuario.tenantId);
-    const lotes = await carregarConfiguracaoLotes(usuario.tenantId, tenantBase.parametrosMotor.lotes);
-    const tenant = { ...tenantBase, parametrosMotor: { ...tenantBase.parametrosMotor, lotes } };
+    const contexto = await contextoDaRequisicao(request);
+    const { usuario, tenant } = contexto;
     const filtro = aplicarGuardrailInventarioServerSide(usuario, {});
-    const adaptador = obterAdaptadorInventario({ tenant });
-    const carga = await adaptador.carregarInventarioCompleto(filtro);
+    const carga = await contexto.carregarInventario(filtro);
 
     const resultados = await Promise.all(
       tenant.filiais.map(async (filial) => {
@@ -87,6 +80,10 @@ export async function GET(request: NextRequest) {
     }
     return resposta;
   } catch (erro) {
+    if (erro instanceof ErroContexto) {
+      return respostaErroContexto(erro);
+    }
+
     const status = erro instanceof ErroAcessoNegado ? 403 : 500;
     return NextResponse.json(
       {

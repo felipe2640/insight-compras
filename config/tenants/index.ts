@@ -7,8 +7,12 @@
 import { ConfiguracaoTenant } from "./tipos";
 import { TENANT_CARREIRO } from "./carreiro";
 import { TENANT_DEMONSTRACAO } from "./demonstracao";
+import { ErroTenant, ehAmbienteProducao } from "./erros";
+import { validarConfiguracaoTenant } from "./esquema";
 
 export * from "./tipos";
+export * from "./erros";
+export * from "./esquema";
 export * from "./carreiro";
 export * from "./demonstracao";
 
@@ -39,13 +43,13 @@ export function registrarTenant(tenant: ConfiguracaoTenant): void {
 }
 
 /**
- * Resolve a configuração de tenant a partir de um identificador (id, slug, subdomínio ou custom domain).
- * Busca em O(1) e recorre ao TENANT_PADRAO caso não localize.
+ * Busca a configuração de tenant por identificador (id, slug, subdomínio ou
+ * custom domain). Devolve `null` quando não existe — sem cair na demonstração.
  */
-export function obterConfiguracaoTenant(identificador?: string | null): ConfiguracaoTenant {
-  if (!identificador) {
-    return TENANT_PADRAO;
-  }
+export function buscarConfiguracaoTenant(
+  identificador?: string | null
+): ConfiguracaoTenant | null {
+  if (!identificador) return null;
 
   const idNormalizado = identificador.trim().toLowerCase();
 
@@ -65,7 +69,59 @@ export function obterConfiguracaoTenant(identificador?: string | null): Configur
     }
   }
 
+  return null;
+}
+
+/**
+ * Resolve a configuração de tenant a partir de um identificador.
+ *
+ * Identificador desconhecido é ERRO em produção (ADR-0001): um subdomínio
+ * digitado errado abrindo a demonstração parece um cliente funcionando, e
+ * ninguém percebe que está olhando dado sintético. Fora de produção, abre a
+ * demonstração com aviso, que é o que serve para desenvolver.
+ */
+export function obterConfiguracaoTenant(identificador?: string | null): ConfiguracaoTenant {
+  if (!identificador) {
+    if (ehAmbienteProducao()) {
+      throw new ErroTenant(
+        "nao_configurado",
+        "nenhum cliente informado na requisição e nenhum TENANT_ATIVO configurado"
+      );
+    }
+    return TENANT_PADRAO;
+  }
+
+  const encontrado = buscarConfiguracaoTenant(identificador);
+  if (encontrado) return encontrado;
+
+  if (ehAmbienteProducao()) {
+    throw new ErroTenant(
+      "desconhecido",
+      `cliente "${identificador}" não existe no catálogo`,
+      identificador
+    );
+  }
+
+  console.warn(`[tenant] "${identificador}" não existe no catálogo; usando a demonstração.`);
   return TENANT_PADRAO;
+}
+
+/**
+ * Confere o cadastro de TODOS os tenants registrados.
+ *
+ * Roda na validação de ambiente (build e primeira requisição), não a cada
+ * import: em Edge, validar duas configurações a cada requisição é custo sem
+ * retorno, já que o cadastro é estático no bundle.
+ */
+export function validarCatalogoTenants(): readonly string[] {
+  const problemas: string[] = [];
+  for (const [chave, tenant] of Object.entries(CATALOGO_TENANTS)) {
+    const { valido, erros } = validarConfiguracaoTenant(tenant);
+    if (!valido) {
+      problemas.push(...erros.map((erro) => `tenant "${chave}" → ${erro}`));
+    }
+  }
+  return problemas;
 }
 
 /**
@@ -77,15 +133,33 @@ export function obterConfiguracaoTenant(identificador?: string | null): Configur
  * cliente, o que quebrava o login (o identificador interno é derivado do
  * tenant). Uma decisão, um lugar.
  *
- * Nome desconhecido cai na demonstração com aviso no log: derrubar tudo por uma
- * variável digitada errada seria pior do que abrir em modo mostruário.
+ * Em PRODUÇÃO a variável é obrigatória e o nome precisa existir (ADR-0001):
+ * a instalação é dedicada a um cliente, e sem ela sobrariam os caminhos de
+ * resolução por URL — que foi por onde o vazamento entre tenants entrava.
+ * Fora de produção, a ausência abre a demonstração, que é o modo de trabalho.
  */
 export function resolverTenantConfigurado(): ConfiguracaoTenant {
   const desejado = process.env.TENANT_ATIVO?.trim().toLowerCase();
-  if (!desejado) return TENANT_PADRAO;
+
+  if (!desejado) {
+    if (ehAmbienteProducao()) {
+      throw new ErroTenant(
+        "nao_configurado",
+        "TENANT_ATIVO é obrigatório em produção: cada instalação atende um cliente"
+      );
+    }
+    return TENANT_PADRAO;
+  }
 
   const encontrado = CATALOGO_TENANTS[desejado];
   if (!encontrado) {
+    if (ehAmbienteProducao()) {
+      throw new ErroTenant(
+        "desconhecido",
+        `TENANT_ATIVO="${desejado}" não existe no catálogo`,
+        desejado
+      );
+    }
     console.warn(
       `[tenant] TENANT_ATIVO="${desejado}" não existe no catálogo; usando o modo demonstração.`
     );

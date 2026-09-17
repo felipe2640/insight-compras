@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { obterAdaptadorInventario } from "@adapters/index";
-import { aplicarGuardrailInventarioServerSide, validarTenantContexto } from "@/lib/rbac/validador-carteira";
+import { aplicarGuardrailInventarioServerSide } from "@/lib/rbac/validador-carteira";
 import { ErroAcessoNegado, ErroViolacaoTenant } from "@/lib/rbac/tipos";
-import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
 import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
 import { codificarGradeTabular } from "@/lib/cockpit/codificacao-tabular";
 import { contarStatusGrade, separarAcionaveis } from "@/lib/cockpit/escopo-grade";
-import { obterConfiguracaoTenant } from "@config/tenants";
-import { carregarConfiguracaoLotes } from "@/lib/configuracao/lotes-repositorio";
+import { ErroContexto, contextoDaRequisicao } from "@/lib/contexto/contexto-requisicao";
+import { respostaErroContexto } from "@/lib/contexto/resposta-erro";
 
 export const dynamic = "force-dynamic";
 
@@ -23,18 +21,9 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
 
   try {
-    // 1. Identidade: sessão validada pelo provedor (nunca cabeçalhos x-user-*)
-    const usuario = await obterUsuarioDaRequisicao(request);
-    if (!usuario) return respostaNaoAutenticado();
-
-    // 1.1 Blindagem Anti-Contaminação entre Tenants (RBAC Cross-Tenant)
-    const tenantIdRequisicao = request.headers.get("x-tenant-id");
-    if (tenantIdRequisicao) {
-      validarTenantContexto(usuario, tenantIdRequisicao);
-    }
-    const tenantBase = obterConfiguracaoTenant(usuario.tenantId);
-    const lotes = await carregarConfiguracaoLotes(usuario.tenantId, tenantBase.parametrosMotor.lotes);
-    const tenant = { ...tenantBase, parametrosMotor: { ...tenantBase.parametrosMotor, lotes } };
+    // 1. Identidade, cliente e fonte: um lugar só, que nega quando divergem.
+    const contexto = await contextoDaRequisicao(request);
+    const { usuario, tenant } = contexto;
 
     // 2. Parâmetros de Filtro Solicitados
     const fornecedorQuery = searchParams.get("fornecedorId");
@@ -46,7 +35,10 @@ export async function GET(request: NextRequest) {
       : null;
 
     const secaoId = secaoQuery ? parseInt(secaoQuery, 10) : undefined;
-    const filialId = filialQuery ? parseInt(filialQuery, 10) : 1;
+    // Loja em foco: a pedida, ou a do CADASTRO do cliente. Nunca a filial 1
+    // por convenção — um cliente cujas lojas começam em outro número via a
+    // grade de uma loja que não existe.
+    const filialId = filialQuery ? parseInt(filialQuery, 10) : contexto.filialFocoId;
 
     // 2.1 Falha fechada no servidor para comprador sem carteira homologada (recebe lista vazia)
     const qtdFornecedoresCarteira = !usuario.allowedSupplierIds
@@ -75,7 +67,7 @@ export async function GET(request: NextRequest) {
         contagens: { acionaveis: 0, monitorar: 0, saudavel: 0, excesso: 0, zerado: 0 },
         filialFocoId: filialId,
         tempoExecucaoMs,
-        provedorDados: "VAZIO",
+        provedorDados: contexto.fonte.natureza === "sintetica" ? "MOCK_SINTETICO" : "POWERBI_FABRIC_DAX",
         ...(tabular
           ? { grade: codificarGradeTabular([]) }
           : { dados: [] }),
@@ -94,24 +86,13 @@ export async function GET(request: NextRequest) {
     });
 
     /**
-     * Troca de fonte de dados pela URL: só FORA de produção.
+     * A fonte vem do CONTEXTO, não da URL.
      *
-     * `?provedor=MOCK` fazia qualquer usuário autenticado trocar o estoque real
-     * pelo gerador sintético de 25.000 SKUs — e a tela não avisa em nada que os
-     * números deixaram de ser os da rede. Serve para desenvolvimento e teste;
-     * na mão do cliente é uma forma silenciosa de decidir compra sobre número
-     * inventado.
+     * Havia um `?provedor=MOCK` que trocava o estoque real pelo gerador
+     * sintético para qualquer usuário autenticado, sem nada na tela avisar.
+     * Quem precisa de dado sintético usa o tenant de demonstração.
      */
-    const provedorQuery = searchParams.get("provedor")?.toUpperCase();
-    const podeTrocarProvedor = process.env.NODE_ENV !== "production";
-    const tipoProvedor =
-      podeTrocarProvedor && (provedorQuery === "CARREIRO" || provedorQuery === "MOCK")
-        ? provedorQuery
-        : undefined;
-
-    // 4. Carregamento Resiliente via Adaptador de Inventário do Tenant
-    const adaptador = obterAdaptadorInventario({ tipo: tipoProvedor, tenant });
-    const carga = await adaptador.carregarInventarioCompleto(filtroValidado);
+    const carga = await contexto.carregarInventario(filtroValidado);
 
     // 5. Transformação Canônica em Linhas da Matriz de Decisão
     const linhas = converterParaLinhasCockpit(
@@ -151,6 +132,10 @@ export async function GET(request: NextRequest) {
 
     return resposta;
   } catch (erro) {
+    if (erro instanceof ErroContexto) {
+      return respostaErroContexto(erro);
+    }
+
     if (erro instanceof ErroViolacaoTenant) {
       return NextResponse.json(
         {

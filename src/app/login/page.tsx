@@ -14,6 +14,7 @@ import { Info } from "lucide-react";
 import { FormularioLogin } from "./formulario-login";
 import { idProvedorConfigurado } from "@/lib/autenticacao";
 import { USUARIOS_DEMO } from "@/lib/autenticacao/provedores/demo";
+import { naturezaTenant } from "@config/tenants";
 import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export default function PaginaLogin() {
   const tenantIdHeader = headers().get("x-tenant-id");
   const tenant = obterTenantAtivo(tenantIdHeader);
   const modoDemonstracao =
-    idProvedorConfigurado() === "demo" && tenant.fonteDados === "sintetica";
+    idProvedorConfigurado() === "demo" && naturezaTenant(tenant) === "sintetica";
   const senhaDemo = process.env.DEMO_SENHA ?? "demo";
 
   return (

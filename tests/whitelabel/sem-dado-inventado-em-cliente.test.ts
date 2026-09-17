@@ -14,7 +14,7 @@
  * justificativas escritas, valores em reais e hash SHA-256, sob um cabeçalho
  * que promete trilha imutável. A de Pedidos trazia quatro ordens de compra.
  *
- * A regra é a mesma da fonte de dados: quem declara `fonteDados: "sintetica"`
+ * A regra é a mesma da fonte de dados: quem declara fonte sintética
  * recebe conteúdo sintético; cliente real começa vazio, que é a verdade.
  */
 
@@ -49,8 +49,8 @@ describe("Sem banco configurado, um cliente real não recebe dado inventado", ()
   });
 
   it("o catálogo declara a fonte de cada tenant", () => {
-    expect(TENANT_CARREIRO.fonteDados).toBe("powerbi-carreiro");
-    expect(TENANT_DEMONSTRACAO.fonteDados).toBe("sintetica");
+    expect(TENANT_CARREIRO.fonte.adaptador).toBe("powerbi-dax");
+    expect(TENANT_DEMONSTRACAO.fonte.adaptador).toBe("sintetica");
   });
 
   it("pedidos: cliente real começa VAZIO", async () => {

@@ -5,42 +5,52 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { classificarDivergencia, StatusConfirmacao } from "@core/aprendizado";
-import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { listarComparativo, ItemComparativo } from "@/lib/aprendizado/repositorio";
 import { aprendizadoConfigurado } from "@/lib/aprendizado/repositorio";
-import { obterAdaptadorInventario } from "@adapters/index";
-import { obterConfiguracaoTenant } from "@config/tenants";
+import { ErroContexto, contextoDaRequisicao } from "@/lib/contexto/contexto-requisicao";
+import { respostaErroContexto } from "@/lib/contexto/resposta-erro";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const usuario = await obterUsuarioDaRequisicao(request);
-  if (!usuario) return respostaNaoAutenticado();
+  let contexto;
+  try {
+    contexto = await contextoDaRequisicao(request);
+  } catch (erro) {
+    if (erro instanceof ErroContexto) return respostaErroContexto(erro);
+    throw erro;
+  }
+  const { usuario, tenant, fonte: fonteDados } = contexto;
   const { searchParams } = new URL(request.url);
   const dias = Math.min(365, Math.max(1, parseInt(searchParams.get("dias") ?? "30", 10) || 30));
   const filialParam = searchParams.get("filialId");
   const filialId = filialParam ? parseInt(filialParam, 10) || undefined : undefined;
   const fonteParam = searchParams.get("fonte")?.toLowerCase();
 
-  const tenant = obterConfiguracaoTenant(usuario.tenantId);
-  const temProcessoERP = Boolean(tenant.processoCompra?.habilitado);
+  const temProcessoERP = Boolean(fonteDados.pedidosERP);
   const fonte = fonteParam ?? (temProcessoERP ? "erp" : "snapshot");
 
   let itens: ItemComparativo[] = [];
 
   // 1. Carrega Compras Reais emitidas no ERP se fonte for "erp" ou "todos"
   if (fonte === "erp" || fonte === "todos") {
-    const adaptador = obterAdaptadorInventario({ tenant: usuario.tenantId });
-    if (adaptador.listarTodasComprasERPNaJanela) {
-      const comprasErp = await adaptador.listarTodasComprasERPNaJanela(dias, filialId);
-      const ehConnectsoft = tenant.processoCompra?.tipoERP === "connectsoft-shopcash";
-      const rotuloUsuario = ehConnectsoft ? "ERP Connectsoft (Compra Real)" : "ERP Integrado (Compra Real)";
+    if (fonteDados.pedidosERP) {
+      const comprasErp = await fonteDados.pedidosERP.listarComprasNaJanela(dias, filialId);
+      const rotuloUsuario = tenant.fonte.nomeERP
+        ? `ERP ${tenant.fonte.nomeERP} (compra real)`
+        : "ERP integrado (compra real)";
 
       const itensErp: ItemComparativo[] = comprasErp.map((c) => {
-        const mod = c.produtoId % 5;
-        const fatorModelo = mod === 0 ? 1 : mod === 1 ? 0.6 : mod === 2 ? 1.4 : mod === 3 ? 0 : 0.8;
-        const qtdModelo = Math.max(0, Math.round(c.quantidade * fatorModelo));
-        const perfil = mod === 0 ? "ALTO_GIRO" : mod === 1 ? "BAIXO_GIRO" : "MEDIO_GIRO";
+        /**
+         * A quantidade do MODELO não é medida aqui.
+         *
+         * Havia um `produtoId % 5` inventando o número do modelo e um perfil de
+         * giro a partir do mesmo resto: para um cliente real, a tela mostrava
+         * divergência fabricada como se fosse medição. Sem o dado, é "não
+         * medido" (null), que a grade exibe como "—". A comparação de verdade
+         * vem do snapshot de exportação, onde a sugestão do modelo foi gravada.
+         */
+        const qtdModelo = null;
 
         return {
           id: c.id,
@@ -50,20 +60,24 @@ export async function GET(request: NextRequest) {
           produtoId: c.produtoId,
           sku: c.sku ?? (c.produtoId ? String(c.produtoId).padStart(6, "0") : `PROD-${c.produtoId}`),
           descricao: c.descricao || "Item de Compra ERP",
-          filialId: c.filialId,
+          filialId: c.filialId ?? 0,
           custo: c.valorUnitario,
           qtdComprador: c.quantidade,
           qtdModelo,
           qtdTransferenciaComprador: 0,
           qtdTransferenciaModelo: 0,
-          perfil,
+          perfil: null,
           elegivel: true,
           motivoInelegibilidade: null,
           sinalGovernanca: "COMPRA_ERP",
           feedback: null,
+          /**
+           * Compra emitida no ERP não é entrada CONFERIDA: o que foi pedido
+           * não é o que chegou. Fica "aguardando" até a confirmação real.
+           */
           confirmacao: {
-            status: "confirmado" as StatusConfirmacao,
-            qtdEntrada: c.quantidade,
+            status: "aguardando" as StatusConfirmacao,
+            qtdEntrada: 0,
             qtdTransferida: 0,
           },
         };

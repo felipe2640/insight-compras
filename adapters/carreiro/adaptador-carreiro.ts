@@ -8,11 +8,13 @@
  */
 
 import {
-  EntradaNFeDoDia,
+  CapacidadeCotacoesERP,
+  CapacidadeEntradasConfirmadas,
+  CapacidadePedidosERP,
+  EntradaConfirmadaERP,
   FiltroCargaInventario,
   FiltroRastreamentoERP,
   InventoryAdapter,
-  ItemSimilarIntercambiavel,
   PedidoCompraERP,
   ItemPedidoCompraERP,
   CotacaoCompraERP,
@@ -40,9 +42,6 @@ import {
   gerarConsultaDaxCotacoes,
 } from "./consultas-homologadas";
 import {
-  NOMES_FILIAIS_CARREIRO,
-  NOMES_CADEMP_CARREIRO,
-  mapearFilialCarreiro,
   mapearProdutosDax,
   mapearEstoquesDax,
   mapearHistoricoVendasDax,
@@ -58,24 +57,45 @@ import {
   localizarDiretorioSnapshot,
 } from "./carregador-snapshot-local";
 import { lerSnapshotNormalizado } from "./snapshot-normalizado";
-import type { ClasseNaoCompravelTenant, ConfiguracaoLotesTenant } from "@config/tenants/tipos";
+import { buscarEntradasCarreiro } from "./entradas-confirmacao";
+import type { ClasseNaoCompravelTenant, FilialCadastradaTenant } from "@config/tenants/tipos";
+import { criarMapaLojasFonte, type MapaLojasFonte } from "../comum/mapa-lojas";
+import { normalizarStatusERP } from "../comum/status-erp";
 
 export interface OpcoesAdaptadorCarreiro {
   readonly configuracaoDax?: ConfiguracaoClienteDax;
   readonly clienteDax?: ClienteDaxPowerBI;
   readonly gerenciadorCache?: GerenciadorCacheResiliente<RespostaCargaInventario>;
   readonly diretorioSnapshot?: string;
-  readonly configuracaoLotes?: ConfiguracaoLotesTenant;
+  /**
+   * Filiais do CADASTRO do cliente, com os identificadores que a fonte usa.
+   *
+   * Antes as lojas vinham de uma constante dentro do adaptador
+   * (`NOMES_FILIAIS_CARREIRO`), então o cadastro do tenant era decorativo: um
+   * cliente com 2 lojas continuaria carregando 5.
+   */
+  readonly filiais?: readonly FilialCadastradaTenant[];
+  /** Nome do ERP do cliente, só para rótulo. */
+  readonly nomeERP?: string;
   /** Classes do ERP que não são mercadoria (serviços). Declaradas pelo tenant. */
   readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
+}
+
+/** Fora de produção, snapshot e dado vencido seguem valendo para desenvolver. */
+function ehAmbienteProducao(): boolean {
+  return process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
 }
 
 export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   private readonly clienteDax: ClienteDaxPowerBI;
   private readonly gerenciadorCache: GerenciadorCacheResiliente<RespostaCargaInventario>;
   private readonly diretorioSnapshot?: string;
-  private readonly configuracaoLotes?: ConfiguracaoLotesTenant;
   private readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
+  private readonly filiais: readonly FilialCadastradaTenant[];
+
+  public readonly descricaoFonte = "Power BI";
+  public readonly natureza = "real" as const;
+  public readonly forneceSugestoesErp = true;
 
   constructor(opcoes: OpcoesAdaptadorCarreiro = {}) {
     this.clienteDax =
@@ -83,8 +103,13 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
     this.gerenciadorCache =
       opcoes.gerenciadorCache || new GerenciadorCacheResiliente<RespostaCargaInventario>();
     this.diretorioSnapshot = opcoes.diretorioSnapshot;
-    this.configuracaoLotes = opcoes.configuracaoLotes;
     this.classesNaoCompraveis = opcoes.classesNaoCompraveis;
+    this.filiais = opcoes.filiais ?? [];
+  }
+
+  /** Mapa novo a cada carga: a contagem de lojas não mapeadas é daquela carga. */
+  private novoMapaLojas(): MapaLojasFonte {
+    return criarMapaLojasFonte(this.filiais);
   }
 
   /**
@@ -97,10 +122,19 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
     try {
       return await this.carregarComResiliencia(filtro);
     } catch (erro) {
-      // Último recurso, depois de o cache L2 e o circuit breaker já terem agido:
-      // queda de rede no meio de uma apresentação não pode virar stack trace na
-      // tela. Fica FORA de `obterOuExecutar` de propósito — capturar lá dentro
-      // esconderia a falha do circuit breaker, que então nunca abriria.
+      /**
+       * Snapshot de emergência: SÓ FORA DE PRODUÇÃO (ADR-0002).
+       *
+       * Servir um retrato antigo como se fosse a posição de agora é o mesmo
+       * defeito do mock silencioso: o comprador decide compra sobre saldo que
+       * não existe mais e nada na tela avisa. Em produção, fonte fora do ar é
+       * erro; em desenvolvimento e apresentação, o snapshot segue útil.
+       *
+       * Fica FORA de `obterOuExecutar` de propósito — capturar lá dentro
+       * esconderia a falha do circuit breaker, que então nunca abriria.
+       */
+      if (ehAmbienteProducao()) throw erro;
+
       const snapshot = lerSnapshotNormalizado();
       if (snapshot) {
         console.warn("[Adaptador Carreiro] Carga indisponível; servindo snapshot local.", erro);
@@ -133,7 +167,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
       async () => {
         // 0. Modo demonstração: snapshot primeiro, sem tocar a rede.
         // Carga instantânea e imune a oscilação de conexão.
-        if (process.env.CARREIRO_PREFERIR_SNAPSHOT === "true") {
+        if (process.env.CARREIRO_PREFERIR_SNAPSHOT === "true" && !ehAmbienteProducao()) {
           const snapshot = lerSnapshotNormalizado();
           if (snapshot) return snapshot;
           console.warn(
@@ -144,6 +178,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
         // 1. Carga Online via Power BI Fabric REST API (se credenciais ativas)
         if (this.clienteDax.possuiConfiguracaoAtiva()) {
           const inicioBusca = Date.now();
+          const mapaLojas = this.novoMapaLojas();
 
           // A posição de estoque é consultada UMA VEZ POR LOJA.
           // Motivo verificado ao vivo: a consulta de rede inteira estoura o limite
@@ -152,7 +187,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
           // TODAS as lojas, sempre. `filtro.filialId` é a filial em FOCO na tela,
           // não um recorte de carga: sem a posição das outras lojas o motor não
           // enxerga sobra para transferir, e a transferência é o que evita compra.
-          const lojasParaCarregar = Object.keys(NOMES_FILIAIS_CARREIRO).map(Number);
+          const lojasParaCarregar = mapaLojas.filiaisAtivas.map((f) => f.filialId);
 
           const [
             linhasAtributos,
@@ -164,17 +199,17 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             linhasUltimoPedido,
             linhasSugestoesErp,
           ] = await Promise.all([
-            this.carregarCatalogoPaginado(filtro),
+            this.carregarCatalogoPaginado(filtro, mapaLojas),
             this.clienteDax.executarConsultaDax(gerarConsultaDaxHistoricoVendas(filtro)),
             Promise.all(
               lojasParaCarregar.map(async (filialId) => {
-                const nomeFilial = NOMES_FILIAIS_CARREIRO[filialId];
-                // O nome oficial da loja no CADEMP difere do rótulo de exibição.
-                const nomeCademp = NOMES_CADEMP_CARREIRO[filialId];
-                if (!nomeCademp) return { filialId, nomeFilial, linhas: [] as readonly Record<string, unknown>[] };
+                const nomeFilial = mapaLojas.nomeExibicao(filialId);
+                // O identificador da loja na fonte vem do CADASTRO do cliente.
+                const identificador = mapaLojas.identificadorDeFiltro(filialId);
+                if (!identificador) return { filialId, nomeFilial, linhas: [] as readonly Record<string, unknown>[] };
                 try {
                   const linhas = await this.clienteDax.executarConsultaDax(
-                    gerarConsultaDaxPosicaoEstoque(nomeCademp, filtro)
+                    gerarConsultaDaxPosicaoEstoque(identificador, filtro)
                   );
                   return { filialId, nomeFilial, linhas };
                 } catch (e) {
@@ -217,7 +252,6 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
           const produtos = aplicarUltimoPedido(
             mapearProdutosDax(linhasAtributos, {
               lotesPorProdutoId,
-              configuracaoLotes: this.configuracaoLotes,
               classesNaoCompraveis: this.classesNaoCompraveis,
             }),
             linhasUltimoPedido
@@ -229,17 +263,18 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             const parcial = mapearEstoquesDax(pagina.linhas, {
               filialId: pagina.filialId,
               nomeFilial: pagina.nomeFilial,
+              mapaLojas,
             });
             for (const [chave, valor] of parcial) {
               estoques.set(chave, valor);
             }
           }
 
-          const historicos = mapearHistoricoVendasDax(linhasHistorico);
+          const historicos = mapearHistoricoVendasDax(linhasHistorico, mapaLojas);
 
           // Ruptura: o ERP não guarda saldo histórico, então é reconstruída a
           // partir do saldo de hoje e dos movimentos da janela.
-          aplicarRupturaReconstruida(historicos, estoques, linhasMovimentos);
+          aplicarRupturaReconstruida(historicos, estoques, linhasMovimentos, mapaLojas);
 
           const mapaProdutosPorId = new Map(produtos.map((p) => [p.id, p]));
 
@@ -249,13 +284,13 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             saldosPorProduto.set(estoque.produtoId, saldoAtual + estoque.saldoFisico);
           }
 
-          const entradasHoje = mapearEntradasNFeDax(linhasEntradas, mapaProdutosPorId);
+          const entradasHoje = mapearEntradasNFeDax(linhasEntradas, mapaLojas, mapaProdutosPorId);
           const similares = mapearSimilaresDax(
             linhasSimilares,
             mapaProdutosPorId,
             saldosPorProduto
           );
-          const sugestoesErp = mapearSugestoesErpDax(linhasSugestoesErp);
+          const sugestoesErp = mapearSugestoesErpDax(linhasSugestoesErp, mapaLojas);
 
           const resposta: RespostaCargaInventario = {
             produtos,
@@ -270,17 +305,21 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
               emModoDegradado: false,
               totalSkusCarregados: produtos.length,
               latenciaMs: Date.now() - inicioBusca,
+              lojasNaoMapeadas: mapaLojas.naoMapeadas(),
             },
           };
 
           return resposta;
         }
 
-        // 2. Carga Offline a partir de Snapshot Real Extraído
-        const dirSnapshot = localizarDiretorioSnapshot(this.diretorioSnapshot);
+        // 2. Carga Offline a partir de Snapshot Real Extraído (fora de produção)
+        const dirSnapshot = ehAmbienteProducao()
+          ? null
+          : localizarDiretorioSnapshot(this.diretorioSnapshot);
         if (dirSnapshot) {
           return await carregarSnapshotCarreiroLocal(dirSnapshot, filtro, {
             classesNaoCompraveis: this.classesNaoCompraveis,
+            mapaLojas: this.novoMapaLojas(),
           });
         }
 
@@ -306,153 +345,246 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
       }
     }
 
+    if (ehAmbienteProducao()) return false;
     const dirSnapshot = localizarDiretorioSnapshot(this.diretorioSnapshot);
     return dirSnapshot !== null;
   }
 
   /**
-   * Rastreia pedidos de compra formalizados no ERP.
+   * CAPACIDADES DA FONTE.
+   *
+   * O sub-objeto só existe quando a fonte responde de fato; sem credencial
+   * ativa, a capacidade simplesmente não está lá e o TypeScript obriga quem
+   * chama a tratar a ausência. Era um `if (adaptador.listarPedidosCompraERP)`
+   * espalhado pelas rotas, que ninguém garantia estar em todas.
+   *
+   * `granularidade: "loja"` foi CONFERIDO ao vivo em 17/09/2026: PEDIDOS,
+   * ITEMSPEDIDO, TBL_COTACAO e TBL_SOLICITACOES_COMPRAS trazem o ACODEMPRESA
+   * completo por loja (a documentação antiga dizia que vinha "1" para todas).
    */
-  public async listarPedidosCompraERP(filtro: FiltroRastreamentoERP = {}): Promise<readonly PedidoCompraERP[]> {
-    if (!this.clienteDax.possuiConfiguracaoAtiva()) {
-      return [];
-    }
+  public get pedidosERP(): CapacidadePedidosERP | undefined {
+    if (!this.clienteDax.possuiConfiguracaoAtiva()) return undefined;
+    return {
+      granularidade: "loja",
+      listarPedidos: (filtro) => this.listarPedidos(filtro ?? {}),
+      listarItensDoPedido: (pedidoId) => this.listarItensDoPedido(pedidoId),
+      listarComprasNaJanela: (dias, filialId) => this.listarComprasNaJanela(dias, filialId),
+    };
+  }
+
+  public get cotacoesERP(): CapacidadeCotacoesERP | undefined {
+    if (!this.clienteDax.possuiConfiguracaoAtiva()) return undefined;
+    return {
+      granularidade: "loja",
+      listarCotacoes: (filtro) => this.listarCotacoes(filtro ?? {}),
+    };
+  }
+
+  public get entradasConfirmadas(): CapacidadeEntradasConfirmadas | undefined {
+    if (!this.clienteDax.possuiConfiguracaoAtiva()) return undefined;
+    return {
+      granularidade: "loja",
+      listarEntradas: (produtoIds, dias) => this.listarEntradasConfirmadas(produtoIds, dias),
+    };
+  }
+
+  private async listarPedidos(
+    filtro: FiltroRastreamentoERP
+  ): Promise<readonly PedidoCompraERP[]> {
+    const mapaLojas = this.novoMapaLojas();
     try {
+      const limite = filtro.limite ?? 100;
       const dax = gerarConsultaDaxPedidosCompra({
         dias: filtro.dias,
         fornecedorId: filtro.fornecedorId,
-        limite: filtro.limite,
+        limite,
+        // Filtro de loja DENTRO da consulta: filtrando depois, o TOPN já havia
+        // cortado olhando a rede inteira e a loja pedida vinha incompleta.
+        identificadorFilial: filtro.filialId
+          ? mapaLojas.identificadorDeFiltro(filtro.filialId)
+          : undefined,
       });
       const linhas = await this.clienteDax.executarConsultaDax(dax);
-      return linhas.map((linhaBruta) => {
+      const pedidos: PedidoCompraERP[] = [];
+      for (const linhaBruta of linhas) {
         const l = normalizarLinhaDax(linhaBruta);
-        const filialInfo = mapearFilialCarreiro(l.EmpresaId ?? l.ACODEMPRESA);
-        return {
+        const brutoLoja = l.EmpresaId ?? l.ACODEMPRESA;
+        const filialId = mapaLojas.resolver(brutoLoja);
+        if (filialId === null) {
+          mapaLojas.registrarNaoMapeada(brutoLoja);
+          continue;
+        }
+        const statusOriginal = String(l.Status ?? l.STATUS ?? "");
+        pedidos.push({
           id: Number(l.PedidoId ?? l.ID ?? 0),
           numero: Number(l.Numero ?? l.NUMERO ?? 0),
           dataEmissao: String(l.DataEmissao ?? l.DATAEMISSAO ?? ""),
           fornecedorId: Number(l.FornecedorId ?? l.ACODFORNECEDOR ?? 0),
           cotacaoId: l.CotacaoId ? Number(l.CotacaoId) : null,
-          status: String(l.Status ?? l.STATUS ?? "A"),
+          status: normalizarStatusERP(statusOriginal),
+          statusOriginal,
           valorTotal: Number(l.ValorTotal ?? l.VALORPEDIDO ?? 0),
-          filialId: filialInfo.filialId,
-          filialNome: filialInfo.nomeFilial,
-        };
-      }).filter((p) => (!filtro.filialId || p.filialId === filtro.filialId));
+          filialId,
+          filialNome: mapaLojas.nomeExibicao(filialId),
+        });
+      }
+      return pedidos;
     } catch (e) {
       console.warn("[Adaptador Carreiro] Falha ao listar pedidos de compra do ERP:", e);
       return [];
     }
   }
 
-  /**
-   * Lista itens de um pedido de compra específico do ERP.
-   */
-  public async listarItensPedidoCompraERP(pedidoId: number): Promise<readonly ItemPedidoCompraERP[]> {
-    if (!this.clienteDax.possuiConfiguracaoAtiva()) {
-      return [];
-    }
+  private async listarItensDoPedido(pedidoId: number): Promise<readonly ItemPedidoCompraERP[]> {
+    const mapaLojas = this.novoMapaLojas();
     try {
       const dax = gerarConsultaDaxItensPedidosCompra({ pedidoId });
       const linhas = await this.clienteDax.executarConsultaDax(dax);
-      return linhas.map((linhaBruta) => {
-        const l = normalizarLinhaDax(linhaBruta);
-        const filialInfo = mapearFilialCarreiro(l.EmpresaId ?? l.ACODEMPRESA);
-        const produtoId = extrairIdProduto(l.ProdutoId ?? l.PRODUTO_ID ?? 0);
-        const rawSku = String(l.SkuBase ?? l.CodigoBase ?? l.ProdutoId ?? produtoId).trim();
-        const sku = rawSku.includes("|") ? rawSku.split("|")[0].trim() : rawSku;
-        const itemId = Number(l.ItemId ?? l.ITEM_ID ?? 0);
-        const id = Number(l.PedidoId ?? l.PEDIDO_ID ?? pedidoId) * 1000 + itemId;
-        return {
-          id: id || itemId,
-          pedidoId: Number(l.PedidoId ?? l.PEDIDO_ID ?? pedidoId),
-          produtoId,
-          sku: sku || undefined,
-          descricao: String(l.Descricao ?? l.DESCRICAO ?? ""),
-          quantidade: Number(l.Quantidade ?? l.QTDE ?? 0),
-          valorUnitario: Number(l.ValorUnitario ?? l.VALORUNIT ?? 0),
-          valorTotal: Number(l.ValorTotal ?? l.VALORPEDIDO ?? 0),
-          dataEmissao: String(l.DataEmissao ?? l.DATAEMISSAO ?? ""),
-          filialId: filialInfo.filialId,
-          fornecedorId: Number(l.FornecedorId ?? l.ACODFORNECEDOR ?? 0),
-        };
-      });
+      return this.mapearItensPedido(linhas, pedidoId, mapaLojas);
     } catch (e) {
       console.warn(`[Adaptador Carreiro] Falha ao listar itens do pedido ERP ${pedidoId}:`, e);
       return [];
     }
   }
 
-  /**
-   * Lista cotações de compra abertas ou concluídas no ERP.
-   */
-  public async listarCotacoesERP(filtro: FiltroRastreamentoERP = {}): Promise<readonly CotacaoCompraERP[]> {
-    if (!this.clienteDax.possuiConfiguracaoAtiva()) {
+  private async listarComprasNaJanela(
+    dias: number,
+    filialId?: number
+  ): Promise<readonly ItemPedidoCompraERP[]> {
+    const mapaLojas = this.novoMapaLojas();
+    try {
+      const dax = gerarConsultaDaxItensPedidosCompra({
+        dias,
+        limite: 5000,
+        identificadorFilial: filialId ? mapaLojas.identificadorDeFiltro(filialId) : undefined,
+      });
+      const linhas = await this.clienteDax.executarConsultaDax(dax);
+      return this.mapearItensPedido(linhas, 0, mapaLojas);
+    } catch (e) {
+      console.warn("[Adaptador Carreiro] Falha ao listar compras do ERP na janela:", e);
       return [];
     }
+  }
+
+  private mapearItensPedido(
+    linhas: readonly Record<string, unknown>[],
+    pedidoIdPadrao: number,
+    mapaLojas: MapaLojasFonte
+  ): readonly ItemPedidoCompraERP[] {
+    const itens: ItemPedidoCompraERP[] = [];
+    for (const linhaBruta of linhas) {
+      const l = normalizarLinhaDax(linhaBruta);
+      const brutoLoja = l.EmpresaId ?? l.ACODEMPRESA;
+      const filialId = mapaLojas.resolver(brutoLoja);
+      if (filialId === null) {
+        mapaLojas.registrarNaoMapeada(brutoLoja);
+        continue;
+      }
+      const produtoId = extrairIdProduto(l.ProdutoId ?? l.PRODUTO_ID ?? 0);
+      const rawSku = String(l.SkuBase ?? l.CodigoBase ?? l.ProdutoId ?? produtoId).trim();
+      const sku = rawSku.includes("|") ? rawSku.split("|")[0].trim() : rawSku;
+      const pedId = Number(l.PedidoId ?? l.PEDIDO_ID ?? pedidoIdPadrao);
+      const itemId = Number(l.ItemId ?? l.ITEM_ID ?? 0);
+      const id = pedId * 1000 + itemId;
+      itens.push({
+        id: id || itemId,
+        pedidoId: pedId,
+        produtoId,
+        sku: sku || undefined,
+        descricao: String(l.Descricao ?? l.DESCRICAO ?? ""),
+        quantidade: Number(l.Quantidade ?? l.QTDE ?? 0),
+        valorUnitario: Number(l.ValorUnitario ?? l.VALORUNIT ?? 0),
+        valorTotal: Number(l.ValorTotal ?? l.VALORPEDIDO ?? 0),
+        dataEmissao: String(l.DataEmissao ?? l.DATAEMISSAO ?? ""),
+        filialId,
+        fornecedorId: Number(l.FornecedorId ?? l.ACODFORNECEDOR ?? 0),
+      });
+    }
+    return itens;
+  }
+
+  private async listarCotacoes(
+    filtro: FiltroRastreamentoERP
+  ): Promise<readonly CotacaoCompraERP[]> {
+    const mapaLojas = this.novoMapaLojas();
     try {
-      const dax = gerarConsultaDaxCotacoes({ dias: filtro.dias, limite: filtro.limite });
+      const dax = gerarConsultaDaxCotacoes({
+        dias: filtro.dias,
+        limite: filtro.limite,
+        identificadorFilial: filtro.filialId
+          ? mapaLojas.identificadorDeFiltro(filtro.filialId)
+          : undefined,
+      });
       const linhas = await this.clienteDax.executarConsultaDax(dax);
-      return linhas.map((linhaBruta) => {
+      const cotacoes: CotacaoCompraERP[] = [];
+      for (const linhaBruta of linhas) {
         const l = normalizarLinhaDax(linhaBruta);
-        const filialInfo = mapearFilialCarreiro(l.ACODEMPRESA ?? l.EmpresaId);
-        return {
+        const brutoLoja = l.ACODEMPRESA ?? l.EmpresaId;
+        const filialId = mapaLojas.resolver(brutoLoja);
+        if (filialId === null) {
+          mapaLojas.registrarNaoMapeada(brutoLoja);
+          continue;
+        }
+        const statusOriginal = String(l.STATUS ?? l.Status ?? "");
+        cotacoes.push({
           rowId: Number(l.ROW_ID ?? l.RowId ?? 0),
           codigo: Number(l.CODIGO ?? l.Codigo ?? 0),
           descricao: String(l.DESCRICAO ?? l.Descricao ?? ""),
           dataHora: String(l.DATAHORA ?? l.DataHora ?? ""),
-          status: String(l.STATUS ?? l.Status ?? ""),
-          filialId: filialInfo.filialId,
-          filialNome: filialInfo.nomeFilial,
+          status: normalizarStatusERP(statusOriginal),
+          statusOriginal,
+          filialId,
+          filialNome: mapaLojas.nomeExibicao(filialId),
           totalItens: Number(l.TotalItens ?? 0),
           totalPropostas: Number(l.TotalPropostas ?? 0),
           propostasVencedoras: Number(l.PropostasVencedoras ?? 0),
           menorValorCotado: Number(l.MenorValorCotado ?? 0),
-        };
-      }).filter((c) => (!filtro.filialId || c.filialId === filtro.filialId));
+        });
+      }
+      return cotacoes;
     } catch (e) {
       console.warn("[Adaptador Carreiro] Falha ao listar cotações do ERP:", e);
       return [];
     }
   }
 
-  /**
-   * Lista todas as compras faturadas/emitidas no ERP na janela para calibração do aprendizado.
-   */
-  public async listarTodasComprasERPNaJanela(dias: number, filialId?: number): Promise<readonly ItemPedidoCompraERP[]> {
-    if (!this.clienteDax.possuiConfiguracaoAtiva()) {
-      return [];
+  private async listarEntradasConfirmadas(
+    produtoIds: readonly number[],
+    dias: number
+  ): Promise<readonly EntradaConfirmadaERP[]> {
+    const mapaLojas = this.novoMapaLojas();
+    const fim = new Date();
+    const inicio = new Date(fim.getTime() - Math.max(1, dias) * 24 * 60 * 60 * 1000);
+    const alvo = new Set(produtoIds);
+    const entradas: EntradaConfirmadaERP[] = [];
+
+    for (const filial of mapaLojas.filiaisAtivas) {
+      const identificadorFilial = mapaLojas.identificadorDeFiltro(filial.filialId);
+      if (!identificadorFilial) continue;
+      try {
+        const porItem = await buscarEntradasCarreiro(this.clienteDax, {
+          filialId: filial.filialId,
+          identificadorFilial,
+          inicio,
+          fim,
+          produtoIds: alvo,
+        });
+        for (const item of porItem.values()) {
+          entradas.push({
+            produtoId: item.produtoId,
+            filialId: item.filialId,
+            quantidadeEntrada: item.qtdEntrada,
+            dataEntrada: fim.toISOString(),
+          });
+        }
+      } catch (e) {
+        console.warn(
+          `[Adaptador Carreiro] Falha ao consultar entradas confirmadas da filial ${filial.filialId}:`,
+          e
+        );
+      }
     }
-    try {
-      const dax = gerarConsultaDaxItensPedidosCompra({ dias, limite: 5000 });
-      const linhas = await this.clienteDax.executarConsultaDax(dax);
-      return linhas.map((linhaBruta) => {
-        const l = normalizarLinhaDax(linhaBruta);
-        const filialInfo = mapearFilialCarreiro(l.EmpresaId ?? l.ACODEMPRESA);
-        const produtoId = extrairIdProduto(l.ProdutoId ?? l.PRODUTO_ID ?? 0);
-        const rawSku = String(l.SkuBase ?? l.CodigoBase ?? l.ProdutoId ?? produtoId).trim();
-        const sku = rawSku.includes("|") ? rawSku.split("|")[0].trim() : rawSku;
-        const pedId = Number(l.PedidoId ?? l.PEDIDO_ID ?? 0);
-        const itemId = Number(l.ItemId ?? l.ITEM_ID ?? 0);
-        const id = pedId * 1000 + itemId;
-        return {
-          id: id || itemId,
-          pedidoId: pedId,
-          produtoId,
-          sku: sku || undefined,
-          descricao: String(l.Descricao ?? l.DESCRICAO ?? ""),
-          quantidade: Number(l.Quantidade ?? l.QTDE ?? 0),
-          valorUnitario: Number(l.ValorUnitario ?? l.VALORUNIT ?? 0),
-          valorTotal: Number(l.ValorTotal ?? l.VALORPEDIDO ?? 0),
-          dataEmissao: String(l.DataEmissao ?? l.DATAEMISSAO ?? ""),
-          filialId: filialInfo.filialId,
-          fornecedorId: Number(l.FornecedorId ?? l.ACODFORNECEDOR ?? 0),
-        };
-      }).filter((i) => (!filialId || i.filialId === filialId));
-    } catch (e) {
-      console.warn("[Adaptador Carreiro] Falha ao listar compras do ERP na janela:", e);
-      return [];
-    }
+    return entradas;
   }
 
   /**
@@ -472,7 +604,8 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
    * forma de saber que veio tudo: a última página vem menor que a página cheia.
    */
   private async carregarCatalogoPaginado(
-    filtro?: FiltroCargaInventario
+    filtro: FiltroCargaInventario | undefined,
+    mapaLojas: MapaLojasFonte
   ): Promise<readonly Record<string, unknown>[]> {
     const MAXIMO_PAGINAS = 40; // trava contra laço infinito se o cursor não andar
     const todas: Record<string, unknown>[] = [];
@@ -483,7 +616,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
         gerarConsultaDaxProdutosEstoque(
           filtro,
           cursor,
-          filtro?.filialId ? NOMES_CADEMP_CARREIRO[filtro.filialId] : undefined
+          filtro?.filialId ? mapaLojas.identificadorDeFiltro(filtro.filialId) : undefined
         )
       );
       todas.push(...(linhas as Record<string, unknown>[]));

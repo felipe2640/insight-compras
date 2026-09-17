@@ -20,7 +20,10 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
     "carreiro",
   ],
   customDomain: "compras.carreiro.com.br",
-  fonteDados: "powerbi-carreiro",
+  fonte: {
+    adaptador: "powerbi-dax",
+    nomeERP: "ConnectSoft ShopCash",
+  },
   /**
    * Paleta tirada do LOGOTIPO da rede, não inventada.
    *
@@ -61,6 +64,8 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
       ativa: true,
       cidade: "Pedro II",
       uf: "PI",
+      nomeFonte: "CARREIRO PEDRO II",
+      identificadoresFonte: ["1|e2adc241-50f7-4dcd-9527-423080cd8c5c"],
     },
     {
       filialId: 2,
@@ -70,6 +75,8 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
       ativa: true,
       cidade: "Piripiri",
       uf: "PI",
+      nomeFonte: "MELO DISTRIBUIDORA",
+      identificadoresFonte: ["1|cd87703f-0d8c-447e-9bdf-5c1d790f587b"],
     },
     {
       filialId: 3,
@@ -79,6 +86,8 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
       ativa: true,
       cidade: "Poranga",
       uf: "CE",
+      nomeFonte: "CARREIRO PORANGA",
+      identificadoresFonte: ["1|a5172ddc-0dd0-4f8e-bb0d-5018183d4457"],
     },
     {
       filialId: 4,
@@ -88,6 +97,8 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
       ativa: true,
       cidade: "Campo Maior",
       uf: "PI",
+      nomeFonte: "CEARA AUTO PECAS CAMPO MAIOR",
+      identificadoresFonte: ["1|c9432abf-af64-40d2-abe3-21124f49b2ae"],
     },
     {
       filialId: 5,
@@ -97,6 +108,8 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
       ativa: true,
       cidade: "José de Freitas",
       uf: "PI",
+      nomeFonte: "CARREIRO JOSE DE FREITAS",
+      identificadoresFonte: ["1|d624d502-59a4-4ab2-910b-99ae9bf7462a"],
     },
   ],
   assinatura: {
@@ -325,124 +338,4 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
     ],
   },
 
-  /**
-   * PROCESSO DE COMPRAS E COTAÇÕES — REDE CARREIRO.
-   *
-   * Mapeamento do ciclo completo de compras integrado ao ERP Connectsoft Shopcash:
-   * 1. Solicitação de Balcão (vendedor registra falta, status A/R/P com motivo de recusa)
-   * 2. Cotação de Preços (comprador dispara para múltiplos fornecedores, recebe valores)
-   * 3. Pedido de Compra Oficial (fornecedor vencedor vira Pedido de Compra amarrado)
-   * 4. Entrada de Nota Fiscal (recebimento físico e conferência no estoque)
-   */
-  processoCompra: {
-    habilitado: true,
-    tipoERP: "connectsoft-shopcash",
-    etapas: {
-      solicitacao: true,
-      cotacao: true,
-      pedido: true,
-      notaEntrada: true,
-    },
-    tabelasERP: {
-      solicitacoes: "TBL_SOLICITACOES_COMPRAS",
-      solicitacoesEventos: "TBL_SOLICITACOES_COMPRAS_EVENTOS",
-      cotacoes: "TBL_COTACAO",
-      cotacoesItens: "TBL_COTACAO_ITENS",
-      cotacoesFornecedores: "TBL_COTACAO_FORN",
-      ligacaoPedidoSolicitacao: "ITEMSPEDIDO_SOLICITACOES",
-      pedidos: "PEDIDOS",
-      notas: "NOTAS",
-    },
-    statusAprovacaoSolicitacao: {
-      A: "Aprovada",
-      R: "Recusada",
-      P: "Pendente / Em Análise",
-      C: "Cancelada",
-      E: "Em Cotação",
-      F: "Finalizada / Atendida",
-    },
-    statusCotacao: {
-      A: "Em Aberto",
-      F: "Fechada / Concluída",
-      C: "Cancelada",
-    },
-    motivosRecusa: [
-      {
-        codigo: "PRECO_ELEVADO",
-        rotulo: "Preço Elevado",
-        descricao:
-          "Preço do fornecedor cotado muito acima da média de mercado ou da expectativa de venda.",
-        categoria: "preco",
-        acaoRecomendada:
-          "Buscar fornecedores alternativos ou negociar lote maior.",
-      },
-      {
-        codigo: "FORNECEDOR_SEM_ESTOQUE",
-        rotulo: "Fornecedor sem Estoque",
-        descricao:
-          "Item em falta na fábrica ou no distribuidor consultado durante a cotação.",
-        categoria: "disponibilidade",
-        acaoRecomendada: "Consultar distribuidores regionais secundários.",
-      },
-      {
-        codigo: "PRODUTO_FORA_DE_LINHA",
-        rotulo: "Produto Fora de Linha / Descontinuado",
-        descricao: "Peça descontinuada pelo fabricante oficial.",
-        categoria: "disponibilidade",
-        acaoRecomendada:
-          "Mapear código similar ou equivalente através da tabela de similares.",
-      },
-      {
-        codigo: "ERRO_DE_DIGITACAO",
-        rotulo: "Erro de Digitação / Código Incorreto",
-        descricao:
-          "Vendedor digitou código, aplicação ou descrição errada no balcão.",
-        categoria: "operacional",
-        acaoRecomendada:
-          "Orientar vendedor a consultar o catálogo mestre de produtos.",
-      },
-      {
-        codigo: "DUPLICIDADE",
-        rotulo: "Solicitação em Duplicidade",
-        descricao:
-          "Mesmo item já solicitado anteriormente na mesma filial ou outra loja da rede.",
-        categoria: "operacional",
-        acaoRecomendada: "Acompanhar a solicitação original já em andamento.",
-      },
-      {
-        codigo: "CANCELADO_PELO_CLIENTE",
-        rotulo: "Cancelado pelo Cliente",
-        descricao:
-          "Cliente de balcão desistiu do orçamento ou realizou o serviço em outro estabelecimento.",
-        categoria: "cliente",
-        acaoRecomendada: "Nenhuma ação de compra necessária.",
-      },
-      {
-        codigo: "ATENDIDO_POR_TRANSFERENCIA",
-        rotulo: "Atendido por Transferência entre Lojas",
-        descricao:
-          "Demanda suprida por redistribuição de estoque ocioso de outra filial da Rede Carreiro.",
-        categoria: "estrategico",
-        acaoRecomendada:
-          "Gerar ordem de transferência no cockpit de transferências.",
-      },
-      {
-        codigo: "ABAIXO_LOTE_MINIMO",
-        rotulo: "Quantidade Abaixo do Lote Mínimo",
-        descricao:
-          "Demanda insuficiente para atingir faturamento mínimo ou embalagem coletiva do fornecedor.",
-        categoria: "preco",
-        acaoRecomendada: "Aguardar acumular demanda de outras filiais da rede.",
-      },
-      {
-        codigo: "MARGEM_INSUFICIENTE",
-        rotulo: "Margem Inviável para Revenda",
-        descricao:
-          "Preço de custo do fornecedor inviabiliza a margem mínima estabelecida no cadastro.",
-        categoria: "preco",
-        acaoRecomendada:
-          "Avaliar preço de venda ao consumidor final ou novo parceiro.",
-      },
-    ],
-  },
 };

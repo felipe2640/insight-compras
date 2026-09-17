@@ -105,6 +105,15 @@ const FORNECEDORES_REDE = [
 export interface OpcoesGeradorSintetico {
   readonly totalSkus?: number;
   readonly seed?: number;
+  /**
+   * Lojas do cliente sintético.
+   *
+   * O gerador sempre produziu 5 lojas fixas começando em 1, então nenhum teste
+   * exercitava o que acontece com um cliente de 2 lojas cujos ids não incluem
+   * o 1 — que é o caso onde todo `?? 1` do código aparecia como dado plausível
+   * e errado. São usadas as duas primeiras lojas da lista.
+   */
+  readonly filiais?: readonly { readonly filialId: number; readonly nome: string }[];
 }
 
 /**
@@ -118,6 +127,16 @@ export function gerarDatasetSintetico(
   const inicio = Date.now();
   const totalSkus = opcoes.totalSkus ?? 25_000;
   const rand = criarPrng(opcoes.seed ?? 42);
+
+  const filiaisSinteticas =
+    opcoes.filiais && opcoes.filiais.length > 0
+      ? opcoes.filiais
+      : Object.entries(NOMES_FILIAIS_SINTETICAS).map(([id, nome]) => ({
+          filialId: Number(id),
+          nome,
+        }));
+  const lojaA = filiaisSinteticas[0];
+  const lojaB = filiaisSinteticas[1] ?? filiaisSinteticas[0];
 
   const produtos: Produto[] = new Array(totalSkus);
   const estoques = new Map<string, EstoqueFilial>();
@@ -300,7 +319,7 @@ export function gerarDatasetSintetico(
       entradasHoje.push({
         numeroNotaFiscal: `NF-${900000 + i}`,
         produtoId,
-        filialId: 1,
+        filialId: lojaA.filialId,
         fornecedorNome: fornecedor.nome,
         quantidadeEntrada: 12 + (i % 24),
         valorEntrada: (12 + (i % 24)) * custoBase,
@@ -309,10 +328,10 @@ export function gerarDatasetSintetico(
     }
 
     // Popula Filial 1 (Loja Matriz)
-    const chave1 = `${produtoId}:1`;
+    const chave1 = `${produtoId}:${lojaA.filialId}`;
     estoques.set(chave1, {
-      filialId: 1,
-      nomeFilial: NOMES_FILIAIS_SINTETICAS[1],
+      filialId: lojaA.filialId,
+      nomeFilial: lojaA.nome,
       produtoId,
       saldoFisico: saldo1,
       estoqueMinimoSeguranca: min1,
@@ -329,7 +348,7 @@ export function gerarDatasetSintetico(
 
     historicos.set(chave1, {
       produtoId,
-      filialId: 1,
+      filialId: lojaA.filialId,
       vendasLiquidas30dias: vendas30d1,
       vendasLiquidas90dias: vendas90d1,
       vendasLiquidas180dias: vendas180d1,
@@ -344,10 +363,10 @@ export function gerarDatasetSintetico(
     });
 
     // Popula Filial 2 (Loja Norte)
-    const chave2 = `${produtoId}:2`;
+    const chave2 = `${produtoId}:${lojaB.filialId}`;
     estoques.set(chave2, {
-      filialId: 2,
-      nomeFilial: NOMES_FILIAIS_SINTETICAS[2],
+      filialId: lojaB.filialId,
+      nomeFilial: lojaB.nome,
       produtoId,
       saldoFisico: saldo2,
       estoqueMinimoSeguranca: min2,
@@ -364,7 +383,7 @@ export function gerarDatasetSintetico(
 
     historicos.set(chave2, {
       produtoId,
-      filialId: 2,
+      filialId: lojaB.filialId,
       vendasLiquidas30dias: vendas30d2,
       vendasLiquidas90dias: vendas90d2,
       vendasLiquidas180dias: vendas180d2,
@@ -405,7 +424,7 @@ export function gerarDatasetSintetico(
   const hojeIso = new Date().toISOString();
   for (let i = 0; i < Math.min(500, totalSkus); i++) {
     const p = produtos[i];
-    const filialId = (i % 2) + 1; // Distribui entre loja 1 e 2
+    const filialId = i % 2 === 0 ? lojaA.filialId : lojaB.filialId;
     const qtdSugerida = (i % 5) + 1;
     sugestoesErp.set(`${p.id}:${filialId}`, {
       produtoId: p.id,

@@ -20,17 +20,29 @@ import {
   StatusPedido,
   Pedido,
 } from "@/lib/pedidos";
-import { obterAdaptadorInventario } from "@adapters/index";
-import { obterConfiguracaoTenant } from "@config/tenants";
+import { ErroContexto, contextoDaRequisicao } from "@/lib/contexto/contexto-requisicao";
+import { respostaErroContexto } from "@/lib/contexto/resposta-erro";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const usuario = await obterUsuarioDaRequisicao(request);
-  if (!usuario) return respostaNaoAutenticado();
+  let contexto;
+  try {
+    contexto = await contextoDaRequisicao(request);
+  } catch (erro) {
+    if (erro instanceof ErroContexto) return respostaErroContexto(erro);
+    throw erro;
+  }
+  const { usuario, tenant, fonte } = contexto;
 
-  const tenant = obterConfiguracaoTenant(usuario.tenantId);
-  const temProcessoERP = Boolean(tenant.processoCompra?.habilitado);
+  /**
+   * "Tem ciclo de compras no ERP?" agora é uma capacidade da FONTE, e não o
+   * `processoCompra.habilitado` do cadastro somado a um `tipoERP` conferido
+   * por string em duas rotas.
+   */
+  const temProcessoERP = Boolean(fonte.pedidosERP);
+  const rotuloErp = tenant.fonte.nomeERP ? `ERP ${tenant.fonte.nomeERP}` : "ERP integrado";
+  const modeloErpId = "erp";
   const p = new URL(request.url).searchParams;
 
   const dias = Math.min(365, Math.max(1, parseInt(p.get("dias") ?? "30", 10) || 30));
@@ -42,9 +54,8 @@ export async function GET(request: NextRequest) {
 
   // Consulta de cotações do ERP
   if (tipo === "cotacoes") {
-    const adaptador = obterAdaptadorInventario({ tenant: usuario.tenantId });
-    if (adaptador.listarCotacoesERP) {
-      const cotacoes = await adaptador.listarCotacoesERP({ dias, filialId });
+    if (fonte.cotacoesERP) {
+      const cotacoes = await fonte.cotacoesERP.listarCotacoes({ dias, filialId });
       return NextResponse.json({ configurado: true, tipo: "cotacoes", dias, cotacoes });
     }
     return NextResponse.json({ configurado: false, tipo: "cotacoes", cotacoes: [] });
@@ -71,9 +82,8 @@ export async function GET(request: NextRequest) {
     }
 
     // 2. Se não encontrado localmente e for pedido do ERP
-    const adaptador = obterAdaptadorInventario({ tenant: usuario.tenantId });
-    if (adaptador.listarItensPedidoCompraERP) {
-      const itensErp = await adaptador.listarItensPedidoCompraERP(id);
+    if (fonte.pedidosERP) {
+      const itensErp = await fonte.pedidosERP.listarItensDoPedido(id);
       if (itensErp && itensErp.length > 0) {
         const itens = itensErp.map((it) => ({
           id: it.id,
@@ -112,30 +122,26 @@ export async function GET(request: NextRequest) {
 
   // 1. Busca Pedidos do ERP se solicitado
   if (origem === "erp" || origem === "todos") {
-    const adaptador = obterAdaptadorInventario({ tenant: usuario.tenantId });
-    if (adaptador.listarPedidosCompraERP) {
-      const pedidosErp = await adaptador.listarPedidosCompraERP({
+    if (fonte.pedidosERP) {
+      const pedidosErp = await fonte.pedidosERP.listarPedidos({
         dias,
         filialId: Number.isInteger(filialId) && (filialId as number) > 0 ? filialId : undefined,
       });
 
-      const ehConnectsoft = tenant.processoCompra?.tipoERP === "connectsoft-shopcash";
-      const rotuloErp = ehConnectsoft ? "ERP Connectsoft" : "ERP Integrado";
-      const modeloErpId = ehConnectsoft ? "erp-connectsoft" : "erp-integrado";
-
       const pedidosMapeados: Pedido[] = pedidosErp.map((pErp) => {
+        // O adaptador já traduziu o código do ERP; a rota só exibe.
         const statusNormalizado: StatusPedido =
-          pErp.status.toLowerCase().includes("conc") || pErp.status === "F"
-            ? "confirmado"
-            : "enviado";
+          pErp.status === "concluido" ? "confirmado" : "enviado";
 
         return {
           id: pErp.id,
           tenantId: usuario.tenantId,
           exportadoEm: pErp.dataEmissao,
           usuario: rotuloErp,
-          filialId: pErp.filialId,
-          filialNome: pErp.filialNome,
+          // Fonte sem granularidade por loja devolve `null`: a tela mostra
+          // "Rede" em vez de fingir que o pedido é de uma filial.
+          filialId: pErp.filialId ?? 0,
+          filialNome: pErp.filialId === null ? "Rede" : pErp.filialNome,
           modeloId: modeloErpId,
           formato: "ERP",
           totalItens: pErp.totalItens ?? 1,
@@ -147,7 +153,7 @@ export async function GET(request: NextRequest) {
           cotacaoId: pErp.cotacaoId,
           valorTotal: pErp.valorTotal,
           dataEmissao: pErp.dataEmissao,
-          statusERP: pErp.status,
+          statusERP: pErp.statusOriginal,
           historico: [],
         };
       });

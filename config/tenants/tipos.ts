@@ -55,6 +55,27 @@ export interface FilialCadastradaTenant {
   readonly ativa: boolean;
   readonly cidade?: string;
   readonly uf?: string;
+  /**
+   * Como a FONTE de dados do cliente nomeia esta loja (ex: CADEMP[ANOMEFANTASIA]).
+   *
+   * Serve para exibição e conferência do cadastro. NÃO serve de chave: o nome
+   * fantasia é editável no ERP, e uma renomeação lá não pode desmontar a
+   * carga aqui. A chave são os `identificadoresFonte`.
+   */
+  readonly nomeFonte?: string;
+  /**
+   * Valores EXATOS que a fonte devolve para identificar esta loja.
+   *
+   * Verificado ao vivo em 17/09/2026: no modelo da Carreiro toda tabela
+   * (CADEMP, PRODUTOS, MOVESTOQ, NOTAS, PEDIDOS, ITEMSPEDIDO, TBL_COTACAO,
+   * TBL_SOLICITACOES_COMPRAS e _HIST) traz o mesmo `"1|<guid>"`. A comparação
+   * é exata depois de normalizar caixa e espaços — sem regex por cidade, sem
+   * prefixo de GUID, sem `?? 1`. Valor fora desta lista é LOJA NÃO MAPEADA, e
+   * a linha é descartada com aviso, nunca atribuída à matriz.
+   *
+   * Tenant sintético não precisa declarar: a fonte já devolve o filialId.
+   */
+  readonly identificadoresFonte?: readonly string[];
 }
 
 export interface AssinaturaInsightDTenant {
@@ -150,6 +171,46 @@ export interface ConfiguracaoCatalogoTenant {
   readonly classesNaoCompraveis: readonly ClasseNaoCompravelTenant[];
 }
 
+/**
+ * Capacidades que o CADASTRO pode desligar.
+ *
+ * Quem diz o que a fonte CONSEGUE entregar é o adaptador (`capacidades` do
+ * InventoryAdapter). O cadastro só subtrai: desliga o que o cliente ainda não
+ * quer usar. Nunca liga o que a fonte não tem — prometer capacidade inexistente
+ * é como o mock silencioso, promete dado que ninguém mediu.
+ */
+export type CapacidadeDesligavelTenant =
+  | "pedidosERP"
+  | "cotacoesERP"
+  | "entradasConfirmadas"
+  | "sugestoesErp";
+
+/** Qual adaptador atende este cliente, e como a fonte dele se chama. */
+export type AdaptadorFonteTenant = "powerbi-dax" | "sintetica";
+
+export interface FonteDadosTenant {
+  /**
+   * "sintetica" nunca toca a nuvem de ninguém. Qualquer outro valor é fonte de
+   * cliente REAL: exige credencial própria e, na falta dela, a plataforma
+   * falha alto em vez de servir dado inventado (ADR-0002).
+   */
+  readonly adaptador: AdaptadorFonteTenant;
+  /** Nome do ERP do cliente, só para rótulo (ex: "ConnectSoft ShopCash"). */
+  readonly nomeERP?: string;
+  /** Capacidades que a fonte entrega mas este cliente não quer usar ainda. */
+  readonly capacidadesDesligadas?: readonly CapacidadeDesligavelTenant[];
+}
+
+/**
+ * Natureza do tenant: decide login demo, exigência de credenciais e se dado
+ * sintético pode aparecer. Derivada da fonte, nunca declarada à mão.
+ */
+export function naturezaTenant(
+  tenant: Pick<ConfiguracaoTenant, "fonte">
+): "real" | "sintetica" {
+  return tenant.fonte.adaptador === "sintetica" ? "sintetica" : "real";
+}
+
 export interface ConfiguracaoTenant {
   /** Identificador único do tenant em minúsculas (slug) - ex: "carreiro" */
   readonly id: string;
@@ -163,18 +224,8 @@ export interface ConfiguracaoTenant {
   readonly subdominiosValidos: readonly string[];
   /** Domínio customizado opcional do cliente - ex: "compras.carreiro.com.br" */
   readonly customDomain?: string;
-  /**
-   * De onde vêm os dados de estoque e venda DESTE cliente.
-   *
-   * A fábrica de adaptadores escolhia sozinha: havendo credenciais de Power BI
-   * no ambiente, ela devolvia o adaptador da Carreiro — com os GUIDs e os nomes
-   * CADEMP da rede dela — fosse qual fosse o tenant. Duas consequências: o
-   * ambiente de DEMONSTRAÇÃO servia dados reais de cliente sob nomes
-   * sintéticos, e o segundo cliente herdaria o mapeamento do primeiro.
-   *
-   * "sintetica" nunca toca a nuvem de ninguém.
-   */
-  readonly fonteDados: "powerbi-carreiro" | "sintetica";
+  /** De onde vêm os dados de estoque e venda DESTE cliente. */
+  readonly fonte: FonteDadosTenant;
   /** Paleta de cores institucionais */
   readonly cores: CoresInstitucionaisTenant;
   /** Identidade visual (logos e favicon) */
@@ -193,56 +244,6 @@ export interface ConfiguracaoTenant {
    * separadores próprios; o motor de exportação é comum, o layout é daqui.
    */
   readonly exportacao: ConfiguracaoExportacaoTenant;
-  /**
-   * Configuração do fluxo e ciclo de compras do ERP do cliente.
-   * Rastreia: Solicitação de Balcão -> Cotação -> Pedido de Compra -> Entrada NF.
-   */
-  readonly processoCompra?: ConfiguracaoProcessoCompraTenant;
-}
-
-/** Motivo de recusa cadastrado ou selecionável para solicitações de compra */
-export interface MotivoRecusaCompraTenant {
-  readonly codigo: string;
-  readonly rotulo: string;
-  readonly descricao: string;
-  readonly categoria:
-    | "preco"
-    | "disponibilidade"
-    | "operacional"
-    | "cliente"
-    | "estrategico";
-  readonly acaoRecomendada?: string;
-}
-
-/** Etapas habilitadas no ciclo de compras do cliente */
-export interface EtapasFluxoCompraTenant {
-  readonly solicitacao: boolean;
-  readonly cotacao: boolean;
-  readonly pedido: boolean;
-  readonly notaEntrada: boolean;
-}
-
-/** Mapeamento de tabelas do ERP / Semantic Model que compõem o ciclo */
-export interface TabelasProcessoCompraERP {
-  readonly solicitacoes: string;
-  readonly solicitacoesEventos: string;
-  readonly cotacoes: string;
-  readonly cotacoesItens: string;
-  readonly cotacoesFornecedores: string;
-  readonly ligacaoPedidoSolicitacao: string;
-  readonly pedidos: string;
-  readonly notas: string;
-}
-
-/** Configuração integral do processo de compra por tenant */
-export interface ConfiguracaoProcessoCompraTenant {
-  readonly habilitado: boolean;
-  readonly tipoERP: "connectsoft-shopcash" | "generico" | "outro";
-  readonly etapas: EtapasFluxoCompraTenant;
-  readonly tabelasERP: TabelasProcessoCompraERP;
-  readonly motivosRecusa: readonly MotivoRecusaCompraTenant[];
-  readonly statusAprovacaoSolicitacao: Readonly<Record<string, string>>;
-  readonly statusCotacao: Readonly<Record<string, string>>;
 }
 
 /**

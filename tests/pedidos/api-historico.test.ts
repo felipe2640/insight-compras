@@ -24,7 +24,7 @@ describe("API /api/pedidos/historico — Consulta e Transição de Ciclo de Vida
       email: "carlos@carreiro.com.br",
       role: "COMPRADOR",
       allowedSupplierIds: [501],
-      tenantId: "carreiro",
+      tenantId: "demonstracao",
     });
   });
 
