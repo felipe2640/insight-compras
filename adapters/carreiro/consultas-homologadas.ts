@@ -26,6 +26,7 @@ export function formatarListaNumericaDax(numeros: readonly number[]): string {
   return `{ ${numerosValidados.join(", ")} }`;
 }
 
+
 /**
  * CADEIA DE FILTROS DE "VENDA VÁLIDA AO CONSUMIDOR" DA REDE CARREIRO.
  *
@@ -137,7 +138,13 @@ export function gerarConsultaDaxProdutosEstoque(
 ): string {
   let clausulaFiltro = "";
 
-  if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
+  /**
+   * `null` = irrestrito (gestor/admin). Lista VAZIA = comprador SEM carteira,
+   * e não é a mesma coisa: sem a distinção, a consulta saía sem cláusula e a
+   * fonte devolvia o catálogo inteiro para quem não pode ver nada. A falha
+   * fechada existia nas rotas; agora existe também na fonte.
+   */
+  if (filtro?.fornecedoresPermitidos !== null && filtro?.fornecedoresPermitidos !== undefined) {
     const listaDax = formatarListaNumericaDax(filtro.fornecedoresPermitidos);
     clausulaFiltro += ` && 'PRODUTOS'[ICODFORN] IN ${listaDax}`;
   }
@@ -260,7 +267,7 @@ export function gerarConsultaDaxPosicaoEstoque(
   }
 
   let filtroFornecedores = "";
-  if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
+  if (filtro?.fornecedoresPermitidos !== null && filtro?.fornecedoresPermitidos !== undefined) {
     const listaDax = formatarListaNumericaDax(filtro.fornecedoresPermitidos);
     // FILTER(ALL(...)) e NÃO KEEPFILTERS(coluna IN {...}): a segunda forma é rejeitada
     // pelo motor ("A single value for column 'ICODFORN' cannot be determined").
@@ -385,7 +392,7 @@ export const CAMPOS_INDISPONIVEIS_CARREIRO = {
  */
 export function gerarConsultaDaxHistoricoVendas(filtro?: FiltroCargaInventario): string {
   let filtroFornecedores = "";
-  if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
+  if (filtro?.fornecedoresPermitidos !== null && filtro?.fornecedoresPermitidos !== undefined) {
     const listaDax = formatarListaNumericaDax(filtro.fornecedoresPermitidos);
     filtroFornecedores = `KEEPFILTERS('PRODUTOS'[ICODFORN] IN ${listaDax}),`;
   }
@@ -496,7 +503,7 @@ FILTER(HistoricoComVenda, [VendasQtd180d] > 0)
  */
 export function gerarConsultaDaxContagemHistoricoVendas(filtro?: FiltroCargaInventario): string {
   let filtroFornecedores = "";
-  if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
+  if (filtro?.fornecedoresPermitidos !== null && filtro?.fornecedoresPermitidos !== undefined) {
     const listaDax = formatarListaNumericaDax(filtro.fornecedoresPermitidos);
     filtroFornecedores = `KEEPFILTERS('PRODUTOS'[ICODFORN] IN ${listaDax}),`;
   }

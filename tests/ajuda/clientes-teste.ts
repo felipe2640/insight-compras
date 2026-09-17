@@ -98,7 +98,20 @@ export function tenantMinimo(
     subdominiosValidos: ["minimo"],
     customDomain: undefined,
     filiais: FILIAIS_MINIMAS,
-    fonte: { adaptador: "sintetica" },
+    /**
+     * Cliente que ainda não usa nada do ciclo de compras do ERP. O cadastro
+     * DESLIGA as capacidades; a fonte continua capaz, e é assim que um cliente
+     * novo entra sem que ninguém mexa em código.
+     */
+    fonte: {
+      adaptador: "sintetica",
+      capacidadesDesligadas: [
+        "pedidosERP",
+        "cotacoesERP",
+        "entradasConfirmadas",
+        "sugestoesErp",
+      ],
+    },
     parametrosMotor: {
       ...TENANT_DEMONSTRACAO.parametrosMotor,
       filialFocoPadraoId: 7,

@@ -5,8 +5,8 @@ export const dynamic = "force-dynamic";
 /**
  * Health PÚBLICO: responde se a aplicação está no ar. Nada além disso.
  *
- * Esta rota é pública e fora do middleware, e aceitava `x-tenant-id` do
- * cliente para então DISPARAR uma consulta à fonte daquele tenant. Qualquer
+ * Esta rota é pública e fora do middleware, e aceitava o cabeçalho de cliente
+ * enviado por quem chamasse, DISPARANDO uma consulta à fonte dele. Qualquer
  * pessoa na internet podia fazer a plataforma consultar o Power BI de um
  * cliente, sem sessão. A checagem da fonte foi para /api/health/fonte.
  */

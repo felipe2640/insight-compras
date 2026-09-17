@@ -17,10 +17,11 @@ async function CarregarDadosCockpit() {
   /**
    * Um único ponto resolve usuário, cliente e fonte, e NEGA quando divergem.
    *
-   * Antes, esta página lia `x-tenant-id` antes da sessão e nunca comparava os
-   * dois: numa instalação multi-cliente, `/compras?tenant=<cliente>` abria a
-   * grade real para qualquer sessão, inclusive a de demonstração. Usuário nulo
-   * também passava, e sem papel de comprador a carteira saía irrestrita.
+   * Antes, esta página lia o cliente do cabeçalho antes da sessão e nunca
+   * comparava os dois: numa instalação multi-cliente, `/compras?tenant=<cliente>`
+   * abria a grade real para qualquer sessão, inclusive a de demonstração.
+   * Usuário nulo também passava, e sem papel de comprador a carteira saía
+   * irrestrita.
    */
   let contexto;
   try {

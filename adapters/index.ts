@@ -11,7 +11,7 @@ import {
 } from "./carreiro/adaptador-carreiro";
 import { ClienteDaxPowerBI } from "./carreiro/cliente-dax";
 import { AdaptadorInventarioMock } from "./mock/adaptador-mock";
-import { OpcoesGeradorSintetico } from "./mock/gerador-sintetico";
+import type { OpcoesAdaptadorMock } from "./mock/adaptador-mock";
 import { localizarDiretorioSnapshot } from "./carreiro/carregador-snapshot-local";
 import { resolverTenantConfigurado, obterConfiguracaoTenant, ConfiguracaoTenant } from "@config/tenants";
 
@@ -32,7 +32,7 @@ export interface OpcoesFabricaAdaptador {
   readonly tipo?: TipoProvedorInventario;
   readonly tenant?: string | ConfiguracaoTenant;
   readonly carreiro?: OpcoesAdaptadorCarreiro;
-  readonly mock?: OpcoesGeradorSintetico;
+  readonly mock?: OpcoesAdaptadorMock;
 }
 
 /**
@@ -106,7 +106,20 @@ export function obterAdaptadorInventario(
       : opcoes.tenant ?? resolverTenantConfigurado();
 
   if (tenant.fonte.adaptador === "sintetica") {
-    return instanciaMock(`MOCK_${tenant.id}`, opcoes);
+    /**
+     * As lojas vêm do CADASTRO, também na fonte sintética. O gerador tinha 5
+     * lojas fixas começando em 1, então um cliente sintético com outras lojas
+     * recebia estoque de filiais que não existem no cadastro dele.
+     */
+    return instanciaMock(`MOCK_${tenant.id}`, {
+      ...opcoes,
+      mock: {
+        filiais: tenant.filiais
+          .filter((f) => f.ativa)
+          .map((f) => ({ filialId: f.filialId, nome: f.nome })),
+        ...opcoes.mock,
+      },
+    });
   }
 
   // Fonte real: a partir daqui, ou conecta, ou falha alto.
@@ -141,3 +154,5 @@ function instanciaMock(chave: string, opcoes: OpcoesFabricaAdaptador): Inventory
   }
   return mapaInstanciasAdaptadores.get(chave)!;
 }
+
+export type { OpcoesAdaptadorMock } from "./mock/adaptador-mock";

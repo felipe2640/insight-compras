@@ -80,8 +80,8 @@ describe("Blindagem Anti-Vazamento: Isolamento Estrito Cliente Real × Demonstra
 
       expect(pedidos.length).toBeGreaterThan(0);
       for (const p of pedidos) {
-        expect(contemTermoProibido(p.filialNome)).toBeNull();
-        expect(contemTermoProibido(p.fornecedorNome)).toBeNull();
+        expect(contemTermoProibido(p.filialNome ?? "")).toBeNull();
+        expect(contemTermoProibido(p.fornecedorNome ?? "")).toBeNull();
         expect(p.filialNome).toMatch(/^Loja (Matriz|Norte|Sul|Leste|Oeste)$/);
       }
     });
@@ -92,7 +92,7 @@ describe("Blindagem Anti-Vazamento: Isolamento Estrito Cliente Real × Demonstra
 
       expect(cotacoes.length).toBeGreaterThan(0);
       for (const c of cotacoes) {
-        expect(contemTermoProibido(c.filialNome)).toBeNull();
+        expect(contemTermoProibido(c.filialNome ?? "")).toBeNull();
         expect(contemTermoProibido(c.descricao)).toBeNull();
         expect(c.filialNome).toMatch(/^Loja (Matriz|Norte|Sul|Leste|Oeste)$/);
       }
@@ -126,7 +126,7 @@ describe("Blindagem Anti-Vazamento: Isolamento Estrito Cliente Real × Demonstra
     it("TENANT_DEMONSTRACAO não deve ter nenhuma filial com nome da Rede Carreiro", () => {
       for (const filial of TENANT_DEMONSTRACAO.filiais) {
         expect(contemTermoProibido(filial.nome)).toBeNull();
-        expect(contemTermoProibido(filial.cidade)).toBeNull();
+        expect(contemTermoProibido(filial.cidade ?? "")).toBeNull();
       }
     });
 
@@ -167,7 +167,7 @@ describe("Blindagem Anti-Vazamento: Isolamento Estrito Cliente Real × Demonstra
         expect(p.usuario).toBe("ERP integrado");
         expect(p.modeloId).toBe("erp");
         expect(contemTermoProibido(p.usuario)).toBeNull();
-        expect(contemTermoProibido(p.filialNome)).toBeNull();
+        expect(contemTermoProibido(p.filialNome ?? "")).toBeNull();
       }
     });
 

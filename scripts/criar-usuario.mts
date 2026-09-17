@@ -25,7 +25,13 @@ const { obterAdministradorUsuarios, normalizarPapel, normalizarFornecedores } = 
 const usuario = arg("usuario") ?? arg("email");
 const nome = arg("nome");
 const papel = normalizarPapel(arg("papel"));
-const tenantId = arg("tenant") ?? "carreiro";
+// Sem padrão de cliente: criar usuário no cliente errado é dar acesso ao
+// estoque de outra rede. Ou vem no argumento, ou vem do ambiente da instalação.
+const tenantId = arg("tenant") ?? process.env.TENANT_ATIVO?.trim();
+if (!tenantId) {
+  console.error("informe --tenant <cliente> ou defina TENANT_ATIVO");
+  process.exit(1);
+}
 const fornecedores = normalizarFornecedores(arg("fornecedores"));
 if (!usuario || !nome || !papel) {
   console.error("uso: --usuario <usuario> --nome <nome> --papel COMPRADOR|GESTOR|ADMIN [--tenant id] [--fornecedores 1,2]");
