@@ -93,13 +93,26 @@ describe("validação de ambiente", () => {
     expect(resultado.problemas.join(" ")).toContain("PEDIDOS_PROVIDER");
   });
 
-  it("cliente real sem AUTH_SECRET é bloqueado (a sessão cairia em segredo de desenvolvimento)", () => {
+  it("cliente real NÃO precisa de AUTH_SECRET: ele entra pelo Supabase", () => {
+    // AUTH_SECRET só assina sessão do login de demonstração, que cliente real
+    // não pode usar. Exigi-lo travava o preview do cliente por uma chave que
+    // a instalação dele nunca lê.
     ambienteDeClienteReal();
     delete process.env.AUTH_SECRET;
 
     const resultado = validarAmbiente();
-    expect(resultado.ok).toBe(false);
-    expect(resultado.problemas.join(" ")).toContain("AUTH_SECRET");
+    expect(resultado.ok).toBe(true);
+    expect(resultado.problemas).toEqual([]);
+  });
+
+  it("apresentação publicada sem AUTH_SECRET recebe AVISO, sem bloquear", () => {
+    process.env.TENANT_ATIVO = "demonstracao";
+    process.env.VERCEL_ENV = "production";
+    delete process.env.AUTH_SECRET;
+
+    const resultado = validarAmbiente();
+    expect(resultado.ok).toBe(true);
+    expect(resultado.avisos.join(" ")).toContain("AUTH_SECRET");
   });
 
   it("sem TENANT_ATIVO, avisa e abre em demonstração fora de produção", () => {

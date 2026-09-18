@@ -88,9 +88,14 @@ export function validarAmbiente(): ResultadoValidacaoAmbiente {
       }
     }
 
-    if (vazia("AUTH_SECRET")) {
-      problemas.push("cliente real exige AUTH_SECRET (sem ele a sessão usa segredo de desenvolvimento)");
-    }
+    /**
+     * AUTH_SECRET NÃO é exigido aqui: ele só assina as sessões do provedor de
+     * DEMONSTRAÇÃO, que cliente real não pode usar (AUTH_PROVIDER=demo é
+     * bloqueado logo abaixo, e o login demo recusa tenant real). Cliente real
+     * entra pelo Supabase, que tem a própria assinatura. A primeira versão
+     * exigia a variável e, com isso, travava a instalação do cliente por uma
+     * chave que ela nunca usa.
+     */
 
     /**
      * Chaves que ligam dado ou provedor sintético não podem existir numa
@@ -112,6 +117,15 @@ export function validarAmbiente(): ResultadoValidacaoAmbiente {
     if (process.env.CARREIRO_PREFERIR_SNAPSHOT === "true" && ehAmbienteProducao()) {
       problemas.push("CARREIRO_PREFERIR_SNAPSHOT=true serviria um retrato antigo em produção");
     }
+  }
+
+  // 4. Apresentação publicada sem segredo de sessão próprio.
+  if (naturezaTenant(tenant) === "sintetica" && ehAmbienteProducao() && vazia("AUTH_SECRET")) {
+    avisos.push(
+      "AUTH_SECRET não definido: as sessões da demonstração usam o segredo de " +
+        "desenvolvimento e podem ser forjadas. Só há dado sintético aqui, mas " +
+        "defina um segredo próprio."
+    );
   }
 
   return { ok: problemas.length === 0, tenantId: tenant.id, problemas, avisos };

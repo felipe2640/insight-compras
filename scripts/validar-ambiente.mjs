@@ -45,7 +45,8 @@ if (!tenantAtivo) {
   for (const variavel of SUPABASE) {
     if (vazia(variavel)) problemas.push(`cliente real exige ${variavel}`);
   }
-  if (vazia("AUTH_SECRET")) problemas.push("cliente real exige AUTH_SECRET");
+  // AUTH_SECRET não entra: só assina sessão do login de DEMONSTRAÇÃO, que
+  // cliente real não usa (ele entra pelo Supabase).
   if (process.env.USE_MOCK_ADAPTER === "true") {
     problemas.push("USE_MOCK_ADAPTER=true é proibido em instalação de cliente real");
   }
