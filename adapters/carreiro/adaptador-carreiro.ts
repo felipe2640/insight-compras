@@ -7,6 +7,7 @@
  * (L1 LRU + Singleflight + L2 SWR Snapshot + Circuit Breaker).
  */
 
+import { ehAmbienteProducao } from "@config/tenants/erros";
 import {
   CapacidadeCotacoesERP,
   CapacidadeEntradasConfirmadas,
@@ -87,10 +88,7 @@ export interface OpcoesAdaptadorCarreiro {
  */
 const LIMITE_LINHAS_COMPRAS = 5000;
 
-/** Fora de produção, snapshot e dado vencido seguem valendo para desenvolver. */
-function ehAmbienteProducao(): boolean {
-  return process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
-}
+
 
 export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   private readonly clienteDax: ClienteDaxPowerBI;

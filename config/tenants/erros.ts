@@ -23,7 +23,19 @@ export class ErroTenant extends Error {
   }
 }
 
-/** Fora de produção a plataforma abre em demonstração; em produção, falha. */
+/**
+ * Esta instalação é a PRODUÇÃO de um cliente?
+ *
+ * Na Vercel quem responde é `VERCEL_ENV`. `NODE_ENV` não serve: todo deploy da
+ * Vercel — inclusive os PREVIEWS de PR — roda com `NODE_ENV=production`. A
+ * primeira versão desta função olhava os dois, e com isso o preview do PR era
+ * tratado como produção: exigia TENANT_ATIVO e respondia 503 em toda página do
+ * projeto de apresentação, que não declara um.
+ *
+ * Fora da Vercel (servidor próprio, `next start` local), vale `NODE_ENV`.
+ */
 export function ehAmbienteProducao(): boolean {
-  return process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+  const ambienteVercel = process.env.VERCEL_ENV?.trim();
+  if (ambienteVercel) return ambienteVercel === "production";
+  return process.env.NODE_ENV === "production";
 }

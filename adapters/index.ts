@@ -4,6 +4,7 @@
  * 100% em Português do Brasil (pt-BR).
  */
 
+import { ehAmbienteProducao } from "@config/tenants/erros";
 import { InventoryAdapter } from "./AdaptadorInventario";
 import {
   AdaptadorInventarioCarreiro,
@@ -70,10 +71,7 @@ export function limparInstanciasAdaptadores(): void {
   mapaInstanciasAdaptadores.clear();
 }
 
-/** Fora de produção, o snapshot local e o mock forçado continuam disponíveis. */
-function ehAmbienteProducao(): boolean {
-  return process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
-}
+
 
 /**
  * Fábrica canônica do adaptador de inventário do TENANT.
