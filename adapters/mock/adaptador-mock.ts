@@ -101,6 +101,8 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
       ? new Set(filtro.fornecedoresPermitidos)
       : null;
 
+    const idsLojas = this.lojas.map((loja) => loja.filialId);
+
     // Filtra os produtos
     const produtosFiltrados = base.produtos.filter((p) => {
       // 1. Filtro de Carteira RBAC
@@ -113,16 +115,16 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
         return false;
       }
 
-      // 3. Filtro de estoque ou vendas ativas
+      // 3. Filtro de estoque ou vendas ativas, em QUALQUER loja do cliente.
+      //    Olhava as lojas 1 e 2 fixas no código: num cliente cujas lojas não
+      //    são essas, todo item era descartado e o cockpit abria vazio.
       if (filtro.apenasComEstoqueOuVenda) {
-        const est1 = base.estoques.get(`${p.id}:1`)?.saldoFisico ?? 0;
-        const est2 = base.estoques.get(`${p.id}:2`)?.saldoFisico ?? 0;
-        const ven1 = base.historicos.get(`${p.id}:1`)?.vendasLiquidas180dias ?? 0;
-        const ven2 = base.historicos.get(`${p.id}:2`)?.vendasLiquidas180dias ?? 0;
-
-        if (est1 <= 0 && est2 <= 0 && ven1 <= 0 && ven2 <= 0) {
-          return false;
-        }
+        const temEstoqueOuVenda = idsLojas.some(
+          (filialId) =>
+            (base.estoques.get(`${p.id}:${filialId}`)?.saldoFisico ?? 0) > 0 ||
+            (base.historicos.get(`${p.id}:${filialId}`)?.vendasLiquidas180dias ?? 0) > 0
+        );
+        if (!temEstoqueOuVenda) return false;
       }
 
       return true;

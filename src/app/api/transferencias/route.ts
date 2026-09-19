@@ -8,9 +8,18 @@ import { ErroAcessoNegado } from "@/lib/rbac/tipos";
 import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
 
 export const dynamic = "force-dynamic";
-// Compatível com o teto do plano Hobby mesmo quando Fluid Compute está desativado.
-// O navegador usa o mesmo limite e nunca fica preso em carregamento indefinido.
-export const maxDuration = 60;
+/**
+ * Mesmo teto da API do cockpit (padrão da Vercel com Fluid Compute).
+ *
+ * Estava em 60 s, e a carga da rede passa disso: medido ao vivo em 19/09/2026,
+ * as 5 consultas de posição de estoque (uma por loja, em paralelo) levam de
+ * 57 a 78 s cada contra o Power BI da Carreiro. O cockpit não declarava limite
+ * e funcionava; esta rota cortava em 60 s e a tela mostrava "a consulta demorou
+ * mais de 60 segundos" — na produção também, não só no preview.
+ *
+ * O navegador usa um limite pouco menor que este (ver src/app/transferencias).
+ */
+export const maxDuration = 300;
 
 /**
  * Retorna somente os remanejamentos da rede.
@@ -23,7 +32,15 @@ export async function GET(request: NextRequest) {
   try {
     const contexto = await contextoDaRequisicao(request);
     const { usuario, tenant } = contexto;
-    const filtro = aplicarGuardrailInventarioServerSide(usuario, {});
+    /**
+     * Só itens com estoque ou venda. Item sem saldo e sem venda não tem o que
+     * transferir nem para quem — e sem este recorte a carga trazia o catálogo
+     * inteiro da rede. Medido ao vivo: 130,8 s sem recorte contra 64,1 s com
+     * ele, e as MESMAS 1.302 transferências nos dois casos.
+     */
+    const filtro = aplicarGuardrailInventarioServerSide(usuario, {
+      apenasComEstoqueOuVenda: true,
+    });
     const carga = await contexto.carregarInventario(filtro);
 
     const resultados = await Promise.all(

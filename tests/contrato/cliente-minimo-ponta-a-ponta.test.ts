@@ -58,6 +58,9 @@ describe("cliente mínimo, ponta a ponta", () => {
     expect(corpo.filialFocoId).toBe(7);
     expect(corpo.sucesso).toBe(true);
     expect(corpo.grade).toBeDefined();
+    // Grade vazia passava despercebida: o recorte da fonte sintética olhava as
+    // lojas 1 e 2 fixas e descartava todo item deste cliente.
+    expect(corpo.total).toBeGreaterThan(0);
   });
 
   it("transferências entre as lojas do cliente não citam filial inexistente", async () => {
@@ -67,10 +70,29 @@ describe("cliente mínimo, ponta a ponta", () => {
     expect(res.status).toBe(200);
     const corpo = await res.json();
 
-    for (const transferencia of corpo.transferencias ?? []) {
+    expect(Array.isArray(corpo.dados)).toBe(true);
+    // Sem transferência nenhuma, o laço abaixo não verificaria nada.
+    expect(corpo.dados.length).toBeGreaterThan(0);
+    for (const transferencia of corpo.dados) {
       expect([7, 9]).toContain(transferencia.filialDestinoId);
-      expect([0, 7, 9]).toContain(transferencia.filialOrigemId);
+      expect([7, 9]).toContain(transferencia.filialOrigemId);
     }
+  });
+
+  it("transferências pedem à fonte só itens com estoque ou venda, com teto de 300 s", async () => {
+    // A rota cortava em 60 s e carregava o catálogo INTEIRO da rede: medido ao
+    // vivo, 130,8 s sem recorte contra 64,1 s com ele, e as mesmas 1.302
+    // transferências. A tela mostrava "a consulta demorou mais de 60 segundos".
+    const { AdaptadorInventarioMock } = await import("@adapters/mock/adaptador-mock");
+    const espiao = vi.spyOn(AdaptadorInventarioMock.prototype, "carregarInventarioCompleto");
+
+    const rota = await import("@/app/api/transferencias/route");
+    const res = await rota.GET(requisicao("/api/transferencias"));
+
+    expect(res.status).toBe(200);
+    expect(rota.maxDuration).toBe(300);
+    expect(espiao).toHaveBeenCalled();
+    expect(espiao.mock.calls[0][0].apenasComEstoqueOuVenda).toBe(true);
   });
 
   it("sem capacidade de ERP, o histórico responde 'não configurado' em vez de quebrar", async () => {

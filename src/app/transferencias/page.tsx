@@ -37,6 +37,9 @@ import { TooltipTransferencia } from "@/components/tooltips/TooltipTransferencia
 import { useNomesFiliais } from "@/lib/cockpit/contexto-tenant";
 import { cn } from "@/lib/utils";
 
+/** Tempo máximo que a tela espera a rede responder (a rota corta em 300 s). */
+const LIMITE_CONSULTA_MS = 280_000;
+
 export interface ItemTransferenciaRede {
   readonly id: string;
   readonly produtoId: number;
@@ -90,7 +93,9 @@ export default function PaginaTransferencias() {
 
     try {
       const controlador = new AbortController();
-      const limite = window.setTimeout(() => controlador.abort(), 60_000);
+      // Um pouco abaixo do maxDuration da rota (300 s), para a tela mostrar a
+      // própria mensagem antes de a Vercel cortar a função.
+      const limite = window.setTimeout(() => controlador.abort(), LIMITE_CONSULTA_MS);
       try {
         const resposta = await fetch("/api/transferencias", { signal: controlador.signal });
         const corpo = (await resposta.json()) as {
@@ -111,7 +116,7 @@ export default function PaginaTransferencias() {
     } catch (err) {
       setErro(
         err instanceof DOMException && err.name === "AbortError"
-          ? "A consulta demorou mais de 60 segundos. Tente novamente."
+          ? "A consulta ao Power BI passou de 4 minutos. Tente novamente em instantes."
           : err instanceof Error
           ? err.message
           : "Sem conexão com o servidor."
