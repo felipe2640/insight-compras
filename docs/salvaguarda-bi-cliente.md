@@ -24,6 +24,21 @@ A plataforma Insight Compras adota uma postura de estrita transparência e gover
 
 ---
 
+> **Atualização de 17/09/2026 (verificação ao vivo).** A afirmação de que
+> `TBL_SOLICITACOES_COMPRAS_HIST` traz `ACODEMPRESA = '1'` em todas as linhas
+> **não se confirmou**. Consultando o modelo semântico nesta data, todas as
+> tabelas do ciclo de compras (`PEDIDOS`, `ITEMSPEDIDO`, `TBL_COTACAO`,
+> `TBL_SOLICITACOES_COMPRAS` e `_HIST`) devolvem o identificador COMPLETO da
+> loja (`"1|<guid>"`), igual ao `CADEMP[ACODEMP]`. Ou seja: existe
+> granularidade por loja. O que segue abaixo sobre a ausência de
+> `PEDIDO_COMPRA_ID` continua valendo.
+>
+> A plataforma passou a declarar isso explicitamente: cada capacidade da fonte
+> informa sua `granularidade` ("loja" ou "rede"), e o cadastro de cada filial
+> declara os identificadores exatos que a fonte usa (ADR-0003).
+
+---
+
 ## 2. Investigação Aprofundada dos 4 Pontos de Dados Ausentes
 
 ```

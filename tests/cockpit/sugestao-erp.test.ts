@@ -5,6 +5,8 @@ import { filtrarLinhasCockpit } from "@/hooks/useFiltrosCockpit";
 import { LinhaCockpitMatriz } from "@/tipos/cockpit";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
 import { RespostaCargaInventario } from "@adapters/AdaptadorInventario";
+import { criarMapaLojasFonte } from "@adapters/comum/mapa-lojas";
+import { FILIAIS_FONTE_REAL } from "../ajuda/clientes-teste";
 
 function criarLinhaMock(parciais: Partial<LinhaCockpitMatriz>): LinhaCockpitMatriz {
   return {
@@ -109,7 +111,7 @@ describe("Sugestão Hoje do ERP (SUGESTAO_ERP)", () => {
         },
       ];
 
-      const resultado = mapearSugestoesErpDax(linhasBrutas);
+      const resultado = mapearSugestoesErpDax(linhasBrutas, criarMapaLojasFonte(FILIAIS_FONTE_REAL));
 
       expect(resultado.size).toBe(2);
       expect(resultado.get("2640:1")).toEqual({

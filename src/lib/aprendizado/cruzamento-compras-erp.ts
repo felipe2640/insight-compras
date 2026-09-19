@@ -55,13 +55,19 @@ export function indexarSugestoesRegistradas(
  * Data de compra ilegível não casa com nada: sem ela não há como saber qual
  * sugestão o comprador tinha na tela, e escolher "a mais recente" poderia pegar
  * uma posterior à compra.
+ *
+ * Compra SEM loja (fonte cujo ERP não distingue filial, `granularidade: "rede"`)
+ * também não casa: a sugestão é por produto E loja, e escolher uma das lojas
+ * seria inventar o lado do modelo pela porta dos fundos.
  */
 export function sugestaoQueAntecedeuACompra(
   indice: IndiceSugestoes,
   produtoId: number,
-  filialId: number,
+  filialId: number | null,
   dataCompra: string
 ): ItemComparativo | null {
+  if (filialId === null) return null;
+
   const candidatas = indice.get(chaveItem(produtoId, filialId));
   if (!candidatas || candidatas.length === 0) return null;
 

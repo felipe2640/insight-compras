@@ -1,0 +1,222 @@
+[
+  {
+    "PedidoId": 5000000045200,
+    "Numero": 1056,
+    "DataEmissao": "2026-09-14T00:00:00",
+    "FornecedorId": 5000000000178,
+    "Tipo": "C",
+    "CotacaoId": 5000000000614,
+    "Status": "A",
+    "ValorTotal": 123.6,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000005"
+  },
+  {
+    "PedidoId": 1000000058315,
+    "Numero": 711,
+    "DataEmissao": "2026-09-14T00:00:00",
+    "FornecedorId": 1000000000298,
+    "Tipo": "C",
+    "CotacaoId": 1000000000592,
+    "Status": "A",
+    "ValorTotal": 3.56,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000003"
+  },
+  {
+    "PedidoId": 5000000045198,
+    "Numero": 1054,
+    "DataEmissao": "2026-09-14T00:00:00",
+    "FornecedorId": 5000000000024,
+    "Tipo": "C",
+    "CotacaoId": 5000000000614,
+    "Status": "A",
+    "ValorTotal": 2225.46,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000005"
+  },
+  {
+    "PedidoId": 1000000058314,
+    "Numero": 710,
+    "DataEmissao": "2026-09-14T00:00:00",
+    "FornecedorId": 1000000000178,
+    "Tipo": "C",
+    "CotacaoId": 1000000000592,
+    "Status": "A",
+    "ValorTotal": 268.63,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000003"
+  },
+  {
+    "PedidoId": 3000000012692,
+    "Numero": 635,
+    "DataEmissao": "2026-09-14T00:00:00",
+    "FornecedorId": 3000000000024,
+    "Tipo": "C",
+    "CotacaoId": 3000000000213,
+    "Status": "A",
+    "ValorTotal": 266.85,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000002"
+  },
+  {
+    "PedidoId": 5000000045199,
+    "Numero": 1055,
+    "DataEmissao": "2026-09-14T00:00:00",
+    "FornecedorId": 5000000000028,
+    "Tipo": "C",
+    "CotacaoId": 5000000000614,
+    "Status": "A",
+    "ValorTotal": 4128.7,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000005"
+  },
+  {
+    "PedidoId": 3000000012693,
+    "Numero": 636,
+    "DataEmissao": "2026-09-14T00:00:00",
+    "FornecedorId": 3000000000028,
+    "Tipo": "C",
+    "CotacaoId": 3000000000213,
+    "Status": "A",
+    "ValorTotal": 955.89,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000002"
+  },
+  {
+    "PedidoId": 3000000012737,
+    "Numero": 640,
+    "DataEmissao": "2026-09-15T00:00:00",
+    "FornecedorId": 3000000000178,
+    "Tipo": "C",
+    "CotacaoId": 3000000000214,
+    "Status": "A",
+    "ValorTotal": 327.68,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000002"
+  },
+  {
+    "PedidoId": 1000000058312,
+    "Numero": 708,
+    "DataEmissao": "2026-09-14T00:00:00",
+    "FornecedorId": 1000000000024,
+    "Tipo": "C",
+    "CotacaoId": 1000000000592,
+    "Status": "A",
+    "ValorTotal": 343.99,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000003"
+  },
+  {
+    "PedidoId": 1000000058313,
+    "Numero": 709,
+    "DataEmissao": "2026-09-14T00:00:00",
+    "FornecedorId": 1000000000028,
+    "Tipo": "C",
+    "CotacaoId": 1000000000592,
+    "Status": "A",
+    "ValorTotal": 2079.03,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000003"
+  },
+  {
+    "PedidoId": 3000000012694,
+    "Numero": 637,
+    "DataEmissao": "2026-09-14T00:00:00",
+    "FornecedorId": 3000000000178,
+    "Tipo": "C",
+    "CotacaoId": 3000000000213,
+    "Status": "A",
+    "ValorTotal": 104.81,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000002"
+  },
+  {
+    "PedidoId": 1000000058419,
+    "Numero": 715,
+    "DataEmissao": "2026-09-16T00:00:00",
+    "FornecedorId": 1000000000024,
+    "Tipo": "C",
+    "CotacaoId": 1000000000594,
+    "Status": "A",
+    "ValorTotal": 393.57,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000003"
+  },
+  {
+    "PedidoId": 2000000025910,
+    "Numero": 396,
+    "DataEmissao": "2026-09-15T00:00:00",
+    "FornecedorId": 2000000000098,
+    "Tipo": "C",
+    "CotacaoId": 2000000000377,
+    "Status": "A",
+    "ValorTotal": 432.28,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000001"
+  },
+  {
+    "PedidoId": 2000000025911,
+    "Numero": 397,
+    "DataEmissao": "2026-09-15T00:00:00",
+    "FornecedorId": 2000000000139,
+    "Tipo": "C",
+    "CotacaoId": 2000000000377,
+    "Status": "A",
+    "ValorTotal": 643.02,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000001"
+  },
+  {
+    "PedidoId": 1000000058360,
+    "Numero": 713,
+    "DataEmissao": "2026-09-15T00:00:00",
+    "FornecedorId": 1000000000028,
+    "Tipo": "C",
+    "CotacaoId": 1000000000593,
+    "Status": "A",
+    "ValorTotal": 680,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000003"
+  },
+  {
+    "PedidoId": 1000000058420,
+    "Numero": 716,
+    "DataEmissao": "2026-09-16T00:00:00",
+    "FornecedorId": 1000000000028,
+    "Tipo": "C",
+    "CotacaoId": 1000000000594,
+    "Status": "A",
+    "ValorTotal": 962.62,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000003"
+  },
+  {
+    "PedidoId": 3000000012736,
+    "Numero": 639,
+    "DataEmissao": "2026-09-15T00:00:00",
+    "FornecedorId": 3000000000028,
+    "Tipo": "C",
+    "CotacaoId": 3000000000214,
+    "Status": "A",
+    "ValorTotal": 494.13,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000002"
+  },
+  {
+    "PedidoId": 3000000012735,
+    "Numero": 638,
+    "DataEmissao": "2026-09-15T00:00:00",
+    "FornecedorId": 3000000000024,
+    "Tipo": "C",
+    "CotacaoId": 3000000000214,
+    "Status": "A",
+    "ValorTotal": 1105.88,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000002"
+  },
+  {
+    "PedidoId": 1000000058359,
+    "Numero": 712,
+    "DataEmissao": "2026-09-15T00:00:00",
+    "FornecedorId": 1000000000024,
+    "Tipo": "C",
+    "CotacaoId": 1000000000593,
+    "Status": "A",
+    "ValorTotal": 123.89,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000003"
+  },
+  {
+    "PedidoId": 1000000058361,
+    "Numero": 714,
+    "DataEmissao": "2026-09-15T00:00:00",
+    "FornecedorId": 1000000000178,
+    "Tipo": "C",
+    "CotacaoId": 1000000000593,
+    "Status": "A",
+    "ValorTotal": 236.27,
+    "EmpresaId": "1|00000000-0000-4000-8000-000000000003"
+  }
+]

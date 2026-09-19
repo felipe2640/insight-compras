@@ -51,7 +51,7 @@ describe("portão de sessão do middleware", () => {
 
   it("sessão válida passa; expirada sem renovação vira redirecionamento e limpa cookie", async () => {
     const demo = new ProvedorAutenticacaoDemo({ senha: "demo", segredo: "insight-demo-segredo-somente-desenvolvimento" });
-    const sessao = await demo.entrar({ usuario: "gestor", senha: "demo", tenantId: "carreiro" });
+    const sessao = await demo.entrar({ usuario: "gestor", senha: "demo", tenantId: "demonstracao" });
     const valido = codificarCookieSessao({ provedor: "demo", token: sessao.token, tokenRenovacao: null, expiraEm: sessao.expiraEm });
     const ok = await middleware(requisicao("/compras", { insight_sessao: valido }));
     expect(ok.decisaoSessao).toBe("autenticada");
@@ -65,7 +65,7 @@ describe("portão de sessão do middleware", () => {
 
   it("já logado indo ao /login vai para o cockpit", async () => {
     const demo = new ProvedorAutenticacaoDemo({ senha: "demo", segredo: "insight-demo-segredo-somente-desenvolvimento" });
-    const sessao = await demo.entrar({ usuario: "gestor", senha: "demo", tenantId: "carreiro" });
+    const sessao = await demo.entrar({ usuario: "gestor", senha: "demo", tenantId: "demonstracao" });
     const cookie = codificarCookieSessao({ provedor: "demo", token: sessao.token, tokenRenovacao: null, expiraEm: sessao.expiraEm });
     const r = await middleware(requisicao("/login", { insight_sessao: cookie }));
     expect(r.status).toBe(307);

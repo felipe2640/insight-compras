@@ -8,6 +8,10 @@
  */
 
 import {
+  CapacidadeCotacoesERP,
+  CapacidadeEntradasConfirmadas,
+  CapacidadePedidosERP,
+  EntradaConfirmadaERP,
   InventoryAdapter,
   FiltroCargaInventario,
   FiltroRastreamentoERP,
@@ -22,12 +26,55 @@ import {
   OpcoesGeradorSintetico,
 } from "./gerador-sintetico";
 
+/**
+ * O que esta fonte sintética entrega.
+ *
+ * Existe porque o mock implementava TUDO: nenhum teste passava pelos caminhos
+ * de "o cliente não tem essa capacidade", que são justamente os que quebram no
+ * onboarding de um cliente novo. Aqui a ausência é configurável.
+ */
+export interface CapacidadesMock {
+  readonly pedidosERP?: boolean;
+  readonly cotacoesERP?: boolean;
+  readonly entradasConfirmadas?: boolean;
+  readonly sugestoesErp?: boolean;
+}
+
+export interface OpcoesAdaptadorMock extends OpcoesGeradorSintetico {
+  readonly capacidades?: CapacidadesMock;
+}
+
 export class AdaptadorInventarioMock implements InventoryAdapter {
   private datasetBase: RespostaCargaInventario | null = null;
   private readonly opcoesGerador: OpcoesGeradorSintetico;
+  private readonly capacidades: Required<CapacidadesMock>;
 
-  constructor(opcoes: OpcoesGeradorSintetico = {}) {
-    this.opcoesGerador = opcoes;
+  public readonly descricaoFonte = "dados sintéticos de demonstração";
+  public readonly natureza = "sintetica" as const;
+
+  constructor(opcoes: OpcoesAdaptadorMock = {}) {
+    const { capacidades, ...gerador } = opcoes;
+    this.opcoesGerador = gerador;
+    this.capacidades = {
+      pedidosERP: capacidades?.pedidosERP ?? true,
+      cotacoesERP: capacidades?.cotacoesERP ?? true,
+      entradasConfirmadas: capacidades?.entradasConfirmadas ?? true,
+      sugestoesErp: capacidades?.sugestoesErp ?? true,
+    };
+  }
+
+  public get forneceSugestoesErp(): boolean {
+    return this.capacidades.sugestoesErp;
+  }
+
+  private get lojas(): readonly { filialId: number; nome: string }[] {
+    return (
+      this.opcoesGerador.filiais ??
+      Object.entries(NOMES_FILIAIS_SINTETICAS).map(([id, nome]) => ({
+        filialId: Number(id),
+        nome,
+      }))
+    );
   }
 
   /**
@@ -54,6 +101,8 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
       ? new Set(filtro.fornecedoresPermitidos)
       : null;
 
+    const idsLojas = this.lojas.map((loja) => loja.filialId);
+
     // Filtra os produtos
     const produtosFiltrados = base.produtos.filter((p) => {
       // 1. Filtro de Carteira RBAC
@@ -66,16 +115,16 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
         return false;
       }
 
-      // 3. Filtro de estoque ou vendas ativas
+      // 3. Filtro de estoque ou vendas ativas, em QUALQUER loja do cliente.
+      //    Olhava as lojas 1 e 2 fixas no código: num cliente cujas lojas não
+      //    são essas, todo item era descartado e o cockpit abria vazio.
       if (filtro.apenasComEstoqueOuVenda) {
-        const est1 = base.estoques.get(`${p.id}:1`)?.saldoFisico ?? 0;
-        const est2 = base.estoques.get(`${p.id}:2`)?.saldoFisico ?? 0;
-        const ven1 = base.historicos.get(`${p.id}:1`)?.vendasLiquidas180dias ?? 0;
-        const ven2 = base.historicos.get(`${p.id}:2`)?.vendasLiquidas180dias ?? 0;
-
-        if (est1 <= 0 && est2 <= 0 && ven1 <= 0 && ven2 <= 0) {
-          return false;
-        }
+        const temEstoqueOuVenda = idsLojas.some(
+          (filialId) =>
+            (base.estoques.get(`${p.id}:${filialId}`)?.saldoFisico ?? 0) > 0 ||
+            (base.historicos.get(`${p.id}:${filialId}`)?.vendasLiquidas180dias ?? 0) > 0
+        );
+        if (!temEstoqueOuVenda) return false;
       }
 
       return true;
@@ -163,16 +212,39 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
     this.datasetBase = null;
   }
 
-  /**
-   * Rastreia pedidos de compra formalizados no ERP (mock sintético).
-   */
-  public async listarPedidosCompraERP(filtro: FiltroRastreamentoERP = {}): Promise<readonly PedidoCompraERP[]> {
+  public get pedidosERP(): CapacidadePedidosERP | undefined {
+    if (!this.capacidades.pedidosERP) return undefined;
+    return {
+      granularidade: "loja",
+      listarPedidos: (filtro) => this.listarPedidos(filtro ?? {}),
+      listarItensDoPedido: (pedidoId) => this.listarItensDoPedido(pedidoId),
+      listarComprasNaJanela: (dias, filialId) => this.listarComprasNaJanela(dias, filialId),
+    };
+  }
+
+  public get cotacoesERP(): CapacidadeCotacoesERP | undefined {
+    if (!this.capacidades.cotacoesERP) return undefined;
+    return {
+      granularidade: "loja",
+      listarCotacoes: (filtro) => this.listarCotacoes(filtro ?? {}),
+    };
+  }
+
+  public get entradasConfirmadas(): CapacidadeEntradasConfirmadas | undefined {
+    if (!this.capacidades.entradasConfirmadas) return undefined;
+    return {
+      granularidade: "loja",
+      listarEntradas: (produtoIds, dias) => this.listarEntradas(produtoIds, dias),
+    };
+  }
+
+  private async listarPedidos(filtro: FiltroRastreamentoERP = {}): Promise<readonly PedidoCompraERP[]> {
     const base = this.obterDatasetBase();
     const fornecedores = Array.from(new Set(base.produtos.map((p) => p.fornecedorId)));
     const dias = filtro.dias ?? 30;
     const pedidos: PedidoCompraERP[] = [];
 
-    const nomesLojas = NOMES_FILIAIS_SINTETICAS;
+    const lojas = this.lojas;
     const nomesFornecedores: Record<number, string> = {
       101: "Distribuidora Pellegrino",
       102: "DPaschoal Distribuição",
@@ -187,7 +259,8 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
 
     for (let d = 0; d < Math.min(dias, 15); d++) {
       const data = new Date(agora - d * 86400000).toISOString().split("T")[0];
-      for (let filial = 1; filial <= 5; filial++) {
+      for (const loja of lojas) {
+        const filial = loja.filialId;
         if (filtro.filialId && filtro.filialId !== filial) continue;
         const forn = fornecedores[(idContador + filial) % fornecedores.length];
         if (filtro.fornecedorId && filtro.fornecedorId !== forn) continue;
@@ -199,10 +272,11 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
           fornecedorId: forn,
           fornecedorNome: nomesFornecedores[forn] ?? `Distribuidora Nacional ${forn}`,
           cotacaoId: idContador % 3 === 0 ? idContador * 10 : null,
-          status: d < 3 ? "Aberto" : "Concluído",
+          status: d < 3 ? "aberto" : "concluido",
+          statusOriginal: d < 3 ? "A" : "F",
           valorTotal: 1500 + (idContador * 37) % 4500,
           filialId: filial,
-          filialNome: nomesLojas[filial] ?? `Loja ${filial}`,
+          filialNome: loja.nome,
           totalItens: 3 + (idContador % 5),
         });
       }
@@ -211,10 +285,7 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
     return pedidos.slice(0, filtro.limite ?? 100);
   }
 
-  /**
-   * Lista itens de um pedido de compra específico do ERP (mock sintético).
-   */
-  public async listarItensPedidoCompraERP(pedidoId: number): Promise<readonly ItemPedidoCompraERP[]> {
+  private async listarItensDoPedido(pedidoId: number): Promise<readonly ItemPedidoCompraERP[]> {
     const base = this.obterDatasetBase();
     const skus = base.produtos.slice(0, 5);
     return skus.map((p, idx) => ({
@@ -227,29 +298,28 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
       valorUnitario: p.precoCusto,
       valorTotal: 10 * (idx + 1) * p.precoCusto,
       dataEmissao: new Date().toISOString().split("T")[0],
-      filialId: 1,
+      filialId: this.lojas[0].filialId,
       fornecedorId: p.fornecedorId,
     }));
   }
 
-  /**
-   * Lista cotações de compra abertas ou concluídas no ERP (mock sintético).
-   */
-  public async listarCotacoesERP(filtro: FiltroRastreamentoERP = {}): Promise<readonly CotacaoCompraERP[]> {
+  private async listarCotacoes(filtro: FiltroRastreamentoERP = {}): Promise<readonly CotacaoCompraERP[]> {
     const cotacoes: CotacaoCompraERP[] = [];
-    const nomesLojas = NOMES_FILIAIS_SINTETICAS;
+    const lojas = this.lojas;
 
     for (let i = 1; i <= 10; i++) {
-      const filial = (i % 5) + 1;
+      const loja = lojas[i % lojas.length];
+      const filial = loja.filialId;
       if (filtro.filialId && filtro.filialId !== filial) continue;
       cotacoes.push({
         rowId: 2000 + i,
         codigo: 100 + i,
         descricao: `COTAÇÃO DE REPOSIÇÃO #${100 + i}`,
         dataHora: new Date(Date.now() - i * 86400000).toISOString(),
-        status: i <= 3 ? "Em Aberto" : "Concluída",
+        status: i <= 3 ? "aberto" : "concluido",
+        statusOriginal: i <= 3 ? "A" : "F",
         filialId: filial,
-        filialNome: nomesLojas[filial],
+        filialNome: loja.nome,
         totalItens: 15 + i * 2,
         totalPropostas: 45 + i * 5,
         propostasVencedoras: i > 3 ? 15 + i * 2 : 0,
@@ -260,10 +330,7 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
     return cotacoes;
   }
 
-  /**
-   * Lista todas as compras faturadas/emitidas no ERP na janela para calibração do aprendizado (mock sintético).
-   */
-  public async listarTodasComprasERPNaJanela(dias: number, filialId?: number): Promise<readonly ItemPedidoCompraERP[]> {
+  private async listarComprasNaJanela(dias: number, filialId?: number): Promise<readonly ItemPedidoCompraERP[]> {
     const base = this.obterDatasetBase();
     const produtos = base.produtos.slice(0, 50);
     return produtos.map((p, idx) => ({
@@ -276,8 +343,22 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
       valorUnitario: p.precoCusto,
       valorTotal: (5 + (idx % 15)) * p.precoCusto,
       dataEmissao: new Date(Date.now() - (idx % dias) * 86400000).toISOString().split("T")[0],
-      filialId: filialId ?? ((idx % 5) + 1),
+      filialId: filialId ?? this.lojas[idx % this.lojas.length].filialId,
       fornecedorId: p.fornecedorId,
+    }));
+  }
+
+  private async listarEntradas(
+    produtoIds: readonly number[],
+    dias: number
+  ): Promise<readonly EntradaConfirmadaERP[]> {
+    const lojaPadrao = this.lojas[0].filialId;
+    const agora = Date.now();
+    return produtoIds.map((produtoId, idx) => ({
+      produtoId,
+      filialId: lojaPadrao,
+      quantidadeEntrada: 1 + (idx % 7),
+      dataEntrada: new Date(agora - (idx % Math.max(1, dias)) * 86400000).toISOString(),
     }));
   }
 }

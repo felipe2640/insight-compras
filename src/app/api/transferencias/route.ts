@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { obterAdaptadorInventario } from "@adapters/index";
-import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
+import { ErroContexto, contextoDaRequisicao } from "@/lib/contexto/contexto-requisicao";
+import { respostaErroContexto } from "@/lib/contexto/resposta-erro";
 import { converterParaLinhasCockpit } from "@/lib/cockpit/gerador-linhas-matriz";
 import { montarOpcoesMatrizComPublicados } from "@/lib/aprendizado/parametros-motor";
 import { aplicarGuardrailInventarioServerSide } from "@/lib/rbac/validador-carteira";
 import { ErroAcessoNegado } from "@/lib/rbac/tipos";
 import { CABECALHOS_SEGURANCA_HTTP } from "@/lib/seguranca/headers";
-import { obterConfiguracaoTenant } from "@config/tenants";
-import { carregarConfiguracaoLotes } from "@/lib/configuracao/lotes-repositorio";
 
 export const dynamic = "force-dynamic";
-// Compatível com o teto do plano Hobby mesmo quando Fluid Compute está desativado.
-// O navegador usa o mesmo limite e nunca fica preso em carregamento indefinido.
-export const maxDuration = 60;
+/**
+ * Mesmo teto da API do cockpit (padrão da Vercel com Fluid Compute).
+ *
+ * Estava em 60 s, e a carga da rede passa disso: medido ao vivo em 19/09/2026,
+ * as 5 consultas de posição de estoque (uma por loja, em paralelo) levam de
+ * 57 a 78 s cada contra o Power BI da Carreiro. O cockpit não declarava limite
+ * e funcionava; esta rota cortava em 60 s e a tela mostrava "a consulta demorou
+ * mais de 60 segundos" — na produção também, não só no preview.
+ *
+ * O navegador usa um limite pouco menor que este (ver src/app/transferencias).
+ */
+export const maxDuration = 300;
 
 /**
  * Retorna somente os remanejamentos da rede.
@@ -23,15 +30,18 @@ export const maxDuration = 60;
  */
 export async function GET(request: NextRequest) {
   try {
-    const usuario = await obterUsuarioDaRequisicao(request);
-    if (!usuario) return respostaNaoAutenticado();
-
-    const tenantBase = obterConfiguracaoTenant(usuario.tenantId);
-    const lotes = await carregarConfiguracaoLotes(usuario.tenantId, tenantBase.parametrosMotor.lotes);
-    const tenant = { ...tenantBase, parametrosMotor: { ...tenantBase.parametrosMotor, lotes } };
-    const filtro = aplicarGuardrailInventarioServerSide(usuario, {});
-    const adaptador = obterAdaptadorInventario({ tenant });
-    const carga = await adaptador.carregarInventarioCompleto(filtro);
+    const contexto = await contextoDaRequisicao(request);
+    const { usuario, tenant } = contexto;
+    /**
+     * Só itens com estoque ou venda. Item sem saldo e sem venda não tem o que
+     * transferir nem para quem — e sem este recorte a carga trazia o catálogo
+     * inteiro da rede. Medido ao vivo: 130,8 s sem recorte contra 64,1 s com
+     * ele, e as MESMAS 1.302 transferências nos dois casos.
+     */
+    const filtro = aplicarGuardrailInventarioServerSide(usuario, {
+      apenasComEstoqueOuVenda: true,
+    });
+    const carga = await contexto.carregarInventario(filtro);
 
     const resultados = await Promise.all(
       tenant.filiais.map(async (filial) => {
@@ -87,6 +97,10 @@ export async function GET(request: NextRequest) {
     }
     return resposta;
   } catch (erro) {
+    if (erro instanceof ErroContexto) {
+      return respostaErroContexto(erro);
+    }
+
     const status = erro instanceof ErroAcessoNegado ? 403 : 500;
     return NextResponse.json(
       {

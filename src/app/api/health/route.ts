@@ -1,23 +1,20 @@
-import { NextRequest, NextResponse } from "next/server";
-import { obterAdaptadorInventario } from "@adapters/index";
-import { resolverTenantConfigurado, obterConfiguracaoTenant } from "@config/tenants";
+import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest): Promise<NextResponse>;
-export async function GET(): Promise<NextResponse>;
-export async function GET(request?: NextRequest): Promise<NextResponse> {
-  const tenantIdHeader = request?.headers?.get ? request.headers.get("x-tenant-id") : null;
-  const tenant = tenantIdHeader ? obterConfiguracaoTenant(tenantIdHeader) : resolverTenantConfigurado();
-  const adaptador = obterAdaptadorInventario({ tenant });
-  const saudeConexao = await adaptador.verificarSaudeConexao();
-
+/**
+ * Health PÚBLICO: responde se a aplicação está no ar. Nada além disso.
+ *
+ * Esta rota é pública e fora do middleware, e aceitava o cabeçalho de cliente
+ * enviado por quem chamasse, DISPARANDO uma consulta à fonte dele. Qualquer
+ * pessoa na internet podia fazer a plataforma consultar o Power BI de um
+ * cliente, sem sessão. A checagem da fonte foi para /api/health/fonte.
+ */
+export async function GET(): Promise<NextResponse> {
   return NextResponse.json({
     status: "ok",
     versao: "1.0.0",
     plataforma: "iNSIGHT D - Copiloto de Inteligência de Compras",
-    tenant: tenant.id,
-    conexaoDados: saudeConexao ? "conectado" : "offline_mock",
     timestamp: new Date().toISOString(),
   });
 }

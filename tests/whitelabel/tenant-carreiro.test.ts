@@ -14,7 +14,6 @@ import {
   gerarVariaveisCssTenant,
   gerarStringCssVarsInline,
 } from "@config/tenants";
-import { NOMES_FILIAIS_CARREIRO } from "@adapters/carreiro/mapeador-dax";
 
 describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central", () => {
   describe("1. Identidade e Cores Institucionais", () => {
@@ -102,10 +101,22 @@ describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central"
       expect(outrasFiliais.every((f) => f.tipo === "filial")).toBe(true);
     });
 
-    it("deve manter sincronia rigorosa com os nomes oficiais mapeados do DAX", () => {
+    it("cada filial declara como a FONTE a identifica, com valor exato", () => {
+      // O nome das lojas saiu de uma constante dentro do adaptador e passou a
+      // vir do cadastro. Sem identificador declarado, a carga não sabe de que
+      // loja é cada linha — e antes ela chutava a matriz.
       for (const filial of TENANT_CARREIRO.filiais) {
-        expect(NOMES_FILIAIS_CARREIRO[filial.filialId]).toBe(filial.nome);
+        expect(filial.identificadoresFonte?.length ?? 0).toBeGreaterThan(0);
+        for (const identificador of filial.identificadoresFonte ?? []) {
+          // ACODEMP do CADEMP, conferido ao vivo: "1|<guid>".
+          expect(identificador).toMatch(/^\d+\|[0-9a-f-]{36}$/i);
+        }
       }
+    });
+
+    it("nenhum identificador de fonte se repete entre filiais", () => {
+      const todos = TENANT_CARREIRO.filiais.flatMap((f) => f.identificadoresFonte ?? []);
+      expect(new Set(todos).size).toBe(todos.length);
     });
 
     it("deve conter IDs únicos de 1 a 5", () => {
@@ -165,46 +176,15 @@ describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central"
     });
   });
 
-  describe("6. Processo de Compras e Rastreamento de Recusas (ERP Connectsoft)", () => {
-    it("deve conter configuração ativa de processo de compra", () => {
-      expect(TENANT_CARREIRO.processoCompra).toBeDefined();
-      expect(TENANT_CARREIRO.processoCompra?.habilitado).toBe(true);
-      expect(TENANT_CARREIRO.processoCompra?.tipoERP).toBe("connectsoft-shopcash");
+  describe("6. Fonte de dados e ERP do cliente", () => {
+    it("declara a fonte real e o nome do ERP só como rótulo", () => {
+      expect(TENANT_CARREIRO.fonte.adaptador).toBe("powerbi-dax");
+      expect(TENANT_CARREIRO.fonte.nomeERP).toBe("ConnectSoft ShopCash");
     });
 
-    it("deve habilitar todas as 4 etapas do ciclo de compras", () => {
-      const etapas = TENANT_CARREIRO.processoCompra?.etapas;
-      expect(etapas?.solicitacao).toBe(true);
-      expect(etapas?.cotacao).toBe(true);
-      expect(etapas?.pedido).toBe(true);
-      expect(etapas?.notaEntrada).toBe(true);
-    });
-
-    it("deve mapear corretamente as tabelas do ERP / Semantic Model", () => {
-      const tabelas = TENANT_CARREIRO.processoCompra?.tabelasERP;
-      expect(tabelas?.solicitacoes).toBe("TBL_SOLICITACOES_COMPRAS");
-      expect(tabelas?.solicitacoesEventos).toBe("TBL_SOLICITACOES_COMPRAS_EVENTOS");
-      expect(tabelas?.cotacoes).toBe("TBL_COTACAO");
-      expect(tabelas?.cotacoesItens).toBe("TBL_COTACAO_ITENS");
-      expect(tabelas?.cotacoesFornecedores).toBe("TBL_COTACAO_FORN");
-      expect(tabelas?.ligacaoPedidoSolicitacao).toBe("ITEMSPEDIDO_SOLICITACOES");
-      expect(tabelas?.pedidos).toBe("PEDIDOS");
-      expect(tabelas?.notas).toBe("NOTAS");
-    });
-
-    it("deve conter a taxonomia completa dos 9 motivos de recusa", () => {
-      const motivos = TENANT_CARREIRO.processoCompra?.motivosRecusa;
-      expect(motivos).toHaveLength(9);
-      const codigos = motivos?.map((m) => m.codigo);
-      expect(codigos).toContain("PRECO_ELEVADO");
-      expect(codigos).toContain("FORNECEDOR_SEM_ESTOQUE");
-      expect(codigos).toContain("PRODUTO_FORA_DE_LINHA");
-      expect(codigos).toContain("ERRO_DE_DIGITACAO");
-      expect(codigos).toContain("DUPLICIDADE");
-      expect(codigos).toContain("CANCELADO_PELO_CLIENTE");
-      expect(codigos).toContain("ATENDIDO_POR_TRANSFERENCIA");
-      expect(codigos).toContain("ABAIXO_LOTE_MINIMO");
-      expect(codigos).toContain("MARGEM_INSUFICIENTE");
+    it("não desliga nenhuma capacidade da fonte", () => {
+      // Quem diz o que a fonte entrega é o adaptador; o cadastro só subtrai.
+      expect(TENANT_CARREIRO.fonte.capacidadesDesligadas ?? []).toHaveLength(0);
     });
   });
 });

@@ -1,0 +1,182 @@
+[
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000002",
+    "Produto": "015439",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T08:33:46",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000002",
+    "Produto": "005730",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T09:28:28",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000002",
+    "Produto": "022811",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T09:29:14",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000002",
+    "Produto": "018849",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T09:30:41",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000002",
+    "Produto": "007144",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T10:09:38",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000002",
+    "Produto": "015818",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T10:45:05",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000002",
+    "Produto": "014498",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T11:05:59",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000002",
+    "Produto": "006181",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T11:46:40",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000002",
+    "Produto": "006865",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T11:46:56",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000002",
+    "Produto": "024420",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T12:15:27",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000002",
+    "Produto": "020362",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T12:22:29",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000002",
+    "Produto": "007136",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T12:58:59",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000005",
+    "Produto": "003158",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T07:47:09",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000005",
+    "Produto": "002342",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T07:48:52",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000005",
+    "Produto": "003151",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T08:44:43",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000005",
+    "Produto": "008949",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T08:51:51",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": ""
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000005",
+    "Produto": "018934",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T09:18:53",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXX 05/02/2026"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000005",
+    "Produto": "015117",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T09:22:08",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000005",
+    "Produto": "013308",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T09:33:14",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXX"
+  },
+  {
+    "Empresa": "1|00000000-0000-4000-8000-000000000005",
+    "Produto": "017816",
+    "Quantidade": 1,
+    "DataHora": "2026-09-17T10:33:35",
+    "Tipo": "R",
+    "Descricao": "XXXXXXXXXXX XXXX XXXXXXXXX XX XXXXXXX",
+    "Solicitador": "XXXXXX 05/02/2026"
+  }
+]

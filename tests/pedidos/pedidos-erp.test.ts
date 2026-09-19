@@ -19,17 +19,20 @@ describe("Rastreamento de Pedidos e Ciclo de Compras pelo ERP", () => {
 
     vi.spyOn(servidorAuth, "obterUsuarioDaRequisicao").mockResolvedValue({
       id: "usr-gestor-01",
-      nome: "Gestor Carreiro",
-      email: "gestor@carreiro.com.br",
+      nome: "Gestor da Demonstração",
+      email: "gestor@exemplo.com.br",
       role: "GESTOR",
       allowedSupplierIds: null,
-      tenantId: "carreiro",
+      // Tenant SINTÉTICO: é o único que pode ser atendido pelo mock. Um tenant
+      // real sem credencial agora responde erro de configuração, em vez de
+      // receber dados inventados (ADR-0002).
+      tenantId: "demonstracao",
     });
   });
 
   describe("1. Métodos do Adaptador de Compras ERP", () => {
     it("deve listar pedidos de compra formalizados no ERP", async () => {
-      const pedidos = await mockAdapter.listarPedidosCompraERP({ dias: 30, filialId: 1 });
+      const pedidos = await mockAdapter.pedidosERP!.listarPedidos({ dias: 30, filialId: 1 });
       expect(pedidos).toBeDefined();
       expect(Array.isArray(pedidos)).toBe(true);
       expect(pedidos.length).toBeGreaterThan(0);
@@ -43,7 +46,7 @@ describe("Rastreamento de Pedidos e Ciclo de Compras pelo ERP", () => {
     });
 
     it("deve listar itens de um pedido de compra do ERP", async () => {
-      const itens = await mockAdapter.listarItensPedidoCompraERP(1001);
+      const itens = await mockAdapter.pedidosERP!.listarItensDoPedido(1001);
       expect(Array.isArray(itens)).toBe(true);
       expect(itens.length).toBeGreaterThan(0);
 
@@ -55,7 +58,7 @@ describe("Rastreamento de Pedidos e Ciclo de Compras pelo ERP", () => {
     });
 
     it("deve listar cotações de compra abertas e concluídas do ERP", async () => {
-      const cotacoes = await mockAdapter.listarCotacoesERP({ dias: 30 });
+      const cotacoes = await mockAdapter.cotacoesERP!.listarCotacoes({ dias: 30 });
       expect(Array.isArray(cotacoes)).toBe(true);
       expect(cotacoes.length).toBeGreaterThan(0);
 
@@ -67,7 +70,7 @@ describe("Rastreamento de Pedidos e Ciclo de Compras pelo ERP", () => {
     });
 
     it("deve listar todas as compras do ERP na janela para o aprendizado", async () => {
-      const compras = await mockAdapter.listarTodasComprasERPNaJanela(30, 1);
+      const compras = await mockAdapter.pedidosERP!.listarComprasNaJanela(30, 1);
       expect(Array.isArray(compras)).toBe(true);
       expect(compras.length).toBeGreaterThan(0);
       expect(compras[0].quantidade).toBeGreaterThan(0);
@@ -109,6 +112,9 @@ describe("Rastreamento de Pedidos e Ciclo de Compras pelo ERP", () => {
       expect(corpo.fonte).toBe("erp");
       expect(Array.isArray(corpo.itens)).toBe(true);
       expect(corpo.itens.length).toBeGreaterThan(0);
+      // A quantidade do modelo não é medida na compra do ERP: "—", não um
+      // número fabricado a partir do id do produto.
+      expect(corpo.itens[0].qtdModelo).toBeNull();
       expect(corpo.resumo).toBeDefined();
       expect(corpo.resumo.total).toBe(corpo.itens.length);
     });

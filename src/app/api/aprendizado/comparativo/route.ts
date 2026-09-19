@@ -5,11 +5,10 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { classificarDivergencia, StatusConfirmacao } from "@core/aprendizado";
-import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { listarComparativo, ItemComparativo } from "@/lib/aprendizado/repositorio";
 import { aprendizadoConfigurado } from "@/lib/aprendizado/repositorio";
-import { obterAdaptadorInventario } from "@adapters/index";
-import { obterConfiguracaoTenant } from "@config/tenants";
+import { ErroContexto, contextoDaRequisicao } from "@/lib/contexto/contexto-requisicao";
+import { respostaErroContexto } from "@/lib/contexto/resposta-erro";
 import {
   indexarSugestoesRegistradas,
   sugestaoQueAntecedeuACompra,
@@ -18,27 +17,32 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const usuario = await obterUsuarioDaRequisicao(request);
-  if (!usuario) return respostaNaoAutenticado();
+  let contexto;
+  try {
+    contexto = await contextoDaRequisicao(request);
+  } catch (erro) {
+    if (erro instanceof ErroContexto) return respostaErroContexto(erro);
+    throw erro;
+  }
+  const { usuario, tenant, fonte: fonteDados } = contexto;
   const { searchParams } = new URL(request.url);
   const dias = Math.min(365, Math.max(1, parseInt(searchParams.get("dias") ?? "30", 10) || 30));
   const filialParam = searchParams.get("filialId");
   const filialId = filialParam ? parseInt(filialParam, 10) || undefined : undefined;
   const fonteParam = searchParams.get("fonte")?.toLowerCase();
 
-  const tenant = obterConfiguracaoTenant(usuario.tenantId);
-  const temProcessoERP = Boolean(tenant.processoCompra?.habilitado);
+  const temProcessoERP = Boolean(fonteDados.pedidosERP);
   const fonte = fonteParam ?? (temProcessoERP ? "erp" : "snapshot");
 
   let itens: ItemComparativo[] = [];
 
   // 1. Carrega Compras Reais emitidas no ERP se fonte for "erp" ou "todos"
   if (fonte === "erp" || fonte === "todos") {
-    const adaptador = obterAdaptadorInventario({ tenant: usuario.tenantId });
-    if (adaptador.listarTodasComprasERPNaJanela) {
-      const comprasErp = await adaptador.listarTodasComprasERPNaJanela(dias, filialId);
-      const ehConnectsoft = tenant.processoCompra?.tipoERP === "connectsoft-shopcash";
-      const rotuloUsuario = ehConnectsoft ? "ERP Connectsoft (Compra Real)" : "ERP Integrado (Compra Real)";
+    if (fonteDados.pedidosERP) {
+      const comprasErp = await fonteDados.pedidosERP.listarComprasNaJanela(dias, filialId);
+      const rotuloUsuario = tenant.fonte.nomeERP
+        ? `ERP ${tenant.fonte.nomeERP} (compra real)`
+        : "ERP integrado (compra real)";
 
       // O lado do modelo vem do que o motor EFETIVAMENTE sugeriu, registrado na
       // exportação que antecedeu a compra — nunca de um fator fabricado. Sem
@@ -53,6 +57,9 @@ export async function GET(request: NextRequest) {
         const sugestao = sugestaoQueAntecedeuACompra(
           indiceSugestoes,
           c.produtoId,
+          // Fonte sem granularidade por loja devolve `null`: a sugestão é
+          // casada por produto E loja, então sem loja não há casamento — o que
+          // é o comportamento certo, e não um casamento por aproximação.
           c.filialId,
           c.dataEmissao
         );
@@ -65,7 +72,7 @@ export async function GET(request: NextRequest) {
           produtoId: c.produtoId,
           sku: c.sku ?? (c.produtoId ? String(c.produtoId).padStart(6, "0") : `PROD-${c.produtoId}`),
           descricao: c.descricao || "Item de Compra ERP",
-          filialId: c.filialId,
+          filialId: c.filialId ?? 0,
           custo: c.valorUnitario,
           qtdComprador: c.quantidade,
           qtdModelo: sugestao?.qtdModelo ?? null,

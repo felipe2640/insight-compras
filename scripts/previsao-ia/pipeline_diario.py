@@ -269,7 +269,16 @@ def executar_pipeline(
     print(f'[Pipeline] Inferência concluída em {dt_inf:.1f}s ({total_series / max(dt_inf, 0.001):.0f} séries/s).')
 
     # Montar registros para o Supabase
-    tenant_id = os.getenv('TENANT_ATIVO', 'carreiro')
+    #
+    # TENANT_ATIVO é OBRIGATÓRIO. O padrão 'carreiro' publicava a previsão de
+    # qualquer execução mal configurada dentro do cliente Carreiro — inclusive
+    # a de outro cliente, já que o workflow roda o mesmo pipeline em laço.
+    tenant_id = (os.getenv('TENANT_ATIVO') or '').strip()
+    if not tenant_id:
+        raise SystemExit(
+            '[Pipeline] TENANT_ATIVO é obrigatório: sem ele a previsão seria '
+            'publicada no cliente errado.'
+        )
     data_hoje = date.today().isoformat()
     now_iso = datetime.now().isoformat()
 

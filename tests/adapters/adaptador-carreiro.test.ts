@@ -9,6 +9,7 @@ import { ClienteDaxPowerBI } from "@adapters/carreiro/cliente-dax";
 import { AdaptadorInventarioCarreiro } from "@adapters/carreiro/adaptador-carreiro";
 import { AdaptadorInventarioMock } from "@adapters/mock/adaptador-mock";
 import { obterAdaptadorInventario } from "@adapters/index";
+import { FILIAIS_FONTE_REAL } from "../ajuda/clientes-teste";
 
 describe("Adaptador Carreiro & Cliente DAX REST API (Marco 2)", () => {
   describe("ClienteDaxPowerBI", () => {
@@ -61,6 +62,8 @@ describe("Adaptador Carreiro & Cliente DAX REST API (Marco 2)", () => {
       });
 
       const cliente = new ClienteDaxPowerBI({
+        workspaceId: "workspace-de-teste",
+        datasetId: "dataset-de-teste",
         tenantId: "mock-tenant-id",
         clientId: "mock-client-id",
         clientSecret: "mock-client-secret",
@@ -151,11 +154,13 @@ describe("Adaptador Carreiro & Cliente DAX REST API (Marco 2)", () => {
       );
 
       const clienteDax = new ClienteDaxPowerBI({
+        workspaceId: "workspace-de-teste",
+        datasetId: "dataset-de-teste",
         accessTokenFixo: "TOKEN_FIXO",
         fetchCustomizado: mockFetch as unknown as typeof fetch,
       });
 
-      const adaptador = new AdaptadorInventarioCarreiro({ clienteDax });
+      const adaptador = new AdaptadorInventarioCarreiro({ clienteDax, filiais: FILIAIS_FONTE_REAL });
       const inventario = await adaptador.carregarInventarioCompleto({
         fornecedoresPermitidos: null,
       });
@@ -192,11 +197,13 @@ describe("Adaptador Carreiro & Cliente DAX REST API (Marco 2)", () => {
       });
 
       const cliente = new ClienteDaxPowerBI({
+        workspaceId: "workspace-de-teste",
+        datasetId: "dataset-de-teste",
         accessTokenFixo: "TOKEN",
         fetchCustomizado: mockFetch as unknown as typeof fetch,
       });
 
-      const adaptador = new AdaptadorInventarioCarreiro({ clienteDax: cliente });
+      const adaptador = new AdaptadorInventarioCarreiro({ clienteDax: cliente, filiais: FILIAIS_FONTE_REAL });
       const saude = await adaptador.verificarSaudeConexao();
       expect(saude).toBe(true);
     });

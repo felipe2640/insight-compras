@@ -79,23 +79,23 @@ describe("Blindagem Anti-Vazamento: Isolamento Estrito Cliente Real × Demonstra
 
     it("AdaptadorInventarioMock.listarPedidosCompraERP não deve vazar nomes de lojas ou ERP real", async () => {
       const mock = new AdaptadorInventarioMock({ totalSkus: 50 });
-      const pedidos = await mock.listarPedidosCompraERP({ dias: 30, limite: 50 });
+      const pedidos = await mock.pedidosERP!.listarPedidos({ dias: 30, limite: 50 });
 
       expect(pedidos.length).toBeGreaterThan(0);
       for (const p of pedidos) {
-        expect(contemTermoProibido(p.filialNome)).toBeNull();
-        expect(contemTermoProibido(p.fornecedorNome)).toBeNull();
+        expect(contemTermoProibido(p.filialNome ?? "")).toBeNull();
+        expect(contemTermoProibido(p.fornecedorNome ?? "")).toBeNull();
         expect(p.filialNome).toMatch(/^Loja (Matriz|Norte|Sul|Leste|Oeste)$/);
       }
     });
 
     it("AdaptadorInventarioMock.listarCotacoesERP não deve vazar nomes de lojas ou fornecedores reais", async () => {
       const mock = new AdaptadorInventarioMock({ totalSkus: 50 });
-      const cotacoes = await mock.listarCotacoesERP({ dias: 30 });
+      const cotacoes = await mock.cotacoesERP!.listarCotacoes({ dias: 30 });
 
       expect(cotacoes.length).toBeGreaterThan(0);
       for (const c of cotacoes) {
-        expect(contemTermoProibido(c.filialNome)).toBeNull();
+        expect(contemTermoProibido(c.filialNome ?? "")).toBeNull();
         expect(contemTermoProibido(c.descricao)).toBeNull();
         expect(c.filialNome).toMatch(/^Loja (Matriz|Norte|Sul|Leste|Oeste)$/);
       }
@@ -115,7 +115,7 @@ describe("Blindagem Anti-Vazamento: Isolamento Estrito Cliente Real × Demonstra
 
     it("Adaptador da demonstração nunca deve expor métodos específicos de cliente real", async () => {
       const adaptador = obterAdaptadorInventario({ tenant: "demonstracao" });
-      const pedidos = await adaptador.listarPedidosCompraERP!({ dias: 7 });
+      const pedidos = await adaptador.pedidosERP!.listarPedidos({ dias: 7 });
 
       for (const p of pedidos) {
         expect(p.filialNome).not.toContain("Carreiro");
@@ -129,17 +129,20 @@ describe("Blindagem Anti-Vazamento: Isolamento Estrito Cliente Real × Demonstra
     it("TENANT_DEMONSTRACAO não deve ter nenhuma filial com nome da Rede Carreiro", () => {
       for (const filial of TENANT_DEMONSTRACAO.filiais) {
         expect(contemTermoProibido(filial.nome)).toBeNull();
-        expect(contemTermoProibido(filial.cidade)).toBeNull();
+        expect(contemTermoProibido(filial.cidade ?? "")).toBeNull();
       }
     });
 
-    it("TENANT_DEMONSTRACAO tipoERP não deve ser 'connectsoft-shopcash'", () => {
-      expect(TENANT_DEMONSTRACAO.processoCompra?.tipoERP).not.toBe("connectsoft-shopcash");
-      expect(TENANT_DEMONSTRACAO.processoCompra?.tipoERP).toBe("generico");
+    it("a demonstração não nomeia o ERP de cliente nenhum", () => {
+      // O rótulo do ERP virou um campo do cadastro, e o da demonstração é
+      // vazio de propósito: sem nome de ERP, não há nome de cliente a vazar.
+      expect(TENANT_DEMONSTRACAO.fonte.nomeERP).toBeUndefined();
+      expect(TENANT_DEMONSTRACAO.fonte.adaptador).toBe("sintetica");
     });
 
-    it("TENANT_CARREIRO possui tipoERP 'connectsoft-shopcash'", () => {
-      expect(TENANT_CARREIRO.processoCompra?.tipoERP).toBe("connectsoft-shopcash");
+    it("o cliente real nomeia o próprio ERP, e isso é só rótulo", () => {
+      expect(TENANT_CARREIRO.fonte.nomeERP).toBe("ConnectSoft ShopCash");
+      expect(TENANT_CARREIRO.fonte.adaptador).toBe("powerbi-dax");
     });
   });
 
@@ -164,21 +167,21 @@ describe("Blindagem Anti-Vazamento: Isolamento Estrito Cliente Real × Demonstra
       const dados = await res.json();
       expect(dados.pedidos.length).toBeGreaterThan(0);
       for (const p of dados.pedidos) {
-        expect(p.usuario).toBe("ERP Integrado");
-        expect(p.modeloId).toBe("erp-integrado");
+        expect(p.usuario).toBe("ERP integrado");
+        expect(p.modeloId).toBe("erp");
         expect(contemTermoProibido(p.usuario)).toBeNull();
-        expect(contemTermoProibido(p.filialNome)).toBeNull();
+        expect(contemTermoProibido(p.filialNome ?? "")).toBeNull();
       }
     });
 
-    it("/api/pedidos/historico: tenant 'carreiro' deve responder com ERP Connectsoft", async () => {
+    it("/api/pedidos/historico: cliente real SEM credencial responde erro, nunca dado sintético", async () => {
       const { GET } = await import("@/app/api/pedidos/historico/route");
       const servidorAuth = await import("@/lib/autenticacao/servidor");
 
       vi.spyOn(servidorAuth, "obterUsuarioDaRequisicao").mockResolvedValue({
         id: "usr-carreiro",
-        nome: "Comprador Carreiro",
-        email: "comprador@carreiro.com.br",
+        nome: "Comprador do Cliente",
+        email: "comprador@cliente.com.br",
         role: "COMPRADOR",
         allowedSupplierIds: null,
         tenantId: "carreiro",
@@ -186,14 +189,13 @@ describe("Blindagem Anti-Vazamento: Isolamento Estrito Cliente Real × Demonstra
 
       const req = new NextRequest("http://localhost:3000/api/pedidos/historico?origem=erp&dias=30");
       const res = await GET(req);
-      expect(res.status).toBe(200);
 
+      // Antes, a fábrica caía no mock em silêncio e esta rota devolvia pedidos
+      // SINTÉTICOS para um cliente real, com aparência de pedido de verdade.
+      expect(res.status).toBe(503);
       const dados = await res.json();
-      expect(dados.pedidos.length).toBeGreaterThan(0);
-      for (const p of dados.pedidos) {
-        expect(p.usuario).toBe("ERP Connectsoft");
-        expect(p.modeloId).toBe("erp-connectsoft");
-      }
+      expect(dados.motivo).toBe("configuracao_incompleta");
+      expect(dados.pedidos).toBeUndefined();
     });
 
     it("/api/aprendizado/comparativo: tenant 'demonstracao' deve usar rótulo 'ERP Integrado (Compra Real)'", async () => {
@@ -216,12 +218,12 @@ describe("Blindagem Anti-Vazamento: Isolamento Estrito Cliente Real × Demonstra
       const dados = await res.json();
       expect(dados.itens.length).toBeGreaterThan(0);
       for (const item of dados.itens) {
-        expect(item.usuario).toBe("ERP Integrado (Compra Real)");
+        expect(item.usuario).toBe("ERP integrado (compra real)");
         expect(contemTermoProibido(item.usuario)).toBeNull();
       }
     });
 
-    it("/api/aprendizado/confirmar: tenant 'demonstracao' não deve tocar no Power BI e deve retornar origem simulada", async () => {
+    it("/api/aprendizado/confirmar: a demonstração fecha o ciclo pela fonte sintética, sem tocar no Power BI", async () => {
       const { POST } = await import("@/app/api/aprendizado/confirmar/route");
       const servidorAuth = await import("@/lib/autenticacao/servidor");
       const repositorioAprendizado = await import("@/lib/aprendizado/repositorio");
@@ -245,8 +247,12 @@ describe("Blindagem Anti-Vazamento: Isolamento Estrito Cliente Real × Demonstra
       expect(res.status).toBe(200);
 
       const dados = await res.json();
-      expect(dados.origem).toBe("simulada");
-      expect(dados.consultasPowerBI).toBe(0);
+      // A rota deixou de importar o cliente do Power BI e de perguntar "é a
+      // Carreiro?": ela usa a capacidade da FONTE do tenant, que aqui é
+      // sintética. Sem itens pendentes, não há consulta nenhuma.
+      expect(dados.ok).toBe(true);
+      expect(dados.consultas).toBe(0);
+      expect(dados.itens).toBe(0);
     });
   });
 });
