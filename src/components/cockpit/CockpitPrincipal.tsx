@@ -543,6 +543,7 @@ export function CockpitPrincipal({
       columnFilters,
     },
     enableRowSelection: true,
+    getRowId: (row) => String(row.produtoId),
     enableColumnResizing: true,
     columnResizeMode: "onChange",
     onRowSelectionChange: setRowSelection,
@@ -602,6 +603,10 @@ export function CockpitPrincipal({
     }),
     [tenantAtivo, nomesFiliaisTenant, lojaFocoId]
   );
+  const itensSelecionadosParaExportacao = useMemo(
+    () => itensComOverrides.filter((item) => rowSelection[String(item.produtoId)]),
+    [itensComOverrides, rowSelection]
+  );
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100 dark:bg-slate-950">
@@ -618,7 +623,8 @@ export function CockpitPrincipal({
         aberto={dialogExportacaoAberto}
         onFechar={() => setDialogExportacaoAberto(false)}
         itensFiltrados={itensFiltrados as LinhaCockpitMatriz[]}
-        itensSelecionados={table.getSelectedRowModel().rows.map((r) => r.original as LinhaCockpitMatriz)}
+        itensCatalogo={itensComOverrides}
+        itensSelecionados={itensSelecionadosParaExportacao}
         configuracao={tenantAtivo.exportacao}
         onModeloSalvo={() => setVersaoModelos((v) => v + 1)}
         contexto={contextoExportacao}
@@ -654,9 +660,7 @@ export function CockpitPrincipal({
               {/* Um botão por modelo: o comprador exporta o de sempre num clique. */}
               <BotoesExportacao
                 itens={itensFiltrados as LinhaCockpitMatriz[]}
-                itensSelecionados={table.getSelectedRowModel().rows.map(
-                  (r) => r.original as LinhaCockpitMatriz
-                )}
+                itensSelecionados={itensSelecionadosParaExportacao}
                 contexto={contextoExportacao}
                 csvPadrao={tenantAtivo.exportacao.csvPadrao}
                 modeloPadraoId={tenantAtivo.exportacao.layoutPadraoId}

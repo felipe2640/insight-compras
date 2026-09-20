@@ -61,6 +61,8 @@ export interface DialogExportacaoProps {
   readonly aberto: boolean;
   readonly onFechar: () => void;
   readonly itensFiltrados: readonly LinhaCockpitMatriz[];
+  /** Catálogo carregado, sem busca, status ou filtros da grade. */
+  readonly itensCatalogo?: readonly LinhaCockpitMatriz[];
   readonly itensSelecionados: readonly LinhaCockpitMatriz[];
   readonly configuracao: ConfiguracaoExportacaoTenant;
   readonly contexto: ContextoExportacao;
@@ -68,7 +70,7 @@ export interface DialogExportacaoProps {
   readonly onModeloSalvo?: () => void;
 }
 
-type OrigemLinhas = "filtrados" | "selecionados";
+type OrigemLinhas = "filtrados" | "catalogo" | "selecionados";
 type AbaDialogo = "exportar" | "modelos";
 
 const ROTULO_FORMATO: Record<
@@ -119,6 +121,7 @@ export function DialogExportacao({
   aberto,
   onFechar,
   itensFiltrados,
+  itensCatalogo = itensFiltrados,
   itensSelecionados,
   configuracao,
   contexto,
@@ -212,11 +215,19 @@ export function DialogExportacao({
     if (itensSelecionados.length === 0 && origem === "selecionados") setOrigem("filtrados");
   }, [itensSelecionados.length, origem]);
 
-  const itensBase = origem === "selecionados" ? itensSelecionados : itensFiltrados;
+  const itensBase =
+    origem === "selecionados"
+      ? itensSelecionados
+      : origem === "catalogo"
+        ? itensCatalogo
+        : itensFiltrados;
   const escopoAtual = modeloEmEdicao ? modeloEmEdicao.escopo : layout.escopo;
+  // Seleção manual e catálogo completo são modos de ANÁLISE: a escolha do
+  // comprador prevalece sobre escopos operacionais como compra/transferência.
+  const escopoEfetivo = origem === "filtrados" ? escopoAtual : "todos";
   const quantidadeLinhas = useMemo(
-    () => filtrarPorEscopo(itensBase, escopoAtual).length,
-    [itensBase, escopoAtual]
+    () => filtrarPorEscopo(itensBase, escopoEfetivo).length,
+    [itensBase, escopoEfetivo]
   );
 
   // Agrupamento de colunas disponíveis
@@ -490,9 +501,11 @@ export function DialogExportacao({
 
     setGerando(true);
     try {
-      const layoutEfetivo: LayoutExportacao = modeloEmEdicao
+      const layoutEscolhido: LayoutExportacao = modeloEmEdicao
         ? layoutDoModelo(modeloEmEdicao)
         : layout;
+      const layoutEfetivo: LayoutExportacao =
+        origem === "filtrados" ? layoutEscolhido : { ...layoutEscolhido, escopo: "todos" };
 
       const arquivo = await gerarArquivoExportacao({
         itens: itensBase,
@@ -721,14 +734,25 @@ export function DialogExportacao({
                         checked={origem === "selecionados"}
                         onChange={() => setOrigem("selecionados")}
                       />
-                      Somente linhas marcadas ({itensSelecionados.length})
+                      Itens marcados para análise ({itensSelecionados.length})
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="origem"
+                        checked={origem === "catalogo"}
+                        onChange={() => setOrigem("catalogo")}
+                      />
+                      Catálogo completo, sem filtros ({itensCatalogo.length.toLocaleString("pt-BR")})
                     </label>
                   </div>
                   <p className="mt-2 rounded-lg bg-slate-50 border border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
                     <span className="font-bold text-slate-900 dark:text-white">
                       {quantidadeLinhas.toLocaleString("pt-BR")}
                     </span>{" "}
-                    linha(s) no arquivo — escopo &ldquo;{escopoAtual.replace(/_/g, " ")}&rdquo;
+                    linha(s) no arquivo — {origem === "filtrados"
+                      ? <>escopo &ldquo;{escopoAtual.replace(/_/g, " ")}&rdquo;</>
+                      : "análise sem restrição de status"}
                   </p>
                 </div>
               </div>
