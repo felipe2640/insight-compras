@@ -401,12 +401,17 @@ export function mapearHistoricoVendasDax(
     const devolucoes90dias = Math.max(0, Number(linha.Devolucoes90d ?? 0));
 
     const brutas30 = Math.max(0, Number(linha.VendasQtd30d ?? linha.QtdVenda30d ?? 0));
+    const temJanela60 = linha.VendasQtd60d !== undefined || linha.QtdVenda60d !== undefined;
+    const brutas60 = Math.max(0, Number(linha.VendasQtd60d ?? linha.QtdVenda60d ?? 0));
     const brutas90 = Math.max(0, Number(linha.VendasQtd90d ?? linha.QtdVenda90d ?? 0));
     const brutas180 = Math.max(0, Number(linha.VendasQtd180d ?? linha.QtdVenda180d ?? 0));
 
     const vendasLiquidas90dias = Math.max(0, brutas90 - devolucoes90dias);
     // A janela de 30 dias não pode exceder a de 90 já líquida.
     const vendasLiquidas30dias = Math.min(brutas30, vendasLiquidas90dias);
+    const vendasLiquidas60dias = temJanela60
+      ? Math.min(vendasLiquidas90dias, Math.max(vendasLiquidas30dias, brutas60))
+      : undefined;
     // A devolução medida é a de 90 dias; para 180 subtraímos o mesmo montante como
     // aproximação conservadora (nunca inflar a demanda).
     const vendasLiquidas180dias = Math.max(vendasLiquidas90dias, brutas180 - devolucoes90dias);
@@ -438,6 +443,7 @@ export function mapearHistoricoVendasDax(
       produtoId,
       filialId,
       vendasLiquidas30dias,
+      vendasLiquidas60dias,
       vendasLiquidas90dias,
       vendasLiquidas180dias,
       devolucoes90dias,
@@ -746,4 +752,3 @@ export function mapearSugestoesErpDax(
 
   return mapa;
 }
-

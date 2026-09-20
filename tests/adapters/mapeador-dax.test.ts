@@ -204,6 +204,7 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
           "PRODUTOS[ACODPRODUTO]": 2001,
           "CADEMP[ACODEMP]": 1,
           VendasQtd30d: 15,
+          VendasQtd60d: 30,
           VendasQtd90d: 45,
           VendasQtd180d: 90,
           NotasVenda90d: 18,
@@ -217,6 +218,7 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
 
       expect(hist).toBeDefined();
       expect(hist?.vendasLiquidas30dias).toBe(15);
+      expect(hist?.vendasLiquidas60dias).toBe(30);
       expect(hist?.vendasLiquidas90dias).toBe(45);
       expect(hist?.vendasLiquidas180dias).toBe(90);
       expect(hist?.notasFiscaisVenda90dias).toBe(18);

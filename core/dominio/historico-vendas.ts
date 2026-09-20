@@ -15,6 +15,8 @@ export interface HistoricoVendasFilial {
 
   /** Saídas líquidas (vendas - devoluções) por janela. */
   readonly vendasLiquidas30dias: number;
+  /** Janela opcional para clientes/fontes que disponibilizam o corte de 60 dias. */
+  readonly vendasLiquidas60dias?: number;
   readonly vendasLiquidas90dias: number;
   readonly vendasLiquidas180dias: number;
 
