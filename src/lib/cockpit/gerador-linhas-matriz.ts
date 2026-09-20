@@ -606,10 +606,39 @@ export function converterParaLinhasCockpit(
     // Sugestão de Compra ativa do ERP para a loja em foco (operação em paralelo)
     const chaveSugestaoErp = `${p.id}:${filialFocoId}`;
     const sugestaoErpItem = carga.sugestoesErp?.get(chaveSugestaoErp);
-    const sugestaoQtdErp = sugestaoErpItem ? sugestaoErpItem.quantidadeSugerida : null;
-    const temSugestaoErp = (sugestaoQtdErp ?? 0) > 0;
+    let sugestaoQtdErp: number | null = null;
+    let temSugestaoErp = false;
     const origemSugestaoErp = sugestaoErpItem?.origem ?? null;
     const dataSugestaoErp = sugestaoErpItem?.dataSugestao ?? null;
+
+    if (sugestaoErpItem && (sugestaoErpItem.quantidadeSugerida ?? 0) > 0) {
+      temSugestaoErp = true;
+      // Regra de negócio informada pelo cliente: a sugestão do ERP deve respeitar
+      // a quantidade mínima registrada do item (estoque mínimo cadastrado na filial,
+      // ou lote múltiplo/mínimo do item), ajustada para o lote de fábrica.
+      const quantidadeMinimaRegistrada = minStockFoco > 0 ? minStockFoco : loteMultiplo;
+      const quantidadeBaseErp = Math.max(
+        sugestaoErpItem.quantidadeSugerida,
+        quantidadeMinimaRegistrada
+      );
+      const ajusteErp = ajustarQuantidadePorLote({
+        quantidadeDesejada: quantidadeBaseErp,
+        multiploLote: loteMultiplo,
+        embalagemMinima,
+      });
+      sugestaoQtdErp = ajusteErp.quantidadeAjustada;
+    }
+
+    // Se houver solicitação ativa do ERP e não houver trava zumbi nem pausa de governança,
+    // preenche a sugestão final de compra e o pedido com a quantidade mínima ajustada.
+    if (temSugestaoErp && sugestaoQtdErp && sugestaoQtdErp > 0) {
+      if (statusSugestao === "ESTOQUE_SUFICIENTE" && !isZumbi && sinalGov !== "PAUSAR") {
+        sugestaoFinalCompra = sugestaoQtdErp;
+        motivoDecisao = `Solicitação ativa do ERP atendida pela quantidade mínima registrada (${sugestaoQtdErp} un)`;
+      } else if (statusSugestao === "APROVADO_COMPRA") {
+        sugestaoFinalCompra = Math.max(sugestaoFinalCompra, sugestaoQtdErp);
+      }
+    }
 
     // Cálculo das métricas das 29 colunas fiéis
     const dtUltVenda = p.dataUltimaVenda ?? null;

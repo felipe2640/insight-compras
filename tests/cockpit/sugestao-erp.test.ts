@@ -292,5 +292,85 @@ describe("Sugestão Hoje do ERP (SUGESTAO_ERP)", () => {
       expect(linha2641?.sugestaoQtdErp).toBeNull();
       expect(linha2641?.temSugestaoErp).toBe(false);
     });
+
+    it("deve ajustar sugestaoQtdErp e pré-preencher Pedido com a quantidade mínima registrada quando a requisição for unitária", () => {
+      const carga = {
+        produtos: [
+          {
+            id: 101,
+            codigoSku: "SKU-MIN-5",
+            descricao: "PASTILHA FREIO DIANT",
+            marca: "FRAS-LE",
+            fabricante: "FRAS-LE",
+            precoCusto: 50.0,
+            precoVenda: 100.0,
+            loteMultiplo: 1,
+          },
+          {
+            id: 102,
+            codigoSku: "SKU-MIN-PAR",
+            descricao: "AMORTECEDOR DIANT",
+            marca: "COFAP",
+            fabricante: "COFAP",
+            precoCusto: 120.0,
+            precoVenda: 220.0,
+            loteMultiplo: 2, // Múltiplo par
+          },
+          {
+            id: 103,
+            codigoSku: "SKU-LOT-4",
+            descricao: "VELA DE IGNICAO",
+            marca: "NGK",
+            fabricante: "NGK",
+            precoCusto: 15.0,
+            precoVenda: 30.0,
+            loteMultiplo: 4, // Jogo com 4
+          },
+        ],
+        estoques: new Map([
+          // SKU 101: estoque mínimo 5, solicitação ERP de 1 un -> deve virar 5
+          ["101:1", { filialId: 1, nomeFilial: "Loja 01", produtoId: 101, saldoFisico: 0, estoqueMinimoSeguranca: 5, quantidadeJaPedida: 0, consumoMedioDiarioErp: 0 }],
+          // SKU 102: estoque mínimo 5, múltiplo 2, solicitação ERP de 1 un -> deve virar 6 (múltiplo de 2)
+          ["102:1", { filialId: 1, nomeFilial: "Loja 01", produtoId: 102, saldoFisico: 0, estoqueMinimoSeguranca: 5, quantidadeJaPedida: 0, consumoMedioDiarioErp: 0 }],
+          // SKU 103: estoque mínimo 0, lote múltiplo 4, solicitação ERP de 1 un -> deve virar 4
+          ["103:1", { filialId: 1, nomeFilial: "Loja 01", produtoId: 103, saldoFisico: 0, estoqueMinimoSeguranca: 0, quantidadeJaPedida: 0, consumoMedioDiarioErp: 0 }],
+        ]),
+        historicos: new Map(),
+        entradasHoje: [],
+        similares: new Map(),
+        sugestoesErp: new Map([
+          ["101:1", { produtoId: 101, filialId: 1, quantidadeSugerida: 1, origem: "SOLICITACAO BALCAO" }],
+          ["102:1", { produtoId: 102, filialId: 1, quantidadeSugerida: 1, origem: "SOLICITACAO BALCAO" }],
+          ["103:1", { produtoId: 103, filialId: 1, quantidadeSugerida: 1, origem: "SOLICITACAO BALCAO" }],
+        ]),
+        metadados: {
+          provedor: "POWERBI_FABRIC_DAX",
+          timestampCarga: "2026-09-19T12:00:00Z",
+          emModoDegradado: false,
+          totalSkusCarregados: 3,
+          latenciaMs: 100,
+        },
+      } as unknown as RespostaCargaInventario;
+
+      const linhas = converterParaLinhasCockpit(carga, { filialFocoId: 1 });
+
+      const l101 = linhas.find((l) => l.produtoId === 101);
+      expect(l101?.sugestaoQtdErp).toBe(5);
+      expect(l101?.sugestaoCompra).toBe(5);
+      expect(l101?.pedidoCustom).toBe(5);
+      expect(l101?.statusMovimentacao).toBe("Sugestão ERP");
+
+      const l102 = linhas.find((l) => l.produtoId === 102);
+      expect(l102?.sugestaoQtdErp).toBe(6); // 5 arredondado para múltiplo 2
+      expect(l102?.sugestaoCompra).toBe(6);
+      expect(l102?.pedidoCustom).toBe(6);
+      expect(l102?.statusMovimentacao).toBe("Sugestão ERP");
+
+      const l103 = linhas.find((l) => l.produtoId === 103);
+      expect(l103?.sugestaoQtdErp).toBe(4); // Lote múltiplo de fábrica
+      expect(l103?.sugestaoCompra).toBe(4);
+      expect(l103?.pedidoCustom).toBe(4);
+      expect(l103?.statusMovimentacao).toBe("Sugestão ERP");
+    });
   });
 });
