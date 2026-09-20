@@ -162,6 +162,39 @@ describe("Interface de Exportação e CRUD de Modelos (DialogExportacao e Botoes
     });
   });
 
+  it("deve exportar seleção manual e catálogo completo sem restringir por status operacional", () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ modelos: [], podeSalvar: true }),
+    });
+    const itemSemCompra = {
+      ...ITENS_MOCK[0],
+      produtoId: 2,
+      codigoSku: "SKU-SEM-COMPRA",
+      sugestaoFinalCompra: 0,
+      quantidadeTransferenciaSugerida: 0,
+    };
+
+    render(
+      <DialogExportacao
+        aberto={true}
+        onFechar={vi.fn()}
+        itensFiltrados={ITENS_MOCK}
+        itensCatalogo={[ITENS_MOCK[0], itemSemCompra]}
+        itensSelecionados={[itemSemCompra]}
+        configuracao={TENANT_DEMONSTRACAO.exportacao}
+        contexto={CONTEXTO}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText(/Itens marcados para análise/));
+    const resumo = screen.getByText(/análise sem restrição de status/);
+    expect(resumo.textContent).toContain("1 linha(s) no arquivo");
+
+    fireEvent.click(screen.getByLabelText(/Catálogo completo, sem filtros/));
+    expect(resumo.textContent).toContain("2 linha(s) no arquivo");
+  });
+
   it("deve acionar criação de novo modelo via interface", async () => {
     let chamadaPost: unknown = null;
 
