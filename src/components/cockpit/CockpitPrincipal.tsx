@@ -150,6 +150,13 @@ const ORDEM_COLUNAS_CONTEXTO: ColumnOrderState = [
   "transferencia",
 ];
 
+const VISIBILIDADE_COLUNAS_PADRAO: VisibilityState = {
+  // Coluna virtual disponível no menu "Filtrar", sem ocupar espaço na grade.
+  codigoAgrupador: false,
+};
+
+const VERSAO_PREFERENCIAS_GRADE = 1;
+
 export function CockpitPrincipal({
   itensIniciais,
   gradeInicial,
@@ -417,20 +424,85 @@ export function CockpitPrincipal({
   // 10. Estados da Tabela TanStack (Ordenação, Visibilidade, Fixação, Resizing, Altura)
   const [sorting, setSorting] = useState<SortingState>([]);
   const [sortValue, setSortValue] = useState<string>("custo-desc");
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
-    // Coluna virtual disponível no menu "Filtrar", sem ocupar espaço na grade.
-    codigoAgrupador: false,
-  });
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(VISIBILIDADE_COLUNAS_PADRAO);
   const [columnPinning, setColumnPinning] = useState<ColumnPinningState>({
     left: ["select", "codigo", "descricao"],
     right: ["pedido", "transferencia"],
   });
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(ORDEM_COLUNAS_CONTEXTO);
+  const [preferenciasGradeCarregadas, setPreferenciasGradeCarregadas] = useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   // Filtros tipados por coluna: compõem com a busca livre e os chips de status.
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [rowHeight, setRowHeight] = useState<"compact" | "default" | "relaxed">("default");
+
+  const chavePreferenciasGrade = useMemo(
+    () => `insight-compras-grade-${tenantAtivo.id}-${userIdSessao}`,
+    [tenantAtivo.id, userIdSessao]
+  );
+
+  // A personalização pertence ao usuário neste navegador. O primeiro acesso
+  // usa a ordem recomendada; os próximos retomam exatamente o último layout.
+  useEffect(() => {
+    setPreferenciasGradeCarregadas(false);
+    try {
+      const salvo = window.localStorage.getItem(chavePreferenciasGrade);
+      if (salvo) {
+        const preferencias = JSON.parse(salvo) as {
+          versao?: number;
+          ordem?: unknown;
+          visibilidade?: unknown;
+        };
+        if (preferencias.versao === VERSAO_PREFERENCIAS_GRADE) {
+          if (Array.isArray(preferencias.ordem)) {
+            const idsValidos = new Set(ORDEM_COLUNAS_CONTEXTO);
+            const vistos = new Set<string>();
+            const ordemSalva = preferencias.ordem.filter(
+              (id): id is string => typeof id === "string" && idsValidos.has(id) && !vistos.has(id) && !!vistos.add(id)
+            );
+            setColumnOrder([
+              ...ordemSalva,
+              ...ORDEM_COLUNAS_CONTEXTO.filter((id) => !vistos.has(id)),
+            ]);
+          }
+          if (preferencias.visibilidade && typeof preferencias.visibilidade === "object") {
+            const visibilidade = Object.fromEntries(
+              Object.entries(preferencias.visibilidade).filter(([, valor]) => typeof valor === "boolean")
+            ) as VisibilityState;
+            setColumnVisibility({ ...VISIBILIDADE_COLUNAS_PADRAO, ...visibilidade });
+          }
+        }
+      }
+    } catch {
+      // Preferência corrompida ou storage bloqueado: mantém o padrão seguro.
+      setColumnOrder(ORDEM_COLUNAS_CONTEXTO);
+      setColumnVisibility(VISIBILIDADE_COLUNAS_PADRAO);
+    } finally {
+      setPreferenciasGradeCarregadas(true);
+    }
+  }, [chavePreferenciasGrade]);
+
+  useEffect(() => {
+    if (!preferenciasGradeCarregadas) return;
+    try {
+      window.localStorage.setItem(
+        chavePreferenciasGrade,
+        JSON.stringify({
+          versao: VERSAO_PREFERENCIAS_GRADE,
+          ordem: columnOrder,
+          visibilidade: columnVisibility,
+        })
+      );
+    } catch {
+      // A grade continua funcional mesmo se o navegador bloquear persistência.
+    }
+  }, [chavePreferenciasGrade, columnOrder, columnVisibility, preferenciasGradeCarregadas]);
+
+  const restaurarLayoutPadrao = useCallback(() => {
+    setColumnOrder(ORDEM_COLUNAS_CONTEXTO);
+    setColumnVisibility(VISIBILIDADE_COLUNAS_PADRAO);
+  }, []);
 
   const handleLojaFocoChange = useCallback((novaLojaId: number) => {
     setLojaFocoId(novaLojaId);
@@ -782,7 +854,7 @@ export function CockpitPrincipal({
                 value={rowHeight}
                 onChange={setRowHeight}
               />
-              <DataGridViewMenu table={table} />
+              <DataGridViewMenu table={table} onResetLayout={restaurarLayoutPadrao} />
               <DataGridKeyboardShortcuts />
             </DataGridMenuBar>
           </div>

@@ -25,6 +25,7 @@ import {
   Pin,
   PinOff,
   Rows4,
+  RotateCcw,
   X,
 } from "lucide-react";
 
@@ -548,6 +549,7 @@ export function DataGridRowHeightMenu({
 
 type DataGridViewMenuProps<TData> = {
   table: TanstackTable<TData>;
+  onResetLayout?: () => void;
 };
 
 /** Move uma coluna dentro do seu grupo visual (fixas à esquerda, centro ou direita). */
@@ -590,6 +592,7 @@ export function moverColuna<TData>(
 
 export function DataGridViewMenu<TData>({
   table,
+  onResetLayout,
 }: DataGridViewMenuProps<TData>) {
   const columns = table
     .getAllLeafColumns()
@@ -659,6 +662,18 @@ export function DataGridViewMenu<TData>({
             </div>
           );
         })}
+        {onResetLayout && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={onResetLayout}
+              className="cursor-pointer text-xs text-blue-700 dark:text-blue-300"
+            >
+              <RotateCcw className="mr-2 h-3.5 w-3.5" />
+              Restaurar ordem padrão
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
