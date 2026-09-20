@@ -13,6 +13,8 @@ import {
 } from "@tanstack/react-table";
 import {
   ArrowDown01,
+  ArrowLeft,
+  ArrowRight,
   ArrowUp01,
   ArrowUpDown,
   ChevronDown,
@@ -23,6 +25,7 @@ import {
   Pin,
   PinOff,
   Rows4,
+  RotateCcw,
   X,
 } from "lucide-react";
 
@@ -182,12 +185,12 @@ export function ColumnMenuTrigger<TData>({
         <button
           type="button"
           className={cn(
-            "group flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs font-semibold text-slate-700 outline-none transition-colors hover:bg-slate-200/60 dark:text-slate-200 dark:hover:bg-slate-700",
+            "group flex min-h-8 w-full items-center gap-1 rounded px-1 py-1 text-left text-xs font-semibold leading-tight text-slate-700 outline-none transition-colors hover:bg-slate-200/60 dark:text-slate-200 dark:hover:bg-slate-700",
             align === "center" && "justify-center",
             align === "right" && "justify-end"
           )}
         >
-          <span className="truncate">{displayLabel}</span>
+          <span className="min-w-0 whitespace-normal break-words leading-tight">{displayLabel}</span>
           <span className="flex shrink-0 items-center text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200">
             {isSorted === "asc" ? (
               <ArrowUp01 className="h-3.5 w-3.5 text-blue-600" />
@@ -311,7 +314,7 @@ export function DataGrid<TData>({
                   <TableHead
                     key={header.id}
                     className={cn(
-                      "group relative border-r border-slate-200 bg-slate-50 px-1 py-1 text-xs font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
+                      "group relative h-auto min-h-12 border-r border-slate-200 bg-slate-50 px-1 py-1.5 text-xs font-semibold text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200",
                       align === "center" && "text-center",
                       align === "left" && "text-left",
                       align === "right" && "text-right",
@@ -546,10 +549,50 @@ export function DataGridRowHeightMenu({
 
 type DataGridViewMenuProps<TData> = {
   table: TanstackTable<TData>;
+  onResetLayout?: () => void;
 };
+
+/** Move uma coluna dentro do seu grupo visual (fixas à esquerda, centro ou direita). */
+export function moverColuna<TData>(
+  table: TanstackTable<TData>,
+  columnId: string,
+  direcao: -1 | 1
+): void {
+  const coluna = table.getColumn(columnId);
+  if (!coluna) return;
+
+  const fixacao = coluna.getIsPinned();
+  if (fixacao) {
+    const atual = [...(table.getState().columnPinning[fixacao] ?? [])];
+    const indice = atual.indexOf(columnId);
+    const destino = indice + direcao;
+    if (indice < 0 || destino < 0 || destino >= atual.length) return;
+    [atual[indice], atual[destino]] = [atual[destino], atual[indice]];
+    table.setColumnPinning({
+      ...table.getState().columnPinning,
+      [fixacao]: atual,
+    });
+    return;
+  }
+
+  const todas = table.getAllLeafColumns().map((item) => item.id);
+  const centrais = table.getCenterLeafColumns().map((item) => item.id);
+  const indice = centrais.indexOf(columnId);
+  const destino = indice + direcao;
+  if (indice < 0 || destino < 0 || destino >= centrais.length) return;
+  [centrais[indice], centrais[destino]] = [centrais[destino], centrais[indice]];
+
+  let cursor = 0;
+  const ordem = todas.map((id) => {
+    const item = table.getColumn(id);
+    return item?.getIsPinned() ? id : centrais[cursor++];
+  });
+  table.setColumnOrder(ordem);
+}
 
 export function DataGridViewMenu<TData>({
   table,
+  onResetLayout,
 }: DataGridViewMenuProps<TData>) {
   const columns = table
     .getAllLeafColumns()
@@ -567,8 +610,11 @@ export function DataGridViewMenu<TData>({
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-64 max-h-80 overflow-y-auto text-xs" align="end">
         <DropdownMenuLabel className="text-[11px] uppercase text-slate-400">
-          Exibir / Ocultar Colunas
+          Exibir e organizar colunas
         </DropdownMenuLabel>
+        <p className="px-2 pb-1 text-[10px] leading-snug text-slate-400">
+          Use as setas para montar a ordem que facilita sua análise.
+        </p>
         <DropdownMenuSeparator />
         {columns.map((column) => {
           const meta = column.columnDef.meta as ColumnMeta | undefined;
@@ -577,17 +623,57 @@ export function DataGridViewMenu<TData>({
               ? column.columnDef.header
               : meta?.label ?? column.id;
 
+          const grupo = column.getIsPinned();
+          const colunasDoGrupo = grupo
+            ? table.getState().columnPinning[grupo] ?? []
+            : table.getCenterLeafColumns().map((item) => item.id);
+          const indice = colunasDoGrupo.indexOf(column.id);
+
           return (
-            <DropdownMenuCheckboxItem
-              key={column.id}
-              className="cursor-pointer text-xs"
-              checked={column.getIsVisible()}
-              onCheckedChange={(value) => column.toggleVisibility(Boolean(value))}
-            >
-              {label}
-            </DropdownMenuCheckboxItem>
+            <div key={column.id} className="flex items-center rounded hover:bg-slate-50 dark:hover:bg-slate-800">
+              <DropdownMenuCheckboxItem
+                className="min-w-0 flex-1 cursor-pointer text-xs focus:bg-transparent"
+                checked={column.getIsVisible()}
+                onCheckedChange={(value) => column.toggleVisibility(Boolean(value))}
+                onSelect={(evento) => evento.preventDefault()}
+              >
+                <span className="truncate" title={String(label)}>{label}</span>
+              </DropdownMenuCheckboxItem>
+              <button
+                type="button"
+                aria-label={`Mover ${label} para a esquerda`}
+                title="Mover para a esquerda"
+                disabled={indice <= 0}
+                onClick={() => moverColuna(table, column.id, -1)}
+                className="rounded p-1 text-slate-500 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-25 dark:hover:bg-slate-700"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label={`Mover ${label} para a direita`}
+                title="Mover para a direita"
+                disabled={indice < 0 || indice >= colunasDoGrupo.length - 1}
+                onClick={() => moverColuna(table, column.id, 1)}
+                className="mr-1 rounded p-1 text-slate-500 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-25 dark:hover:bg-slate-700"
+              >
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
           );
         })}
+        {onResetLayout && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={onResetLayout}
+              className="cursor-pointer text-xs text-blue-700 dark:text-blue-300"
+            >
+              <RotateCcw className="mr-2 h-3.5 w-3.5" />
+              Restaurar ordem padrão
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

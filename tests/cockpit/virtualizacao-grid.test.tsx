@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { CockpitPrincipal, criarColunasCockpit } from "@/components/cockpit";
 import { LinhaCockpitMatriz } from "@/tipos/cockpit";
 import { ProvedorTenant } from "@/lib/cockpit/contexto-tenant";
@@ -250,5 +250,34 @@ describe("Cockpit — Virtualização da Grade Viva (CockpitPrincipal & colunas-
     expect(
       screen.getByText("Nenhum produto corresponde aos filtros selecionados.")
     ).toBeTruthy();
+  });
+
+  it("deve restaurar a última ordem de colunas salva para o usuário", async () => {
+    const ordemPersonalizada = [
+      "select", "codigo", "codigoAgrupador", "descricao", "marca", "aplicacao",
+      "subgrupo", "refFabricante", "curvaAbcSistema", "estoqueLojaFoco", "estoqueRede",
+      "produtosVend90d", "consumoUltimos30DiasQtd", "consumoDiario", "consumoMensal",
+      "vendaACadaDias", "notasLiquidas90d", "frequencia", "classificacaoConsumo",
+      "giroUltimaVenda", "dtUltVenda", "diasSemVenda", "ruptura", "cobertura",
+      "periodoIdeal", "histVendas90d", "histProdVend90d", "custo", "dtUltimaCompra",
+      "dtUltimoPedido", "statusMovimentacao", "pedido", "transferencia",
+    ];
+    localStorage.setItem(
+      `insight-compras-grade-${tenantClienteTeste.id}-usuario-grade`,
+      JSON.stringify({ versao: 1, ordem: ordemPersonalizada, visibilidade: { codigoAgrupador: false } })
+    );
+
+    renderComTenant(
+      <CockpitPrincipal
+        itensIniciais={gerarLinhasTeste(3)}
+        usuarioSessao={{ id: "usuario-grade", papel: "GESTOR", allowedSupplierIds: null }}
+      />
+    );
+
+    await waitFor(() => {
+      const cabecalhos = screen.getAllByRole("columnheader").map((item) => item.textContent ?? "");
+      expect(cabecalhos.findIndex((texto) => texto.includes("Marca")))
+        .toBeLessThan(cabecalhos.findIndex((texto) => texto.includes("Aplicação")));
+    });
   });
 });

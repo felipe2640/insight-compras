@@ -402,6 +402,7 @@ EVALUATE
 VAR DataLimite = TODAY()
 VAR Periodo180d = DATESINPERIOD('dCalendario'[Data], DataLimite, -180, DAY)
 VAR Periodo90d = DATESINPERIOD('dCalendario'[Data], DataLimite, -90, DAY)
+VAR Periodo60d = DATESINPERIOD('dCalendario'[Data], DataLimite, -60, DAY)
 VAR Periodo30d = DATESINPERIOD('dCalendario'[Data], DataLimite, -30, DAY)
 VAR Periodo365d = DATESINPERIOD('dCalendario'[Data], DataLimite, -365, DAY)
 VAR HistoricoComVenda =
@@ -421,6 +422,11 @@ SUMMARIZECOLUMNS(
         [Quantidade Vendida Produto],
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
         Periodo30d
+    ),
+    "VendasQtd60d", CALCULATE(
+        [Quantidade Vendida Produto],
+        KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
+        Periodo60d
     ),
     "NotasVenda90d", CALCULATE(
         [Quantidade de Notas],
@@ -934,4 +940,3 @@ SELECTCOLUMNS(
 )
   `.trim();
 }
-

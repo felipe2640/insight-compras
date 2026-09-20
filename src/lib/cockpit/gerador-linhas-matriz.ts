@@ -577,10 +577,31 @@ export function converterParaLinhasCockpit(
     }
 
     const entradasHoje = mapaEntradasHoje.get(p.id) ?? [];
-    const similares =
+    const similaresBase =
       carga.similares instanceof Map || typeof (carga.similares as any)?.get === "function"
         ? (carga.similares.get(p.id) ?? [])
         : [];
+    const similares = similaresBase.map((similar) => {
+      const chaveSimilarFoco = `${similar.produtoIdSimilar}:${filialFocoId}`;
+      const estoqueSimilarFoco = carga.estoques.get(chaveSimilarFoco);
+      const historicoSimilarFoco = carga.historicos.get(chaveSimilarFoco);
+      return {
+        ...similar,
+        saldoFisicoLojaAvaliacao: estoqueSimilarFoco?.saldoFisico ?? null,
+        vendasLojaAvaliacao30dias:
+          historicoSimilarFoco && campoHistoricoDisponivel(historicoSimilarFoco, "vendasLiquidas30dias")
+            ? historicoSimilarFoco.vendasLiquidas30dias
+            : null,
+        vendasLojaAvaliacao60dias:
+          historicoSimilarFoco && campoHistoricoDisponivel(historicoSimilarFoco, "vendasLiquidas60dias")
+            ? historicoSimilarFoco.vendasLiquidas60dias ?? null
+            : null,
+        vendasLojaAvaliacao90dias:
+          historicoSimilarFoco && campoHistoricoDisponivel(historicoSimilarFoco, "vendasLiquidas90dias")
+            ? historicoSimilarFoco.vendasLiquidas90dias
+            : null,
+      };
+    });
 
     // Sugestão de Compra ativa do ERP para a loja em foco (operação em paralelo)
     const chaveSugestaoErp = `${p.id}:${filialFocoId}`;

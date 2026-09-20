@@ -58,6 +58,12 @@ export interface ItemSimilarIntercambiavel {
   readonly descricaoSimilar: string;
   readonly marcaSimilar: string;
   readonly saldoFisicoDisponivelRede: number;
+  /** Saldo do similar especificamente na loja que está sendo avaliada. */
+  readonly saldoFisicoLojaAvaliacao?: number | null;
+  /** Vendas do similar na loja avaliada, por janela. null = fonte não mediu. */
+  readonly vendasLojaAvaliacao30dias?: number | null;
+  readonly vendasLojaAvaliacao60dias?: number | null;
+  readonly vendasLojaAvaliacao90dias?: number | null;
 }
 
 /**
