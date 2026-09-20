@@ -15,6 +15,7 @@ import {
   VisibilityState,
   RowSelectionState,
   ColumnSizingState,
+  ColumnOrderState,
 } from "@tanstack/react-table";
 import {
   Search,
@@ -108,6 +109,45 @@ const OPCOES_ORDENACAO = [
   { id: "produtosVend90d-desc", label: "Mais Vendidos (90d)", desc: true },
   { id: "diasSemVenda-desc", label: "Mais Dias Sem Venda", desc: true },
   { id: "codigo-asc", label: "Código SKU (A-Z)", desc: false },
+];
+
+// Ordem inicial por contexto de decisão: identificação → estoque → demanda →
+// risco/histórico → custo e datas → ação. O comprador ainda pode personalizar
+// essa sequência pelo menu "Colunas".
+const ORDEM_COLUNAS_CONTEXTO: ColumnOrderState = [
+  "select",
+  "codigo",
+  "codigoAgrupador",
+  "descricao",
+  "aplicacao",
+  "marca",
+  "subgrupo",
+  "refFabricante",
+  "curvaAbcSistema",
+  "estoqueLojaFoco",
+  "estoqueRede",
+  "produtosVend90d",
+  "consumoUltimos30DiasQtd",
+  "consumoDiario",
+  "consumoMensal",
+  "vendaACadaDias",
+  "notasLiquidas90d",
+  "frequencia",
+  "classificacaoConsumo",
+  "giroUltimaVenda",
+  "dtUltVenda",
+  "diasSemVenda",
+  "ruptura",
+  "cobertura",
+  "periodoIdeal",
+  "histVendas90d",
+  "histProdVend90d",
+  "custo",
+  "dtUltimaCompra",
+  "dtUltimoPedido",
+  "statusMovimentacao",
+  "pedido",
+  "transferencia",
 ];
 
 export function CockpitPrincipal({
@@ -386,6 +426,7 @@ export function CockpitPrincipal({
     right: ["pedido", "transferencia"],
   });
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(ORDEM_COLUNAS_CONTEXTO);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   // Filtros tipados por coluna: compõem com a busca livre e os chips de status.
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -425,6 +466,7 @@ export function CockpitPrincipal({
       columnVisibility,
       columnPinning,
       columnSizing,
+      columnOrder,
       rowSelection,
       columnFilters,
     },
@@ -439,6 +481,7 @@ export function CockpitPrincipal({
     onColumnVisibilityChange: setColumnVisibility,
     onColumnPinningChange: setColumnPinning,
     onColumnSizingChange: setColumnSizing,
+    onColumnOrderChange: setColumnOrder,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     // Valores distintos por coluna, para o filtro "é um de". Calculado sob demanda.
