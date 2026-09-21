@@ -26,6 +26,10 @@ O pipeline `.github/workflows/previsao-ia-diaria.yml` continua usando
 `SUPABASE_SERVICE_ROLE_KEY`: ele é um job privilegiado, separado de uma sessão
 interativa, e sempre informa `TENANT_ATIVO`.
 
+As funções `SECURITY DEFINER` usadas pelas políticas RLS não são executáveis
+por `anon`. Elas permanecem disponíveis para `authenticated` porque as próprias
+políticas precisam avaliá-las durante cada operação do usuário.
+
 ## Pré-condição de rollout
 
 Aplicar e validar a migração da ADR-0004 antes de promover esta alteração. Sem
