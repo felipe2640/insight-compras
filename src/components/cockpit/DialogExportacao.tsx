@@ -68,6 +68,7 @@ export interface DialogExportacaoProps {
   readonly contexto: ContextoExportacao;
   /** Avisa o cockpit para recarregar os botões de modelo. */
   readonly onModeloSalvo?: () => void;
+  readonly onExportado?: (itens: readonly LinhaCockpitMatriz[]) => void;
 }
 
 type OrigemLinhas = "filtrados" | "catalogo" | "selecionados";
@@ -126,6 +127,7 @@ export function DialogExportacao({
   configuracao,
   contexto,
   onModeloSalvo,
+  onExportado,
 }: DialogExportacaoProps) {
   const layoutPadrao = useMemo(() => layoutPadraoDoTenant(configuracao), [configuracao]);
 
@@ -518,13 +520,17 @@ export function DialogExportacao({
 
       baixarArquivoNoNavegador(arquivo);
 
-      if (layoutEfetivo.escopo !== "todos") {
-        capturarSnapshotAprendizado({
-          itens: filtrarPorEscopo(itensBase, layoutEfetivo.escopo),
+      // Catálogo completo é análise. A seleção manual, porém, representa um
+      // pedido quando o modelo escolhido tem escopo operacional.
+      if (origem !== "catalogo" && escopoAtual !== "todos") {
+        const itensExportados = filtrarPorEscopo(itensBase, escopoEfetivo);
+        await capturarSnapshotAprendizado({
+          itens: itensExportados,
           filialId: contexto.filialId,
           layoutId: layoutEfetivo.id,
           formato,
         });
+        onExportado?.(itensExportados);
       }
 
       onFechar();
