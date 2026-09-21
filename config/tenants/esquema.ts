@@ -104,8 +104,16 @@ export const esquemaConfiguracaoTenant = z
           motivo: textoNaoVazio,
         })
       ),
+      desconsiderarInativos: z.boolean().optional(),
+      termosDescricaoInativos: z.array(textoNaoVazio).optional(),
     }),
     exportacao: z.object({}).passthrough(),
+    curvaAbc: z
+      .object({
+        metodo: z.enum(["GIRO", "FATURAMENTO", "ERP"]),
+        fallbackParaGiroSeErpInvalido: z.boolean().optional(),
+      })
+      .optional(),
   })
   .passthrough()
   .superRefine((tenant, ctx) => {

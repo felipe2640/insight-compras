@@ -187,4 +187,22 @@ describe("White-Label — Configuração do Tenant Carreiro e Catálogo Central"
       expect(TENANT_CARREIRO.fonte.capacidadesDesligadas ?? []).toHaveLength(0);
     });
   });
+
+  describe("7. Catálogo e Filtro de Códigos Inativos", () => {
+    it("deve configurar desconsiderarInativos e termos de descrição inativos", () => {
+      expect(TENANT_CARREIRO.catalogo.desconsiderarInativos).toBe(true);
+      expect(TENANT_CARREIRO.catalogo.termosDescricaoInativos).toEqual(["INATIVO"]);
+    });
+
+    it("deve conter a classe 1107 de serviços como não comprável", () => {
+      expect(TENANT_CARREIRO.catalogo.classesNaoCompraveis).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            codigoBase: 1107,
+            nome: "SERVICOS MECANICOS",
+          }),
+        ])
+      );
+    });
+  });
 });

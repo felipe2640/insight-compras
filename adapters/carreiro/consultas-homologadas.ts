@@ -194,12 +194,15 @@ TOPN(
   SELECTCOLUMNS(
     FILTER(
         PRODUTOS,
-        NOT ISBLANK('PRODUTOS'[ACODPRODUTO])${clausulaFiltro}${clausulaCursor}
+        NOT ISBLANK('PRODUTOS'[ACODPRODUTO])
+        && COALESCE('PRODUTOS'[LINATIVO], "F") <> "T"
+        && SEARCH("INATIV", UPPER('PRODUTOS'[ADESCRICAO]), 1, 0) = 0${clausulaFiltro}${clausulaCursor}
     ),
     "Empresa", 'PRODUTOS'[ACODEMPRESA],
     "Produto", 'PRODUTOS'[ACODPRODUTO],
     "CodigoBase", 'PRODUTOS'[ACODPRODUTO_BASE],
     "Descricao", 'PRODUTOS'[ADESCRICAO],
+    "Inativo", 'PRODUTOS'[LINATIVO],
     "Marca", 'PRODUTOS'[MARCA],
     "RefFabricante", 'PRODUTOS'[AREFERENCIA],
     "Aplicacao", 'PRODUTOS'[APLICACAO],

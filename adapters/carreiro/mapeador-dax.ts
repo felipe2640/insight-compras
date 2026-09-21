@@ -100,6 +100,15 @@ export interface OpcoesMapeamentoProdutos {
    * pela descrição, porque o cadastro tem fornecedor de peça com "SERVI" no nome.
    */
   readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
+  /**
+   * Se deve desconsiderar produtos inativos no ERP (LINATIVO === "T" ou descrição com termo inativo).
+   * Padrão: true.
+   */
+  readonly desconsiderarInativos?: boolean;
+  /**
+   * Termos ou padrões na descrição que identificam itens inativos (ex.: ["INATIVO"]).
+   */
+  readonly termosDescricaoInativos?: readonly string[];
 }
 
 export function mapearProdutosDax(
@@ -109,6 +118,10 @@ export function mapearProdutosDax(
   const produtosPorId = new Map<number, Produto>();
   const codigosNaoCompraveis = new Set(
     (opcoes?.classesNaoCompraveis ?? []).map((c) => c.codigoBase)
+  );
+  const desconsiderarInativos = opcoes?.desconsiderarInativos ?? true;
+  const termosInativos = (opcoes?.termosDescricaoInativos ?? ["INATIVO"]).map((t) =>
+    t.toUpperCase()
   );
 
   for (const linhaBruta of linhasDax) {
@@ -123,6 +136,24 @@ export function mapearProdutosDax(
     const codigoSku = rawSku.includes("|") ? rawSku.split("|")[0].trim() : rawSku;
 
     const descricao = String(linha.Descricao ?? linha.ADESCRICAO ?? linha.descricao ?? "").trim();
+
+    // Códigos inativos: no ERP da Carreiro e no varejo em geral, itens inativados
+    // possuem flag LINATIVO === "T" ou a descrição alterada para "INATIVO" (ex: "INATIVO",
+    // "... INATIVO", "INATIVO ..."). Não devem entrar na lista de compras nem na matriz.
+    if (desconsiderarInativos) {
+      const flagInativo =
+        linha.LINATIVO === "T" ||
+        linha.Inativo === "T" ||
+        linha.inativo === true ||
+        linha.ativo === false;
+
+      const descUpper = descricao.toUpperCase();
+      const temTermoInativo = termosInativos.some((t) => descUpper.includes(t));
+
+      if (flagInativo || temTermoInativo) {
+        continue;
+      }
+    }
     const marca = String(linha.Marca ?? linha.AMARCA ?? linha.marca ?? "GENERICA").trim();
     const fabricante = String(
       linha.Fabricante ?? linha.AFABRICANTE ?? linha.fabricante ?? marca ?? "GENERICO"
