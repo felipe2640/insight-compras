@@ -16,3 +16,11 @@ deles, aplique a fundação multi-tenant.
 O arquivo `.rollback.sql` restaura o acesso exclusivamente por `service_role`
 sem excluir dados das tabelas de domínio. Não aplique a migração nem o rollback
 automaticamente em produção a partir de uma PR.
+
+## PR 3 — configurações úteis do Diário
+
+1. execute `migrations/202609210003_configuracoes_legadas_tenant.sql`;
+2. em banco descartável, execute `tests/configuracoes_legadas_rls_adversarial.sql`;
+3. só importe o manifesto do Diário após mapear cada usuário legado para um UUID
+   de `tenant_members` do mesmo tenant;
+4. não desligue o Supabase antigo até o aceite do cutover.
