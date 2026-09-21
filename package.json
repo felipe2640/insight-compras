@@ -11,6 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
+    "migration:import-diario": "node scripts/migracao-diario/import-config.mjs",
     "start:prod": "next build && next start",
     "prebuild": "node scripts/validar-ambiente.mjs"
   },
