@@ -389,4 +389,64 @@ describe("Catálogo: classes do ERP que não são mercadoria comprável", () => 
 
     expect(produtos.map((p) => p.codigoSku)).toEqual(["012345"]);
   });
+
+  it("deve descartar produtos marcados como inativos via LINATIVO ou Inativo = 'T'", () => {
+    const linhaInativoFlag = {
+      "[Produto]": "029042|guid-1",
+      "[Descricao]": "AMORTECEDOR TRASEIRO SIENA",
+      "[LINATIVO]": "T",
+      "[Secao]": 1_000_000_000_260,
+    };
+    const linhaAtiva = {
+      "[Produto]": "005174|guid-1",
+      "[Descricao]": "ABRACADEIRA ESCAPAMENTO",
+      "[LINATIVO]": "F",
+      "[Secao]": 1_000_000_000_260,
+    };
+
+    const produtos = mapearProdutosDax([linhaInativoFlag, linhaAtiva]);
+    expect(produtos.map((p) => p.codigoSku)).toEqual(["005174"]);
+  });
+
+  it("deve descartar produtos cuja descrição contenha INATIVO em qualquer posição", () => {
+    const linhasInativas = [
+      {
+        "[Produto]": "029001|guid-1",
+        "[Descricao]": "INATIVO",
+        "[Secao]": 1_000_000_000_260,
+      },
+      {
+        "[Produto]": "029002|guid-1",
+        "[Descricao]": "PARACHOQUE DIANT GOL G5 08/12 (CF/PL) INATIVO",
+        "[Secao]": 1_000_000_000_260,
+      },
+      {
+        "[Produto]": "029003|guid-1",
+        "[Descricao]": "INATIVO ATUADOR HIDR EMBR S10/BLAZER 2.8",
+        "[Secao]": 1_000_000_000_260,
+      },
+      {
+        "[Produto]": "005174|guid-1",
+        "[Descricao]": "ABRACADEIRA ESCAPAMENTO",
+        "[Secao]": 1_000_000_000_260,
+      },
+    ];
+
+    const produtos = mapearProdutosDax(linhasInativas);
+    expect(produtos.map((p) => p.codigoSku)).toEqual(["005174"]);
+  });
+
+  it("deve permitir desativar o descarte caso desconsiderarInativos seja false", () => {
+    const linhaInativo = {
+      "[Produto]": "029001|guid-1",
+      "[Descricao]": "INATIVO",
+      "[Secao]": 1_000_000_000_260,
+    };
+
+    const produtos = mapearProdutosDax([linhaInativo], {
+      desconsiderarInativos: false,
+    });
+    expect(produtos).toHaveLength(1);
+    expect(produtos[0].codigoSku).toBe("029001");
+  });
 });

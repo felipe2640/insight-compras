@@ -140,6 +140,8 @@ export function obterAdaptadorInventario(
         filiais: tenant.filiais,
         nomeERP: tenant.fonte.nomeERP,
         classesNaoCompraveis: tenant.catalogo.classesNaoCompraveis,
+        desconsiderarInativos: tenant.catalogo.desconsiderarInativos,
+        termosDescricaoInativos: tenant.catalogo.termosDescricaoInativos,
       })
     );
   }

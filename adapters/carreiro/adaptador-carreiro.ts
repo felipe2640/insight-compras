@@ -80,6 +80,10 @@ export interface OpcoesAdaptadorCarreiro {
   readonly nomeERP?: string;
   /** Classes do ERP que não são mercadoria (serviços). Declaradas pelo tenant. */
   readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
+  /** Se deve desconsiderar produtos inativos no ERP ou com termos inativos na descrição. */
+  readonly desconsiderarInativos?: boolean;
+  /** Termos na descrição que identificam itens inativos. */
+  readonly termosDescricaoInativos?: readonly string[];
 }
 
 /**
@@ -95,6 +99,8 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   private readonly gerenciadorCache: GerenciadorCacheResiliente<RespostaCargaInventario>;
   private readonly diretorioSnapshot?: string;
   private readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
+  private readonly desconsiderarInativos?: boolean;
+  private readonly termosDescricaoInativos?: readonly string[];
   private readonly filiais: readonly FilialCadastradaTenant[];
 
   public readonly descricaoFonte = "Power BI";
@@ -108,6 +114,8 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
       opcoes.gerenciadorCache || new GerenciadorCacheResiliente<RespostaCargaInventario>();
     this.diretorioSnapshot = opcoes.diretorioSnapshot;
     this.classesNaoCompraveis = opcoes.classesNaoCompraveis;
+    this.desconsiderarInativos = opcoes.desconsiderarInativos;
+    this.termosDescricaoInativos = opcoes.termosDescricaoInativos;
     this.filiais = opcoes.filiais ?? [];
   }
 
@@ -257,6 +265,8 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
             mapearProdutosDax(linhasAtributos, {
               lotesPorProdutoId,
               classesNaoCompraveis: this.classesNaoCompraveis,
+              desconsiderarInativos: this.desconsiderarInativos,
+              termosDescricaoInativos: this.termosDescricaoInativos,
             }),
             linhasUltimoPedido
           );
@@ -323,6 +333,8 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
         if (dirSnapshot) {
           return await carregarSnapshotCarreiroLocal(dirSnapshot, filtro, {
             classesNaoCompraveis: this.classesNaoCompraveis,
+            desconsiderarInativos: this.desconsiderarInativos,
+            termosDescricaoInativos: this.termosDescricaoInativos,
             mapaLojas: this.novoMapaLojas(),
           });
         }

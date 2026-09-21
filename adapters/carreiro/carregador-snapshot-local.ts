@@ -29,6 +29,10 @@ export interface OpcoesCarregadorSnapshot {
   readonly diretorio?: string;
   /** Classes do ERP que não são mercadoria (serviços). Declaradas pelo tenant. */
   readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
+  /** Se deve desconsiderar produtos inativos no ERP ou com termos inativos na descrição. */
+  readonly desconsiderarInativos?: boolean;
+  /** Termos na descrição que identificam itens inativos. */
+  readonly termosDescricaoInativos?: readonly string[];
   /** Mapa de lojas do cadastro; o snapshot é o mesmo payload cru da fonte. */
   readonly mapaLojas: MapaLojasFonte;
 }
@@ -95,6 +99,8 @@ export async function carregarSnapshotCarreiroLocal(
   // senão o modo degradado volta a servir serviço como item de compra.
   const produtos = mapearProdutosDax(linhasProdutos, {
     classesNaoCompraveis: opcoes.classesNaoCompraveis,
+    desconsiderarInativos: opcoes.desconsiderarInativos,
+    termosDescricaoInativos: opcoes.termosDescricaoInativos,
   });
   const estoques = mapearEstoquesDax(linhasProdutos, { mapaLojas: opcoes.mapaLojas });
   const mapaProdutos = new Map(produtos.map((p) => [p.id, p]));

@@ -104,6 +104,8 @@ export const esquemaConfiguracaoTenant = z
           motivo: textoNaoVazio,
         })
       ),
+      desconsiderarInativos: z.boolean().optional(),
+      termosDescricaoInativos: z.array(textoNaoVazio).optional(),
     }),
     exportacao: z.object({}).passthrough(),
     curvaAbc: z

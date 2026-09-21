@@ -80,4 +80,11 @@ describe("paginação do catálogo de produtos", () => {
     expect(dax).toContain("SUBCLASSES[ADESCRICAO]");
     expect(dax).toContain("CLASSES[ADESCRICAO]");
   });
+
+  it("exclui produtos inativos via LINATIVO e busca de INATIV na descrição", () => {
+    const dax = gerarConsultaDaxProdutosEstoque();
+    expect(dax).toContain("COALESCE('PRODUTOS'[LINATIVO], \"F\") <> \"T\"");
+    expect(dax).toContain("SEARCH(\"INATIV\", UPPER('PRODUTOS'[ADESCRICAO]), 1, 0) = 0");
+    expect(dax).toContain('"Inativo", \'PRODUTOS\'[LINATIVO]');
+  });
 });

@@ -169,6 +169,15 @@ export interface ClasseNaoCompravelTenant {
  */
 export interface ConfiguracaoCatalogoTenant {
   readonly classesNaoCompraveis: readonly ClasseNaoCompravelTenant[];
+  /**
+   * Se deve desconsiderar produtos inativos no ERP ou cadastros marcados como inativos.
+   * O padrão adotado nos adaptadores é true.
+   */
+  readonly desconsiderarInativos?: boolean;
+  /**
+   * Padrões ou termos na descrição que indicam códigos inativos no ERP (ex.: ["INATIVO"]).
+   */
+  readonly termosDescricaoInativos?: readonly string[];
 }
 
 /**

@@ -237,6 +237,8 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
           "Mão de obra faturada pela tabela de produtos. Não tem estoque, não tem fornecedor e não se compra.",
       },
     ],
+    desconsiderarInativos: true,
+    termosDescricaoInativos: ["INATIVO"],
   },
   exportacao: {
     layoutPadraoId: "pedido_fornecedor",
