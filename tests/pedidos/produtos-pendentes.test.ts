@@ -18,4 +18,12 @@ describe("produtos em pedidos ativos", () => {
     const linhas = [{ produtoId: 639 }] as LinhaCockpitMatriz[];
     expect(removerProdutosEmPedidosAtivos(linhas, new Set())).toEqual(linhas);
   });
+
+  it("mantém o produto disponível no catálogo Todos", () => {
+    const linhas = [{ produtoId: 639 }] as LinhaCockpitMatriz[];
+    expect(removerProdutosEmPedidosAtivos(linhas, new Set([639]))).toEqual([]);
+    // O catálogo completo usa a coleção original; apenas a coleção operacional
+    // passa pelo filtro acima.
+    expect(linhas).toHaveLength(1);
+  });
 });

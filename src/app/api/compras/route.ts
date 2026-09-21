@@ -103,17 +103,20 @@ export async function GET(request: NextRequest) {
       carga,
       await montarOpcoesMatrizComPublicados(filialId, tenant)
     );
-    const linhas = removerProdutosEmPedidosAtivos(
+    const linhasOperacionais = removerProdutosEmPedidosAtivos(
       linhasCalculadas,
       await listarIdsProdutosEmPedidosAtivos(tenant.id, filialId),
     );
+    const contagensOperacionais = contarStatusGrade(linhasOperacionais);
 
     // Escopo: a grade abre com o que pede decisão e completa o catálogo depois.
     // As contagens saem SEMPRE do conjunto completo — os chips não podem mentir
     // enquanto o restante ainda está a caminho.
     const escopo = searchParams.get("escopo") === "acionaveis" ? "acionaveis" : "todos";
-    const contagens = contarStatusGrade(linhas);
-    const linhasDoEscopo = escopo === "acionaveis" ? separarAcionaveis(linhas).acionaveis : linhas;
+    const contagens = { ...contagensOperacionais, total: linhasCalculadas.length };
+    const linhasDoEscopo = escopo === "acionaveis"
+      ? separarAcionaveis(linhasOperacionais).acionaveis
+      : linhasCalculadas;
 
     const tempoExecucaoMs = Date.now() - inicio;
 

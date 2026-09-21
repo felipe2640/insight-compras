@@ -103,16 +103,17 @@ async function CarregarDadosCockpit() {
     carga,
     await montarOpcoesMatrizComPublicados(filialFocoId, tenant)
   );
-  const linhas = removerProdutosEmPedidosAtivos(
+  const linhasOperacionais = removerProdutosEmPedidosAtivos(
     linhasCalculadas,
     await listarIdsProdutosEmPedidosAtivos(tenant.id, filialFocoId),
   );
-  const { acionaveis } = separarAcionaveis(linhas);
+  const { acionaveis } = separarAcionaveis(linhasOperacionais);
+  const contagensOperacionais = contarStatusGrade(linhasOperacionais);
 
   return (
     <CockpitPrincipal
       gradeInicial={codificarGradeTabular(acionaveis)}
-      contagensCatalogo={contarStatusGrade(linhas)}
+      contagensCatalogo={{ ...contagensOperacionais, total: linhasCalculadas.length }}
       filialFocoIdInicial={filialFocoId}
       fornecedoresPermitidosInicial={fornecedoresPermitidos}
       usuarioSessao={{
