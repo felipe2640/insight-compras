@@ -4,6 +4,7 @@
 -- geradas pelo pipeline local de IA e consumidas pelo cockpit de compras.
 --
 -- Executar no SQL Editor do Supabase (projeto rede-carreiro).
+-- Bootstrap: aplique depois as migrações versionadas em supabase/migrations.
 -- ============================================================================
 
 create table if not exists demanda_ia_previsao (
