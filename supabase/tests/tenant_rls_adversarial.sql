@@ -1,6 +1,14 @@
--- Executar após 202609210001_tenant_rls_foundation.sql em banco descartável.
+-- Executar após as migrações 202609210001 e 202609210002 em banco descartável.
 -- O teste usa transação e não deixa dados para trás.
 begin;
+
+do $$
+begin
+  if has_function_privilege('anon', 'public.is_tenant_member(text)', 'execute')
+     or has_function_privilege('anon', 'public.is_tenant_manager(text)', 'execute') then
+    raise exception 'anon ainda consegue executar helpers SECURITY DEFINER de tenant';
+  end if;
+end $$;
 
 insert into public.tenants (id, nome) values
   ('teste_alpha', 'Teste Alpha'),

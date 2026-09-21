@@ -156,7 +156,7 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">Ciclo de aprendizado não configurado.</p>
-        <p className="mt-1">Defina <code>SUPABASE_URL</code> e <code>SUPABASE_SERVICE_ROLE_KEY</code> e rode <code>docs/supabase/schema-aprendizado.sql</code> no projeto. A exportação continua funcionando normalmente sem isso.</p>
+        <p className="mt-1">Defina <code>SUPABASE_URL</code> e <code>SUPABASE_ANON_KEY</code> e aplique as migrações de <code>supabase/migrations</code>. A exportação continua funcionando normalmente sem isso.</p>
       </div>
     );
   }

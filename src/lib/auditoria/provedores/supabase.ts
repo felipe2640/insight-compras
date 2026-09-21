@@ -101,7 +101,7 @@ export class RepositorioAuditoriaSupabase implements RepositorioAuditoria {
       justificativa_override: registro.justificativaOverride ?? null,
       hash_registro_anterior: registro.hashRegistroAnterior,
       hash_integridade: registro.hashIntegridade,
-    });
+    }, { acesso: "privilegiado" });
   }
 
   public async obterUltimoRegistro(tenantId: string): Promise<AuditoriaPedido | null> {
@@ -155,6 +155,6 @@ export class RepositorioAuditoriaSupabase implements RepositorioAuditoria {
     const consulta = tenantId
       ? `tenant_id=eq.${encodeURIComponent(tenantId)}`
       : `id=not.is.null`;
-    await sbExcluir("auditoria_pedido", consulta);
+    await sbExcluir("auditoria_pedido", consulta, { acesso: "privilegiado" });
   }
 }
