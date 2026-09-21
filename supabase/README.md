@@ -24,3 +24,15 @@ automaticamente em produção a partir de uma PR.
 3. só importe o manifesto do Diário após mapear cada usuário legado para um UUID
    de `tenant_members` do mesmo tenant;
 4. não desligue o Supabase antigo até o aceite do cutover.
+
+## PR 4 — importação transacional
+
+1. execute `migrations/202609210004_importacao_config_diario.sql`;
+2. gere o manifesto pelo script versionado no `diario`;
+3. execute primeiro `npm run migration:import-diario -- --manifest <arquivo>`;
+4. confira o resumo e só então repita adicionando `--apply`;
+5. guarde o `batchId` retornado: ele permite rollback seletivo pela função
+   `reverter_importacao_diario`.
+
+O mapa de usuários deve ser fornecido por `MIGRACAO_USUARIO_MAP_JSON`. Ele não
+é versionado e cada UUID precisa ser membro ativo do tenant `carreiro`.
