@@ -36,3 +36,12 @@ automaticamente em produção a partir de uma PR.
 
 O mapa de usuários deve ser fornecido por `MIGRACAO_USUARIO_MAP_JSON`. Ele não
 é versionado e cada UUID precisa ser membro ativo do tenant `carreiro`.
+
+## PR 5 — identidades da planilha do Diário
+
+1. execute `migrations/202609210005_identidades_legadas_diario.sql`;
+2. rode o sincronizador versionado no `diario` primeiro em dry-run;
+3. confirme que as sete identidades são únicas e que nenhuma senha é impressa;
+4. somente no `--apply`, crie as contas e registre os membros do tenant;
+5. chame `vincular_identidades_diario` com o lote retornado;
+6. mantenha a autenticação da planilha ativa até concluir testes de login e RLS.
