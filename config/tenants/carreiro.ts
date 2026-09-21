@@ -337,5 +337,8 @@ export const TENANT_CARREIRO: ConfiguracaoTenant = {
       },
     ],
   },
-
+  curvaAbc: {
+    metodo: "GIRO",
+    fallbackParaGiroSeErpInvalido: true,
+  },
 };

@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { calcularCurvaAbc, ItemParaCurvaAbc } from "@core/calculo/curva-abc";
+import {
+  calcularCurvaAbc,
+  converterPerfilGiroParaCurvaAbc,
+  ItemParaCurvaAbc,
+} from "@core/calculo/curva-abc";
 
 describe("Motor de Curva ABC por Faturamento Acumulado (Pareto)", () => {
   it("deve classificar itens em A (80%), B (15%) e C (5%) corretamente", () => {
@@ -55,5 +59,23 @@ describe("Motor de Curva ABC por Faturamento Acumulado (Pareto)", () => {
   it("deve retornar mapa vazio se lista de itens for vazia", () => {
     const resultado = calcularCurvaAbc([]);
     expect(resultado.size).toBe(0);
+  });
+});
+
+describe("Conversão Operacional de Perfil de Giro para Curva ABC", () => {
+  it("deve classificar ALTO_GIRO como Curva A", () => {
+    expect(converterPerfilGiroParaCurvaAbc("ALTO_GIRO")).toBe("A");
+  });
+
+  it("deve classificar MEDIO_GIRO como Curva B", () => {
+    expect(converterPerfilGiroParaCurvaAbc("MEDIO_GIRO")).toBe("B");
+  });
+
+  it("deve classificar BAIXO_GIRO_INTERMITENTE como Curva C", () => {
+    expect(converterPerfilGiroParaCurvaAbc("BAIXO_GIRO_INTERMITENTE")).toBe("C");
+  });
+
+  it("deve classificar SEM_HISTORICO_SUFICIENTE como Curva C", () => {
+    expect(converterPerfilGiroParaCurvaAbc("SEM_HISTORICO_SUFICIENTE")).toBe("C");
   });
 });

@@ -34,10 +34,11 @@ import {
 import { Produto } from "@core/dominio";
 import { EstoqueFilial } from "@core/dominio/estoque";
 import { calcularConsumoDiario, classificarPerfilGiro } from "@core/calculo/demanda-diaria";
-import { calcularCurvaAbc } from "@core/calculo/curva-abc";
+import { calcularCurvaAbc, converterPerfilGiroParaCurvaAbc } from "@core/calculo/curva-abc";
 import { StatusSugestao, CurvaABC, campoHistoricoDisponivel, campoEstoqueDisponivel } from "@core/dominio";
 import { PrevisaoDemandaIaItem } from "@/lib/previsao-ia/repositorio-previsao-ia";
 import { avaliarVigenciaPrevisao } from "@/lib/previsao-ia/vigencia-previsao";
+import type { ConfiguracaoCurvaAbcTenant } from "@config/tenants/tipos";
 
 export interface OpcoesGeracaoMatriz {
   readonly filialFocoId?: number;
@@ -57,6 +58,11 @@ export interface OpcoesGeracaoMatriz {
    * indexadas por `${produtoId}:${filialId}`.
    */
   readonly mapaPrevisoesIa?: ReadonlyMap<string, PrevisaoDemandaIaItem>;
+  /**
+   * Configuração de classificação da Curva ABC (Giro, Faturamento ou ERP).
+   * Padrão caso omitido: "FATURAMENTO" (Pareto).
+   */
+  readonly configuracaoCurvaAbc?: ConfiguracaoCurvaAbcTenant;
 }
 
 /**
@@ -334,7 +340,17 @@ export function converterParaLinhasCockpit(
           parametrosMotor.elegibilidade
         )
       : "SEM_HISTORICO_SUFICIENTE";
-    const curvaAbc: CurvaABC = mapaCurvaAbc.get(p.id)?.curva ?? "C";
+
+    const metodoCurva = opcoes.configuracaoCurvaAbc?.metodo ?? "FATURAMENTO";
+    let curvaAbc: CurvaABC;
+    if (metodoCurva === "GIRO") {
+      curvaAbc = converterPerfilGiroParaCurvaAbc(perfilGiro);
+    } else if (metodoCurva === "ERP") {
+      // Fallback para GIRO quando os dados do ERP forem mono-classe ou nulos
+      curvaAbc = converterPerfilGiroParaCurvaAbc(perfilGiro);
+    } else {
+      curvaAbc = mapaCurvaAbc.get(p.id)?.curva ?? "C";
+    }
 
     // Trava de Marca Zumbi (saldo > 0 e zero vendas em 180d COMPROVADAS na loja)
     // Sem histórico na loja, não afirmamos que vendeu zero: não é zumbi.

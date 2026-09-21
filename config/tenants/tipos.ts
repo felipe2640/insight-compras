@@ -211,6 +211,20 @@ export function naturezaTenant(
   return tenant.fonte.adaptador === "sintetica" ? "sintetica" : "real";
 }
 
+export type MetodoCurvaAbc = "GIRO" | "FATURAMENTO" | "ERP";
+
+export interface ConfiguracaoCurvaAbcTenant {
+  /**
+   * Como a Curva ABC é determinada para o cliente:
+   * - "GIRO": Alinhada à velocidade e recorrência real de vendas do motor de compra (A=Alto Giro, B=Médio Giro, C=Baixo Giro/Sem Histórico).
+   * - "FATURAMENTO": Pareto financeiro clássico por faturamento acumulado (80% receita -> A, 15% -> B, 5% -> C).
+   * - "ERP": Lê a coluna cadastrada no ERP do cliente (com fallback seguro se os dados forem mono-classe ou nulos).
+   */
+  readonly metodo: MetodoCurvaAbc;
+  /** Se true (padrão), caso o método seja ERP e os dados estejam inválidos ou mono-classe (ex: 100% "B"), faz fallback para "GIRO" */
+  readonly fallbackParaGiroSeErpInvalido?: boolean;
+}
+
 export interface ConfiguracaoTenant {
   /** Identificador único do tenant em minúsculas (slug) - ex: "carreiro" */
   readonly id: string;
@@ -244,6 +258,11 @@ export interface ConfiguracaoTenant {
    * separadores próprios; o motor de exportação é comum, o layout é daqui.
    */
   readonly exportacao: ConfiguracaoExportacaoTenant;
+  /**
+   * Como a Curva ABC é calculada/exibida para este cliente (Giro, Faturamento ou ERP).
+   * Padrão caso omitido: "FATURAMENTO".
+   */
+  readonly curvaAbc?: ConfiguracaoCurvaAbcTenant;
 }
 
 /**
