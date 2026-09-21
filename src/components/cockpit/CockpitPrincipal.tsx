@@ -246,6 +246,9 @@ export function CockpitPrincipal({
 
   // 2. Estado de Deltas / Ajustes do Comprador
   const [deltas, setDeltas] = useState<Record<string, ItemDeltaRascunho>>({});
+  const [produtosExportados, setProdutosExportados] = useState<ReadonlySet<number>>(
+    () => new Set(),
+  );
 
   // 3. Hook de Rascunho de Sessão em LocalStorage com Debounce indexado pela sessão real
   const userIdSessao =
@@ -274,9 +277,13 @@ export function CockpitPrincipal({
 
   // 4. Aplicação dos Deltas sobre a base de dados
   const itensComOverrides = useMemo(() => {
-    if (Object.keys(deltas).length === 0) return linhasBase;
+    const linhasPendentes =
+      produtosExportados.size === 0
+        ? linhasBase
+        : linhasBase.filter((item) => !produtosExportados.has(item.produtoId));
+    if (Object.keys(deltas).length === 0) return linhasPendentes;
 
-    return linhasBase.map((item) => {
+    return linhasPendentes.map((item) => {
       const delta = deltas[item.codigoSku] ?? deltas[String(item.produtoId)];
       if (!delta) return item;
 
@@ -298,7 +305,7 @@ export function CockpitPrincipal({
           : item.motivoDecisao,
       };
     });
-  }, [linhasBase, deltas]);
+  }, [linhasBase, deltas, produtosExportados]);
 
   // 5. Hook de Filtros de Alta Performance (< 250ms para 25.000 SKUs)
   const {
@@ -562,8 +569,26 @@ export function CockpitPrincipal({
     // Ajustes e seleção pertencem à grade da filial anterior.
     setDeltas({});
     setRowSelection({});
+    setProdutosExportados(new Set());
     setColumnFilters([]);
   }, []);
+
+  const handleItensExportados = useCallback(
+    (itens: readonly LinhaCockpitMatriz[]) => {
+      const ids = new Set(itens.map((item) => item.produtoId));
+      const chaves = new Set(
+        itens.flatMap((item) => [item.codigoSku, String(item.produtoId)]),
+      );
+      setProdutosExportados((atuais) => new Set([...atuais, ...ids]));
+      setRowSelection({});
+      setDeltas((atuais) =>
+        Object.fromEntries(
+          Object.entries(atuais).filter(([chave]) => !chaves.has(chave)),
+        ),
+      );
+    },
+    [],
+  );
 
   const handleSortChange = useCallback((optionId: string, desc?: boolean) => {
     setSortValue(optionId);
@@ -694,6 +719,7 @@ export function CockpitPrincipal({
         itensSelecionados={itensSelecionadosParaExportacao}
         configuracao={tenantAtivo.exportacao}
         onModeloSalvo={() => setVersaoModelos((v) => v + 1)}
+        onExportado={handleItensExportados}
         contexto={contextoExportacao}
       />
 
@@ -738,6 +764,7 @@ export function CockpitPrincipal({
                 csvPadrao={tenantAtivo.exportacao.csvPadrao}
                 modeloPadraoId={tenantAtivo.exportacao.layoutPadraoId}
                 onAbrirConfiguracao={() => setDialogExportacaoAberto(true)}
+                onExportado={handleItensExportados}
                 versao={versaoModelos}
               />
 

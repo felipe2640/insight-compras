@@ -36,6 +36,7 @@ export interface BotoesExportacaoProps {
   /** Só este layout de fábrica vira atalho; os demais continuam no diálogo. */
   readonly modeloPadraoId?: string;
   readonly onAbrirConfiguracao: () => void;
+  readonly onExportado?: (itens: readonly LinhaCockpitMatriz[]) => void;
   /** Muda quando um modelo é salvo, para a lista recarregar. */
   readonly versao?: number;
   readonly className?: string;
@@ -48,6 +49,7 @@ export function BotoesExportacao({
   csvPadrao,
   modeloPadraoId,
   onAbrirConfiguracao,
+  onExportado,
   versao = 0,
   className,
 }: BotoesExportacaoProps) {
@@ -101,14 +103,16 @@ export function BotoesExportacao({
           csvPadrao,
         });
         baixarArquivoNoNavegador(arquivo);
-        // "todos" é análise, não decisão de compra, e por isso não vira snapshot.
-        if (itensSelecionados.length === 0 && modelo.escopo !== "todos") {
-          capturarSnapshotAprendizado({
+        // Uma seleção manual continua sendo um pedido quando parte de um modelo
+        // operacional. Antes ela baixava o arquivo, mas pulava este registro.
+        if (modelo.escopo !== "todos") {
+          await capturarSnapshotAprendizado({
             itens: linhas,
             filialId: contexto.filialId,
             layoutId: modelo.id,
             formato: modelo.formato,
           });
+          onExportado?.(linhas);
         }
       } catch (e) {
         setErro(e instanceof Error ? e.message : "Falha ao gerar o arquivo.");
@@ -116,7 +120,7 @@ export function BotoesExportacao({
         setGerando(null);
       }
     },
-    [itensBase, contexto, csvPadrao]
+    [itensBase, itensSelecionados.length, contexto, csvPadrao, onExportado]
   );
 
   return (
