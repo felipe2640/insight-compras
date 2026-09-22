@@ -18,6 +18,9 @@ begin
 end;
 $$;
 
+drop function if exists public.importar_configuracoes_diario(text, jsonb);
+drop function if exists public.reverter_importacao_diario(text, uuid);
+
 drop policy if exists app_members_select_self_or_manager on public.app_members;
 drop policy if exists diario_lojas_select_member on public.diario_lojas;
 drop policy if exists diario_lojas_insert_manager on public.diario_lojas;
@@ -142,5 +145,6 @@ revoke all on function private.is_app_member(text, text) from public, anon, auth
 revoke all on function private.is_app_manager(text, text) from public, anon, authenticated, service_role;
 drop function private.is_app_manager(text, text);
 drop function private.is_app_member(text, text);
+revoke usage on schema private from authenticated;
 
 commit;
