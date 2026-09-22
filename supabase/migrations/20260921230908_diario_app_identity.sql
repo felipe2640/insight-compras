@@ -25,6 +25,8 @@ create table if not exists public.app_members (
 
 create index if not exists app_members_scope_user_idx
   on public.app_members (tenant_id, app_id, user_id);
+create index if not exists app_members_user_id_idx
+  on public.app_members (user_id);
 create index if not exists app_members_scope_legacy_idx
   on public.app_members (tenant_id, app_id, legacy_user_ref);
 

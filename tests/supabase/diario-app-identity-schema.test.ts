@@ -5,6 +5,10 @@ const sql = readFileSync(
   "supabase/migrations/20260921230908_diario_app_identity.sql",
   "utf8"
 );
+const indexFix = readFileSync(
+  "supabase/migrations/20260922012959_app_members_user_fk_index.sql",
+  "utf8"
+);
 
 describe("identidade app-scoped do Diário", () => {
   it("separa app_members de tenant_members", () => {
@@ -49,6 +53,8 @@ describe("identidade app-scoped do Diário", () => {
       /grant execute on function private\.is_app_member\(text, text\) to anon/i
     );
     expect(sql).toMatch(/create index[\s\S]*app_members[\s\S]*tenant_id, app_id, user_id/i);
+    expect(sql).toMatch(/create index if not exists app_members_user_id_idx[\s\S]*\(user_id\)/i);
+    expect(indexFix).toMatch(/app_members_user_id_idx[\s\S]*\(user_id\)/i);
   });
 
   it("runbook mantém o banco antigo até o aceite final", () => {
