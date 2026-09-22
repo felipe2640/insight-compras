@@ -34,6 +34,8 @@ describe("identidade app-scoped do Diário", () => {
     expect(sql).toMatch(
       /foreign key \(tenant_id, app_id, grupo_id\)[\s\S]*references public\.fornecedor_grupo/i
     );
+    expect(sql.indexOf("drop constraint if exists usuario_grupo_tenant_grupo_fkey"))
+      .toBeLessThan(sql.indexOf("drop constraint if exists fornecedor_grupo_pkey"));
   });
 
   it("protege helpers privilegiados e indexa o escopo RLS", () => {

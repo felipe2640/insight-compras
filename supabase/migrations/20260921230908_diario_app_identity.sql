@@ -74,6 +74,11 @@ alter table public.margem_alvo
   drop constraint if exists margem_alvo_app_id_check,
   add constraint margem_alvo_app_id_check check (app_id = 'diario');
 
+-- As FKs precisam sair antes das chaves únicas que elas referenciam.
+alter table public.usuario_grupo
+  drop constraint if exists usuario_grupo_tenant_member_fkey,
+  drop constraint if exists usuario_grupo_tenant_grupo_fkey;
+
 alter table public.fornecedor_grupo
   drop constraint if exists fornecedor_grupo_pkey,
   drop constraint if exists fornecedor_grupo_tenant_id_nome_key,
