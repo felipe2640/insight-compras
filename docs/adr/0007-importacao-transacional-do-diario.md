@@ -11,13 +11,15 @@ privilegiada e atômica. A aplicação normal não recebe acesso à RPC: somente
 `service_role`, usada deliberadamente durante o cutover, pode executá-la.
 
 Antes de escrever, o fluxo valida a integridade do manifesto, o tenant
-`carreiro`, as contagens e o mapa explícito dos usuários legados. O banco ainda
+`trairi`, as contagens e as identidades dos usuários legados em `app_members`.
+O tenant `carreiro` pertence ao cliente do Insight Compras e não recebe dados do
+Diário. O banco ainda
 confirma que cada UUID é membro ativo do mesmo tenant. A importação faz upsert
 por chaves tenant-scoped e falha por inteiro se qualquer vínculo for inválido.
 
-Os identificadores reais do Admin e do Valmir não são versionados. O mapa
-`2 -> Admin` e `5 -> Valmir` é fornecido somente por variável de ambiente no
-momento controlado da execução.
+Os identificadores dos usuários do Diário são resolvidos exclusivamente dentro
+de `(tenant_id=trairi, app_id=diario)`. Admin e Valmir permanecem vinculados ao
+tenant `carreiro` e não participam da importação.
 
 ## Rastreabilidade e rollback
 
@@ -32,7 +34,8 @@ não devem ser removidas por uma reversão tardia.
 
 ## Rollout
 
-1. aplicar a migração `202609210004` no Supabase `rede-carreiro`;
+1. aplicar as migrations do Diário e a criação do tenant `trairi` no projeto
+   Supabase compartilhado `rede-carreiro`;
 2. exportar um manifesto novo e somente leitura do Supabase do Diário;
 3. executar o importador em dry-run com o mapa de identidades;
 4. executar com `--apply` e guardar o `batchId`;

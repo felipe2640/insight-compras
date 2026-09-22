@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { validarManifesto } from "../../scripts/migracao-diario/import-config.mjs";
 
-function manifestoValido(tenantId = "carreiro") {
+function manifestoValido(tenantId = "trairi") {
   const base = {
     schemaVersion: 1,
     origem: "diario",
@@ -31,11 +31,20 @@ function manifestoValido(tenantId = "carreiro") {
 
 describe("importação das configurações do Diário", () => {
   it("aceita manifesto íntegro para qualquer tenant configurado", () => {
-    expect(validarManifesto(manifestoValido()).tenantId).toBe("carreiro");
+    expect(validarManifesto(manifestoValido()).tenantId).toBe("trairi");
     expect(validarManifesto(manifestoValido("novo_cliente")).tenantId).toBe("novo_cliente");
     const adulterado = manifestoValido();
     (adulterado.dados.margem_alvo as Array<{ id: number }>).push({ id: 1 });
     expect(() => validarManifesto(adulterado)).toThrow(/Checksum/);
+  });
+
+  it("mantém Diário e Carreiro em tenants distintos no projeto compartilhado", () => {
+    const sql = readFileSync(
+      new URL("../../supabase/migrations/20260922030000_tenant_trairi.sql", import.meta.url),
+      "utf8",
+    );
+    expect(sql).toMatch(/values\s*\(\s*'trairi'\s*,\s*'Trairi'\s*,\s*true\s*\)/i);
+    expect(sql).not.toMatch(/values\s*\(\s*'carreiro'/i);
   });
 
   it("mantém as RPCs privilegiadas e o rollback limitado ao lote", () => {
