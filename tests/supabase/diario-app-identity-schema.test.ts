@@ -48,4 +48,15 @@ describe("identidade app-scoped do Diário", () => {
     );
     expect(sql).toMatch(/create index[\s\S]*app_members[\s\S]*tenant_id, app_id, user_id/i);
   });
+
+  it("runbook mantém o banco antigo até o aceite final", () => {
+    const runbook = readFileSync("docs/migracao-diario/02-cutover-final.md", "utf8");
+    expect(runbook).toMatch(/não excluir/i);
+    expect(runbook).toContain("DIARIO_AUTH_BACKEND=supabase");
+    expect(runbook).toContain("1 fornecedor_grupo");
+    expect(runbook).toContain("2 usuario_grupo");
+    expect(runbook).toContain("96 secao_multiplo_compra");
+    expect(runbook).toContain("1 margem_alvo");
+    expect(runbook).toContain("previsao-ia-diaria.yml");
+  });
 });

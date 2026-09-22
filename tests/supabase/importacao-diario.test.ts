@@ -1,8 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-// O script operacional permanece em JavaScript ESM para execução direta pelo Node.
-// @ts-expect-error O módulo não publica declarações TypeScript.
 import { validarManifesto } from "../../scripts/migracao-diario/import-config.mjs";
 
 function manifestoValido(tenantId = "carreiro") {
@@ -36,7 +34,7 @@ describe("importação das configurações do Diário", () => {
     expect(validarManifesto(manifestoValido()).tenantId).toBe("carreiro");
     expect(validarManifesto(manifestoValido("novo_cliente")).tenantId).toBe("novo_cliente");
     const adulterado = manifestoValido();
-    adulterado.dados.margem_alvo.push({ id: 1 });
+    (adulterado.dados.margem_alvo as Array<{ id: number }>).push({ id: 1 });
     expect(() => validarManifesto(adulterado)).toThrow(/Checksum/);
   });
 

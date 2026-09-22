@@ -9,6 +9,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:supabase:diario": "vitest run tests/supabase/diario-app-identity-schema.test.ts tests/supabase/configuracoes-legadas-schema.test.ts tests/supabase/importacao-diario.test.ts tests/migracao-diario/import-config-app-members.test.ts",
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
     "migration:import-diario": "node scripts/migracao-diario/import-config.mjs",
