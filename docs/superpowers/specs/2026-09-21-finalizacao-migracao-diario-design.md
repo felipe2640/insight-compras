@@ -1,7 +1,7 @@
 # Finalização da migração do Diário para o Supabase compartilhado
 
-**Data:** 2026-09-21  
-**Repositórios:** `felipe2640/insight-compras` e `felipe2640/diario`  
+**Data:** 2026-09-21
+**Repositórios:** `felipe2640/insight-compras` e `felipe2640/diario`
 **Destino:** projeto Supabase `rede-carreiro` (`nzomnqxqljhwqyewehvo`)
 
 ## Objetivo
