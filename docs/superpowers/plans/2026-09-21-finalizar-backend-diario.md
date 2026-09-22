@@ -35,8 +35,8 @@
 ### Task 1: Schema app-scoped e políticas RLS
 
 **Files:**
-- Create: `supabase/migrations/202609210005_diario_app_identity.sql`
-- Create: `supabase/migrations/202609210005_diario_app_identity.rollback.sql`
+- Create: `supabase/migrations/20260921230908_diario_app_identity.sql`
+- Create: `supabase/migrations/20260921230908_diario_app_identity.rollback.sql`
 - Create: `tests/supabase/diario-app-identity-schema.test.ts`
 - Create: `supabase/tests/diario_app_rls_adversarial.sql`
 - Modify: `supabase/README.md`
@@ -171,7 +171,7 @@ Expected: FAIL porque o RPC e CLI atuais exigem o mapa `2/5 -> UUID`.
 
 - [ ] **Step 3: substituir a assinatura antiga**
 
-Na migration `005`, executar:
+Na migration `20260921230908`, executar:
 
 ```sql
 drop function if exists public.importar_configuracoes_diario(text, jsonb, jsonb);

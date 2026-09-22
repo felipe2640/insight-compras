@@ -34,5 +34,21 @@ automaticamente em produção a partir de uma PR.
 5. guarde o `batchId` retornado: ele permite rollback seletivo pela função
    `reverter_importacao_diario`.
 
-O mapa de usuários deve ser fornecido por `MIGRACAO_USUARIO_MAP_JSON`. Ele não
-é versionado e cada UUID precisa ser membro ativo do tenant `carreiro`.
+O contrato histórico de `MIGRACAO_USUARIO_MAP_JSON` é substituído pela
+migration final abaixo. Não use `admin` ou `valmir` para representar usuários
+do Diário.
+
+## Finalização — identidade própria do Diário
+
+1. aplique `migrations/20260921230908_diario_app_identity.sql` no projeto
+   compartilhado `rede-carreiro`;
+2. execute `tests/diario_app_rls_adversarial.sql` somente em banco descartável;
+3. faça o bootstrap dos usuários do Diário em Supabase Auth e em `app_members`
+   com o escopo `(tenant_id, app_id='diario')`;
+4. importe as configurações com o RPC corrigido e valide as contagens;
+5. mantenha o Supabase antigo do Diário disponível até o aceite final.
+
+`tenant_members` continua exclusivo dos usuários do Insight Compras.
+`app_members` autoriza o Diário e não concede acesso às tabelas
+`aprendizado_*`. O arquivo `.rollback.sql` só pode ser usado antes do bootstrap:
+ele aborta se detectar identidades, vínculos ou dados operacionais novos.
