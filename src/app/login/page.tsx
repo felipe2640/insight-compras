@@ -76,8 +76,7 @@ export default function PaginaLogin() {
             </tbody>
           </table>
           <p className="mt-2 text-[10px] leading-snug text-sky-800">
-            Exibindo <strong>{tenant.nome}</strong>. Para apontar esta instalação a um cliente,
-            defina TENANT_ATIVO e as credenciais dele.
+            Ambiente: <strong>{tenant.nome}</strong>.
           </p>
         </div>
       )}

@@ -552,7 +552,7 @@ export function DialogExportacao({
                 Exportação &amp; Modelos de Dados
               </DialogTitle>
               <DialogDescription className="text-xs text-slate-500">
-                Tenant: <strong>{contexto.nomeTenant}</strong> • Loja em foco:{" "}
+                Cliente: <strong>{contexto.nomeTenant}</strong> • Loja em foco:{" "}
                 <span className="font-medium text-slate-700 dark:text-slate-300">
                   {contexto.nomeLoja}
                 </span>

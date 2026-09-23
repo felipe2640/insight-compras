@@ -11,7 +11,7 @@ import { ProvedorTenant } from "@/lib/cockpit/contexto-tenant";
 export const metadata: Metadata = {
   title: "Insight Direto — Copiloto de Inteligência e Decisão de Compras",
   description:
-    "Plataforma White-Label de Inteligência e Decisão de Compras de Autopeças",
+    "Plataforma de Inteligência e Decisão de Compras de Autopeças",
 };
 
 export default function RootLayout({

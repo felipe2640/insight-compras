@@ -8,7 +8,7 @@
  */
 
 import React from "react";
-import { Building2, MapPin, FileCode2 } from "lucide-react";
+import { Building2, MapPin } from "lucide-react";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 import { obterUsuarioAtual, rotuloPapel } from "@/lib/autenticacao/servidor";
@@ -37,16 +37,6 @@ export default async function PaginaLojas() {
         </header>
 
         <div className="mx-auto w-full max-w-[1000px] space-y-3 p-4 text-xs">
-          <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-600 shadow-sm">
-            <FileCode2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-            <span>
-              Estas lojas vêm do arquivo de configuração do cliente
-              (<code className="rounded bg-slate-100 px-1">config/tenants/{tenant.id}.ts</code>),
-              que é o que o motor de compra e o balanceamento de transferência realmente usam.
-              Abrir uma loja nova é uma mudança de configuração, não de tela.
-            </span>
-          </p>
-
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <table className="w-full">
               <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
