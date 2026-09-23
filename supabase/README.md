@@ -50,6 +50,7 @@ do Diário.
 
 `tenant_members` continua exclusivo dos usuários do Insight Compras.
 `app_members` autoriza o Diário a ler `aprendizado_*` do próprio tenant
-para o Comparativo; não concede escrita nessas tabelas. O arquivo
+para o Comparativo e a inserir/editar somente o feedback de itens históricos;
+não concede escrita em snapshots, itens ou confirmações. O arquivo
 `.rollback.sql` só pode ser usado antes do bootstrap:
 ele aborta se detectar identidades, vínculos ou dados operacionais novos.

@@ -128,8 +128,9 @@ where tenant_id = 'trairi' and app_id = 'diario';
 ```
 
 Além das contagens, comparar o conteúdo normalizado/hashes do manifesto, validar
-SELECT/INSERT/UPDATE/DELETE cross-tenant e confirmar que o Diário lê somente
-`aprendizado_*` de Trairi, sem conseguir escrever nessas tabelas.
+SELECT/INSERT/UPDATE/DELETE cross-tenant e confirmar que o Diário lê
+`aprendizado_*` de Trairi, grava somente `aprendizado_feedback` e não consegue
+alterar snapshots, itens ou confirmações.
 
 ## 7. Encerramento do legado
 

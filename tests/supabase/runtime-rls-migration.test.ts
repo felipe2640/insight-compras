@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const migration = readFileSync("supabase/migrations/20260923171321_runtime_rls_tenant_app.sql", "utf8");
 const diarioRead = readFileSync("supabase/migrations/20260923171249_diario_read_aprendizado.sql", "utf8");
+const diarioFeedback = readFileSync("supabase/migrations/20260923181210_diario_feedback_aprendizado.sql", "utf8");
 
 describe("RLS do runtime e migração repetível", () => {
   it("limita a auditoria ao comprador autenticado do próprio tenant", () => {
@@ -23,5 +24,12 @@ describe("RLS do runtime e migração repetível", () => {
       expect(diarioRead).toContain(`create policy aprendizado_${table}_select_diario`);
     }
     expect(diarioRead).not.toMatch(/for insert|for update|for delete/i);
+  });
+
+  it("permite somente feedback do app Diário no tenant próprio", () => {
+    expect(diarioFeedback).toMatch(/aprendizado_feedback_insert_diario/);
+    expect(diarioFeedback).toMatch(/aprendizado_feedback_update_diario/);
+    expect(diarioFeedback).toMatch(/private\.is_app_member\(tenant_id, 'diario'\)/);
+    expect(diarioFeedback).not.toMatch(/aprendizado_(snapshot|item|confirmacao).*for insert/i);
   });
 });
