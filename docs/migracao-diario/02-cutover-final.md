@@ -93,7 +93,8 @@ No preview, configurar o Supabase compartilhado e
 Testar os sete logins, lojas/páginas autorizadas, grupos de fornecedores,
 múltiplos por seção, margens e uma operação de gravação/leitura por JWT.
 
-Depois do aceite do preview e do merge, configurar em Production
+Depois do aceite do preview, **antes do merge que dispara o deploy automático**,
+configurar em Production
 `TENANT_ATIVO=trairi`, `DIARIO_AUTH_BACKEND=supabase`, a URL/chave pública do
 projeto compartilhado e as credenciais da conta runtime. Os segredos sensíveis
 do Preview não são promovidos automaticamente. Observar erros de autenticação,
