@@ -9,6 +9,10 @@ import { codificarGradeTabular } from "@/lib/cockpit/codificacao-tabular";
 import { contarStatusGrade, separarAcionaveis } from "@/lib/cockpit/escopo-grade";
 import { ErroContexto, contextoDaPagina } from "@/lib/contexto/contexto-requisicao";
 import { ehAmbienteProducao } from "@config/tenants";
+import {
+  listarIdsProdutosEmPedidosAtivos,
+  removerProdutosEmPedidosAtivos,
+} from "@/lib/pedidos/produtos-pendentes";
 
 // A página lê a sessão (cookies), portanto é dinâmica por requisição; o cache de dados fica no adapter.
 export const dynamic = "force-dynamic";
@@ -95,16 +99,21 @@ async function CarregarDadosCockpit() {
     );
   }
 
-  const linhas = converterParaLinhasCockpit(
+  const linhasCalculadas = converterParaLinhasCockpit(
     carga,
     await montarOpcoesMatrizComPublicados(filialFocoId, tenant)
   );
-  const { acionaveis } = separarAcionaveis(linhas);
+  const linhasOperacionais = removerProdutosEmPedidosAtivos(
+    linhasCalculadas,
+    await listarIdsProdutosEmPedidosAtivos(tenant.id, filialFocoId),
+  );
+  const { acionaveis } = separarAcionaveis(linhasOperacionais);
+  const contagensOperacionais = contarStatusGrade(linhasOperacionais);
 
   return (
     <CockpitPrincipal
       gradeInicial={codificarGradeTabular(acionaveis)}
-      contagensCatalogo={contarStatusGrade(linhas)}
+      contagensCatalogo={{ ...contagensOperacionais, total: linhasCalculadas.length }}
       filialFocoIdInicial={filialFocoId}
       fornecedoresPermitidosInicial={fornecedoresPermitidos}
       usuarioSessao={{

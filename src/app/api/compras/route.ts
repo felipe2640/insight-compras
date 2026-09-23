@@ -8,6 +8,10 @@ import { codificarGradeTabular } from "@/lib/cockpit/codificacao-tabular";
 import { contarStatusGrade, separarAcionaveis } from "@/lib/cockpit/escopo-grade";
 import { ErroContexto, contextoDaRequisicao } from "@/lib/contexto/contexto-requisicao";
 import { respostaErroContexto } from "@/lib/contexto/resposta-erro";
+import {
+  listarIdsProdutosEmPedidosAtivos,
+  removerProdutosEmPedidosAtivos,
+} from "@/lib/pedidos/produtos-pendentes";
 
 export const dynamic = "force-dynamic";
 
@@ -95,17 +99,24 @@ export async function GET(request: NextRequest) {
     const carga = await contexto.carregarInventario(filtroValidado);
 
     // 5. Transformação Canônica em Linhas da Matriz de Decisão
-    const linhas = converterParaLinhasCockpit(
+    const linhasCalculadas = converterParaLinhasCockpit(
       carga,
       await montarOpcoesMatrizComPublicados(filialId, tenant)
     );
+    const linhasOperacionais = removerProdutosEmPedidosAtivos(
+      linhasCalculadas,
+      await listarIdsProdutosEmPedidosAtivos(tenant.id, filialId),
+    );
+    const contagensOperacionais = contarStatusGrade(linhasOperacionais);
 
     // Escopo: a grade abre com o que pede decisão e completa o catálogo depois.
     // As contagens saem SEMPRE do conjunto completo — os chips não podem mentir
     // enquanto o restante ainda está a caminho.
     const escopo = searchParams.get("escopo") === "acionaveis" ? "acionaveis" : "todos";
-    const contagens = contarStatusGrade(linhas);
-    const linhasDoEscopo = escopo === "acionaveis" ? separarAcionaveis(linhas).acionaveis : linhas;
+    const contagens = { ...contagensOperacionais, total: linhasCalculadas.length };
+    const linhasDoEscopo = escopo === "acionaveis"
+      ? separarAcionaveis(linhasOperacionais).acionaveis
+      : linhasCalculadas;
 
     const tempoExecucaoMs = Date.now() - inicio;
 
