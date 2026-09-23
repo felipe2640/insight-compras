@@ -77,7 +77,7 @@ export default async function PaginaParametros() {
                 <tr>
                   <th className="px-3 py-1.5 text-left">Perfil</th>
                   <th className="px-3 py-1.5 text-right">Horizonte</th>
-                  <th className="px-3 py-1.5 text-right">Margem do arquivo</th>
+                  <th className="px-3 py-1.5 text-right">Margem padrão</th>
                   <th className="px-3 py-1.5 text-right">Margem em uso</th>
                 </tr>
               </thead>

@@ -155,8 +155,8 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
   if (dados && !dados.configurado) {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        <p className="font-semibold">Ciclo de aprendizado não configurado.</p>
-        <p className="mt-1">Defina <code>SUPABASE_URL</code> e <code>SUPABASE_ANON_KEY</code> e aplique as migrações de <code>supabase/migrations</code>. A exportação continua funcionando normalmente sem isso.</p>
+        <p className="font-semibold">Comparativos indisponíveis no momento.</p>
+        <p className="mt-1">Tente novamente mais tarde. As exportações continuam disponíveis.</p>
       </div>
     );
   }
