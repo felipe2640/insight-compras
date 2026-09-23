@@ -128,7 +128,7 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
     try {
       const r = await fetch("/api/aprendizado/confirmar?janela=10&dias=45", { method: "POST", headers: CABECALHOS_GESTOR });
       const j = await r.json();
-      setMensagem(r.ok ? `Confirmação: ${j.itens} itens em ${j.consultas} consulta(s) — ${Object.entries(j.porStatus ?? {}).map(([k, v]) => `${ROTULO_STATUS[k] ?? k}: ${v}`).join(", ")}` : `Falha: ${j.erro ?? r.status}`);
+      setMensagem(r.ok ? `Confirmação: ${j.itens} itens em ${j.consultas} consulta(s) — ${Object.entries(j.porStatus ?? {}).map(([k, v]) => `${ROTULO_STATUS[k] ?? k}: ${v}`).join(", ")}` : "Não foi possível confirmar os itens. Tente novamente.");
       void carregar();
     } finally { setConfirmando(false); }
   };
@@ -147,7 +147,7 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
     try {
       const r = await fetch("/api/aprendizado/calibrar?dias=60", { method: "POST", headers: CABECALHOS_GESTOR });
       const j = await r.json();
-      setMensagem(r.ok ? `Publicado — versão ${j.versao}. Perfis alterados: ${(j.perfisAlterados ?? []).join(", ")}.` : `Não publicado: ${j.motivo ?? j.erro ?? r.status}`);
+      setMensagem(r.ok ? `Publicado — versão ${j.versao}. Perfis alterados: ${(j.perfisAlterados ?? []).join(", ")}.` : `Não publicado: ${j.motivo ?? "tente novamente mais tarde"}`);
       if (r.ok) void simular();
     } finally { setPublicando(false); }
   };

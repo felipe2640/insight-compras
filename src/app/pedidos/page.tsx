@@ -211,7 +211,7 @@ export default function PaginaPedidos() {
           {!configurado && (
             <p className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              O histórico de pedidos está temporariamente indisponível para persistência.
+              Os pedidos desta sessão podem não aparecer depois. Avise o administrador.
             </p>
           )}
 

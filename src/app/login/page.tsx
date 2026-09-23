@@ -48,8 +48,8 @@ export default function PaginaLogin() {
             Ambiente de demonstração
           </p>
           <p className="mb-2 text-[11px] leading-snug">
-            Sem banco de autenticação configurado, a plataforma roda com contas internas e
-            dados sintéticos. Nenhuma informação aqui é de cliente real.
+            Use as contas abaixo para conhecer a plataforma. Os dados desta demonstração
+            são fictícios.
           </p>
           <table className="w-full">
             <thead className="text-[10px] uppercase tracking-wide text-sky-700">
