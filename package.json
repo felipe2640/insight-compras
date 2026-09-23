@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "lint": "tsc --noEmit",
     "migration:import-diario": "node scripts/migracao-diario/import-config.mjs",
+    "migration:reconcile-learning": "node scripts/migracao-diario/reconcile-learning.mjs",
     "start:prod": "next build && next start",
     "prebuild": "node scripts/validar-ambiente.mjs"
   },

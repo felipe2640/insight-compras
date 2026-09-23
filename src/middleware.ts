@@ -135,6 +135,16 @@ export async function middleware(request: NextRequestLike): Promise<MiddlewareRe
     if (!sessao) limparCookieSessao = true;
   }
 
+  if (sessaoRenovada) {
+    // O cookie na resposta atende a próxima navegação; a requisição atual
+    // também precisa ver o JWT novo nos Route Handlers e Server Components.
+    const renovado = opcoesCookieSessao(sessaoRenovada, process.env.NODE_ENV === "production");
+    const anteriores = (requestHeaders.get("cookie") ?? "").split(";")
+      .map((item) => item.trim())
+      .filter((item) => item && !item.startsWith(`${renovado.name}=`));
+    requestHeaders.set("cookie", [...anteriores, `${renovado.name}=${renovado.value}`].join("; "));
+  }
+
   let decisaoSessao: MiddlewareResponse["decisaoSessao"];
   let response: NextResponse;
 

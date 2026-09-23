@@ -82,7 +82,7 @@ export function validarAmbiente(): ResultadoValidacaoAmbiente {
       }
     }
 
-    for (const variavel of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"]) {
+    for (const variavel of ["SUPABASE_URL", "SUPABASE_ANON_KEY"]) {
       if (vazia(variavel)) {
         problemas.push(`cliente real exige ${variavel}`);
       }

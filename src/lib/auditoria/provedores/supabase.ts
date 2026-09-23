@@ -101,7 +101,7 @@ export class RepositorioAuditoriaSupabase implements RepositorioAuditoria {
       justificativa_override: registro.justificativaOverride ?? null,
       hash_registro_anterior: registro.hashRegistroAnterior,
       hash_integridade: registro.hashIntegridade,
-    }, { acesso: "privilegiado" });
+    });
   }
 
   public async obterUltimoRegistro(tenantId: string): Promise<AuditoriaPedido | null> {

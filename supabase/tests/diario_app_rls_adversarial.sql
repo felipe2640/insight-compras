@@ -1,4 +1,4 @@
--- Execute após 20260921230908_diario_app_identity.sql, somente em banco
+-- Execute após todas as migrations de Diario/Insight, somente em banco
 -- descartável. Testa isolamento por tenant, aplicação e referências compostas.
 begin;
 
@@ -22,7 +22,9 @@ insert into public.app_members (
   ('teste_diario_beta', 'diario', 'b1000000-0000-0000-0000-000000000001', 'beta', 'Beta', 'beta', 'admin');
 
 insert into public.tenant_members (tenant_id, user_id, papel) values
-  ('teste_diario_alpha', 'a2000000-0000-0000-0000-000000000002', 'GESTOR');
+  ('teste_diario_alpha', 'a2000000-0000-0000-0000-000000000002', 'GESTOR'),
+  -- Associação acidental não pode transformar um JWT do Diario em Insight.
+  ('teste_diario_alpha', 'a1000000-0000-0000-0000-000000000001', 'GESTOR');
 
 insert into public.fornecedor_grupo (tenant_id, app_id, legacy_id, nome, fornecedor_ids) values
   ('teste_diario_alpha', 'diario', 1, 'Grupo Alpha', array['10']),
@@ -30,7 +32,13 @@ insert into public.fornecedor_grupo (tenant_id, app_id, legacy_id, nome, fornece
 
 insert into public.aprendizado_snapshot (
   tenant_id, layout_id, formato, n_itens, usuario
-) values ('teste_diario_alpha', 'teste', 'xlsx', 1, 'insight-alpha');
+) values
+  ('teste_diario_alpha', 'teste', 'xlsx', 1, 'insight-alpha'),
+  ('teste_diario_beta', 'teste', 'xlsx', 1, 'insight-beta');
+
+insert into public.aprendizado_item (tenant_id, snapshot_id, produto_id, qtd_comprador)
+select tenant_id, id, 1, 2 from public.aprendizado_snapshot
+where tenant_id in ('teste_diario_alpha', 'teste_diario_beta');
 
 create temporary table diario_test_groups as
 select tenant_id, app_id, id
@@ -63,9 +71,32 @@ begin
   end if;
 
   select count(*) into insight_count from public.aprendizado_snapshot;
-  if insight_count <> 0 then
-    raise exception 'membro apenas do Diário leu aprendizado_snapshot';
+  if insight_count <> 1 then
+    raise exception 'Diário não leu somente snapshot do próprio tenant';
   end if;
+  select count(*) into insight_count from public.aprendizado_item;
+  if insight_count <> 1 then
+    raise exception 'Diário não leu somente item do próprio tenant';
+  end if;
+
+  begin
+    insert into public.aprendizado_snapshot (tenant_id, layout_id, formato, n_itens)
+    values ('teste_diario_alpha', 'invasao', 'xlsx', 0);
+    raise exception 'JWT do Diário escreveu aprendizado_snapshot';
+  exception when insufficient_privilege or check_violation then null;
+  end;
+  update public.aprendizado_snapshot set usuario = 'invasao'
+  where tenant_id = 'teste_diario_alpha';
+  if found then
+    raise exception 'JWT do Diário atualizou aprendizado_snapshot';
+  end if;
+  begin
+    delete from public.aprendizado_snapshot where tenant_id = 'teste_diario_alpha';
+    if found then
+      raise exception 'JWT do Diário apagou aprendizado_snapshot';
+    end if;
+  exception when insufficient_privilege then null;
+  end;
 
   begin
     insert into public.margem_alvo (
@@ -156,4 +187,20 @@ end;
 $$;
 
 reset role;
+-- A FK composta de aprendizado_item deve rejeitar snapshot de outro tenant
+-- mesmo para um operador privilegiado que ignore RLS na importação.
+do $$
+declare
+  beta_snapshot bigint;
+begin
+  select id into beta_snapshot from public.aprendizado_snapshot
+  where tenant_id = 'teste_diario_beta' limit 1;
+  begin
+    insert into public.aprendizado_item (tenant_id, snapshot_id, produto_id, qtd_comprador)
+    values ('teste_diario_alpha', beta_snapshot, 999, 1);
+    raise exception 'FK composta de aprendizado_item aceitou snapshot cross-tenant';
+  exception when foreign_key_violation then null;
+  end;
+end;
+$$;
 rollback;

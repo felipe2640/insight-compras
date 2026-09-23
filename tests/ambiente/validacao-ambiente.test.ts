@@ -66,6 +66,14 @@ describe("validação de ambiente", () => {
     expect(resultado.ok).toBe(true);
   });
 
+  it("runtime normal não exige a chave privilegiada", () => {
+    ambienteDeClienteReal();
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const resultado = validarAmbiente();
+    expect(resultado.ok).toBe(true);
+    expect(resultado.problemas).toEqual([]);
+  });
+
   it("cliente real com mock forçado é bloqueado", () => {
     ambienteDeClienteReal();
     process.env.USE_MOCK_ADAPTER = "true";

@@ -8,12 +8,13 @@ cliente e `TENANT_ATIVO` obrigatório. O projeto antigo do Diário é
 ## Regras de segurança
 
 - Não excluir, pausar nem alterar o projeto antigo antes do aceite final.
-- Usuários do Diário pertencem a `app_members(carreiro, diario)`; `admin` e
+- Usuários do Diário pertencem a `app_members(trairi, diario)`; `admin` e
   `valmir` continuam somente em `tenant_members` do Insight Compras.
 - O runtime usa JWT de usuário e RLS. A `service_role` fica restrita a migration,
   bootstrap, importação administrativa e jobs privilegiados.
-- Não importar `shadow_*`. Os registros existentes são testes/demonstrações e o
-  ciclo maduro continua nas tabelas `aprendizado_*`.
+- Não recriar tabelas `shadow_*`. O histórico já copiado para `aprendizado_*`
+  com IDs deslocados é de Trairi e deve ser classificado/reconciliado antes do
+  aceite; snapshots novos sem itens não são comparativos úteis.
 - A migration final não depende de reaplicar `001` ou `003`: ambos já existem no
   schema remoto, embora tenham sido executados manualmente e não apareçam no
   histórico remoto completo.
@@ -29,12 +30,17 @@ cliente e `TENANT_ATIVO` obrigatório. O projeto antigo do Diário é
 
 ## 2. Preparar o backend compartilhado
 
-1. Aplicar `supabase/migrations/20260921230908_diario_app_identity.sql` no
-   projeto `rede-carreiro`.
+1. Conferir que `diario_app_identity`, `app_members_user_fk_index` e
+   `tenant_trairi` já constam no banco. As migrations finais
+   `20260923171249_diario_read_aprendizado.sql` e
+   `20260923171321_runtime_rls_tenant_app.sql` foram aplicadas via Supabase e
+   devem constar no histórico remoto com essas mesmas versões. Não executar
+   manualmente o SQL novamente.
 2. Conferir `app_members`, `diario_lojas`, as novas tabelas de margem, RLS,
    policies, grants e FKs compostas `(tenant_id, app_id, ...)`.
 3. Em banco descartável, executar
-   `supabase/tests/diario_app_rls_adversarial.sql`. Nunca executar esse teste em
+   `supabase/tests/diario_app_rls_adversarial.sql` depois de todas as migrations.
+   Nunca executar esse teste em
    produção porque ele cria identidades sintéticas dentro de uma transação.
 4. Confirmar que um JWT sem `app_id=diario`, com tenant errado ou apenas com
    membership do Insight recebe zero linhas das tabelas do Diário.
@@ -49,8 +55,8 @@ usuários no Supabase Auth preservando as mesmas senhas da planilha e preencher
 Aceite desta etapa:
 
 - sete usuários Auth confirmados;
-- sete `app_members` ativos em `carreiro/diario`;
-- `app_metadata.tenant_id=carreiro` e `app_metadata.app_id=diario`;
+- sete `app_members` humanos ativos em `trairi/diario`, mais um runtime;
+- `app_metadata.tenant_id=trairi` e `app_metadata.app_id=diario`;
 - nenhum desses UUIDs em `tenant_members`;
 - lojas, páginas e fornecedores permitidos equivalentes à planilha.
 
@@ -59,7 +65,7 @@ Aceite desta etapa:
 Definir somente no terminal administrativo:
 
 ```text
-MIGRACAO_TENANT_ID=carreiro
+MIGRACAO_TENANT_ID=trairi
 INSIGHT_SUPABASE_URL=<URL do rede-carreiro>
 INSIGHT_SUPABASE_SERVICE_ROLE_KEY=<segredo temporário>
 ```
@@ -73,6 +79,13 @@ seletivo.
 Repetir a importação uma vez e confirmar idempotência: as contagens e os valores
 permanecem iguais, sem linhas duplicadas.
 
+No momento do corte, com os dois projetos ainda disponíveis e somente em
+terminal administrativo, executar `npm run migration:reconcile-learning` com
+`DIARIO_SUPABASE_URL`, `DIARIO_SUPABASE_SERVICE_ROLE_KEY`,
+`INSIGHT_SUPABASE_URL` e `INSIGHT_SUPABASE_SERVICE_ROLE_KEY`. O script é
+somente-leitura e falha se houver item ausente/alterado ou snapshot ausente
+que contenha itens. Snapshots sem itens são reportados separadamente.
+
 ## 5. Preview e produção do Diário
 
 No preview, configurar o Supabase compartilhado e
@@ -80,10 +93,17 @@ No preview, configurar o Supabase compartilhado e
 Testar os sete logins, lojas/páginas autorizadas, grupos de fornecedores,
 múltiplos por seção, margens e uma operação de gravação/leitura por JWT.
 
-Depois do aceite do preview, repetir em produção. Observar erros de autenticação,
+Depois do aceite do preview e do merge, configurar em Production
+`TENANT_ATIVO=trairi`, `DIARIO_AUTH_BACKEND=supabase`, a URL/chave pública do
+projeto compartilhado e as credenciais da conta runtime. Os segredos sensíveis
+do Preview não são promovidos automaticamente. Observar erros de autenticação,
 negações RLS, leituras no Supabase antigo e resultados funcionais. Se houver
-falha, voltar `DIARIO_AUTH_BACKEND=sheets`, preservar os dois bancos e, quando
-necessário, chamar `reverter_importacao_diario(tenant, batchId)`.
+falha, voltar `DIARIO_AUTH_BACKEND=sheet` e redeployar para recuperar o login;
+isso não restaura o banco antigo para configurações. Para rollback integral,
+redeployar o commit anterior e restaurar URL/chave antigas, mantendo ambos os
+bancos e reconciliando as escritas posteriores. Não chamar
+`reverter_importacao_diario` como parte de um rollback automático: poderia
+apagar mudanças legítimas posteriores ao corte.
 
 ## 6. Reconciliação final
 
@@ -91,24 +111,24 @@ Comparar por tenant/app:
 
 ```sql
 select count(*) from public.app_members
-where tenant_id = 'carreiro' and app_id = 'diario' and ativo;
+where tenant_id = 'trairi' and app_id = 'diario' and ativo;
 
 select 'fornecedor_grupo', count(*) from public.fornecedor_grupo
-where tenant_id = 'carreiro' and app_id = 'diario'
+where tenant_id = 'trairi' and app_id = 'diario'
 union all
 select 'usuario_grupo', count(*) from public.usuario_grupo
-where tenant_id = 'carreiro' and app_id = 'diario'
+where tenant_id = 'trairi' and app_id = 'diario'
 union all
 select 'secao_multiplo_compra', count(*) from public.secao_multiplo_compra
-where tenant_id = 'carreiro' and app_id = 'diario'
+where tenant_id = 'trairi' and app_id = 'diario'
 union all
 select 'margem_alvo', count(*) from public.margem_alvo
-where tenant_id = 'carreiro' and app_id = 'diario';
+where tenant_id = 'trairi' and app_id = 'diario';
 ```
 
 Além das contagens, comparar o conteúdo normalizado/hashes do manifesto, validar
-SELECT/INSERT/UPDATE/DELETE cross-tenant e confirmar que nenhum usuário do
-Diário lê `aprendizado_*`.
+SELECT/INSERT/UPDATE/DELETE cross-tenant e confirmar que o Diário lê somente
+`aprendizado_*` de Trairi, sem conseguir escrever nessas tabelas.
 
 ## 7. Encerramento do legado
 

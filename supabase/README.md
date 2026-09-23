@@ -49,6 +49,7 @@ do Diário.
 5. mantenha o Supabase antigo do Diário disponível até o aceite final.
 
 `tenant_members` continua exclusivo dos usuários do Insight Compras.
-`app_members` autoriza o Diário e não concede acesso às tabelas
-`aprendizado_*`. O arquivo `.rollback.sql` só pode ser usado antes do bootstrap:
+`app_members` autoriza o Diário a ler `aprendizado_*` do próprio tenant
+para o Comparativo; não concede escrita nessas tabelas. O arquivo
+`.rollback.sql` só pode ser usado antes do bootstrap:
 ele aborta se detectar identidades, vínculos ou dados operacionais novos.
