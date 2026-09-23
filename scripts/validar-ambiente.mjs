@@ -23,7 +23,7 @@ const VARIAVEIS_FONTE_POWERBI = [
   "POWERBI_CLIENT_SECRET",
 ];
 
-const SUPABASE = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"];
+const SUPABASE = ["SUPABASE_URL", "SUPABASE_ANON_KEY"];
 
 /** Tenants com fonte real. Mantido junto ao cadastro em config/tenants. */
 const TENANTS_REAIS = new Set(["carreiro"]);

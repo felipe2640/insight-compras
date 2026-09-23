@@ -31,7 +31,7 @@ export function supabaseConfigurado(): boolean {
   return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY);
 }
 
-function tokenUsuarioAtual(tokenExplicito?: string): string {
+export function tokenUsuarioAtual(tokenExplicito?: string): string {
   if (tokenExplicito) return tokenExplicito;
   const sessao = decodificarCookieSessao(cookies().get(NOME_COOKIE_SESSAO)?.value);
   if (!sessao || sessao.provedor !== "supabase" || sessaoExpirada(sessao, Date.now(), 0)) {

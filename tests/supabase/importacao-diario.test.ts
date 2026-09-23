@@ -1,16 +1,14 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-// O script operacional permanece em JavaScript ESM para execução direta pelo Node.
-// @ts-expect-error O módulo não publica declarações TypeScript.
-import { validarManifesto, validarMapaUsuarios } from "../../scripts/migracao-diario/import-config.mjs";
+import { validarManifesto } from "../../scripts/migracao-diario/import-config.mjs";
 
-function manifestoValido() {
+function manifestoValido(tenantId = "trairi") {
   const base = {
     schemaVersion: 1,
     origem: "diario",
     destino: "insight-compras",
-    tenantId: "carreiro",
+    tenantId,
     exportadoEm: "2026-09-21T00:00:00.000Z",
     somenteConfiguracoes: true,
     classificacao: {},
@@ -32,26 +30,26 @@ function manifestoValido() {
 }
 
 describe("importação das configurações do Diário", () => {
-  it("aceita apenas manifesto íntegro do tenant Carreiro", () => {
-    expect(validarManifesto(manifestoValido()).tenantId).toBe("carreiro");
+  it("aceita manifesto íntegro para qualquer tenant configurado", () => {
+    expect(validarManifesto(manifestoValido()).tenantId).toBe("trairi");
+    expect(validarManifesto(manifestoValido("novo_cliente")).tenantId).toBe("novo_cliente");
     const adulterado = manifestoValido();
-    adulterado.dados.margem_alvo.push({ id: 1 });
+    (adulterado.dados.margem_alvo as Array<{ id: number }>).push({ id: 1 });
     expect(() => validarManifesto(adulterado)).toThrow(/Checksum/);
   });
 
-  it("exige mapeamento distinto e completo para 2 e 5", () => {
-    const mapa = validarMapaUsuarios(JSON.stringify({
-      "2": "11111111-1111-4111-8111-111111111111",
-      "5": "22222222-2222-4222-8222-222222222222",
-    }));
-    expect(Object.keys(mapa).sort()).toEqual(["2", "5"]);
-    expect(() => validarMapaUsuarios(JSON.stringify({ "2": mapa["2"] }))).toThrow(/exatamente/);
-    expect(() => validarMapaUsuarios(JSON.stringify({ "2": mapa["2"], "5": mapa["2"] }))).toThrow(/mesmo UUID/);
+  it("mantém Diário e Carreiro em tenants distintos no projeto compartilhado", () => {
+    const sql = readFileSync(
+      new URL("../../supabase/migrations/20260922030000_tenant_trairi.sql", import.meta.url),
+      "utf8",
+    );
+    expect(sql).toMatch(/values\s*\(\s*'trairi'\s*,\s*'Trairi'\s*,\s*true\s*\)/i);
+    expect(sql).not.toMatch(/values\s*\(\s*'carreiro'/i);
   });
 
   it("mantém as RPCs privilegiadas e o rollback limitado ao lote", () => {
     const sql = readFileSync(
-      new URL("../../supabase/migrations/202609210004_importacao_config_diario.sql", import.meta.url),
+      new URL("../../supabase/migrations/20260921230908_diario_app_identity.sql", import.meta.url),
       "utf8",
     );
     expect(sql).toContain("security definer");

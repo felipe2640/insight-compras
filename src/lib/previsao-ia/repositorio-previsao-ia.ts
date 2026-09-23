@@ -5,7 +5,7 @@
  *
  * Env (somente servidor):
  *   SUPABASE_URL=https://<projeto>.supabase.co
- *   SUPABASE_SERVICE_ROLE_KEY=...   (a tabela não é exposta a anon/authenticated)
+ *   SUPABASE_ANON_KEY=...           (a leitura exige JWT de usuário e RLS)
  *
  * Lê as projeções probabilísticas de demanda (p50, p80) geradas pelo
  * modelo campeão (Chronos-Bolt) e publicadas na tabela `demanda_ia_previsao` do Supabase.
@@ -27,6 +27,7 @@
  */
 
 import { VALIDADE_MAXIMA_DIAS } from "./vigencia-previsao";
+import { tokenUsuarioAtual } from "@/lib/aprendizado/supabase";
 
 /** Tamanho da página na leitura do PostgREST. */
 const TAMANHO_PAGINA = 1000;
@@ -151,6 +152,8 @@ export function dataMinimaPrevisaoVigente(
 export interface OpcoesCarregarPrevisoesIa {
   /** Teto de idade das projeções lidas, em dias. Padrão: VALIDADE_MAXIMA_DIAS. */
   readonly validadeDias?: number;
+  /** Injeção explícita somente para jobs/testes; requisições usam o cookie. */
+  readonly tokenAcesso?: string;
 }
 
 /**
@@ -168,21 +171,28 @@ export async function carregarMapaPrevisoesIa(
 ): Promise<Map<string, PrevisaoDemandaIaItem>> {
   const { validadeDias = VALIDADE_MAXIMA_DIAS } = opcoes;
 
+  const mapa = new Map<string, PrevisaoDemandaIaItem>();
+
+  const url = process.env.SUPABASE_URL;
+  const chave = process.env.SUPABASE_ANON_KEY;
+
+  if (!url || !chave) {
+    return mapa;
+  }
+
+  let token: string;
+  try {
+    token = tokenUsuarioAtual(opcoes.tokenAcesso);
+  } catch {
+    return mapa;
+  }
+
+  // A validação do JWT deve preceder o cache: um pedido sem sessão não pode
+  // receber resultados aquecidos por outro usuário do mesmo tenant.
   const chaveCache = `${tenantId}:${filialId ?? "todas"}:${validadeDias}`;
   const emCache = cachePrevisoes.get(chaveCache);
   if (emCache && Date.now() - emCache.carregadoEm < CACHE_TTL_MS) {
     return emCache.mapa;
-  }
-
-  const mapa = new Map<string, PrevisaoDemandaIaItem>();
-
-  const url = process.env.SUPABASE_URL;
-  // Service role apenas, como no resto do projeto: `demanda_ia_previsao` não tem
-  // grant para anon/authenticated, então a chave pública só renderia 401.
-  const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !chave) {
-    return mapa;
   }
 
   try {
@@ -206,7 +216,7 @@ export async function carregarMapaPrevisoesIa(
         method: "GET",
         headers: {
           apikey: chave,
-          Authorization: `Bearer ${chave}`,
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         cache: "no-store",

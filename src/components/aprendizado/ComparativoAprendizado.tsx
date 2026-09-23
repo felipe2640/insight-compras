@@ -128,7 +128,7 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
     try {
       const r = await fetch("/api/aprendizado/confirmar?janela=10&dias=45", { method: "POST", headers: CABECALHOS_GESTOR });
       const j = await r.json();
-      setMensagem(r.ok ? `Confirmação: ${j.itens} itens em ${j.consultas} consulta(s) — ${Object.entries(j.porStatus ?? {}).map(([k, v]) => `${ROTULO_STATUS[k] ?? k}: ${v}`).join(", ")}` : `Falha: ${j.erro ?? r.status}`);
+      setMensagem(r.ok ? `Confirmação: ${j.itens} itens em ${j.consultas} consulta(s) — ${Object.entries(j.porStatus ?? {}).map(([k, v]) => `${ROTULO_STATUS[k] ?? k}: ${v}`).join(", ")}` : "Não foi possível confirmar os itens. Tente novamente.");
       void carregar();
     } finally { setConfirmando(false); }
   };
@@ -147,7 +147,7 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
     try {
       const r = await fetch("/api/aprendizado/calibrar?dias=60", { method: "POST", headers: CABECALHOS_GESTOR });
       const j = await r.json();
-      setMensagem(r.ok ? `Publicado — versão ${j.versao}. Perfis alterados: ${(j.perfisAlterados ?? []).join(", ")}.` : `Não publicado: ${j.motivo ?? j.erro ?? r.status}`);
+      setMensagem(r.ok ? `Publicado — versão ${j.versao}. Perfis alterados: ${(j.perfisAlterados ?? []).join(", ")}.` : `Não publicado: ${j.motivo ?? "tente novamente mais tarde"}`);
       if (r.ok) void simular();
     } finally { setPublicando(false); }
   };
@@ -155,8 +155,8 @@ export function ComparativoAprendizado({ nomesFiliais }: { nomesFiliais: Readonl
   if (dados && !dados.configurado) {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        <p className="font-semibold">Ciclo de aprendizado não configurado.</p>
-        <p className="mt-1">Defina <code>SUPABASE_URL</code> e <code>SUPABASE_ANON_KEY</code> e aplique as migrações de <code>supabase/migrations</code>. A exportação continua funcionando normalmente sem isso.</p>
+        <p className="font-semibold">Comparativos indisponíveis no momento.</p>
+        <p className="mt-1">Tente novamente mais tarde. As exportações continuam disponíveis.</p>
       </div>
     );
   }

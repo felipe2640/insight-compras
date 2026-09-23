@@ -5,6 +5,10 @@ const migracao = readFileSync(
   "supabase/migrations/202609210003_configuracoes_legadas_tenant.sql",
   "utf8"
 );
+const correcaoApp = readFileSync(
+  "supabase/migrations/20260921230908_diario_app_identity.sql",
+  "utf8"
+);
 
 describe("schema tenant-scoped das configurações do Diário", () => {
   const tabelas = [
@@ -18,19 +22,19 @@ describe("schema tenant-scoped das configurações do Diário", () => {
     expect(migracao).toContain(`alter table public.${tabela} enable row level security`);
   });
 
-  it("vínculos referenciam membro e grupo pelo mesmo tenant", () => {
-    expect(migracao).toMatch(
-      /foreign key \(tenant_id, user_id\)[\s\S]*references public\.tenant_members \(tenant_id, user_id\)/
+  it("a correção final vincula usuários e grupos pelo mesmo tenant e app", () => {
+    expect(correcaoApp).toMatch(
+      /foreign key \(tenant_id, app_id, user_id\)[\s\S]*references public\.app_members \(tenant_id, app_id, user_id\)/
     );
-    expect(migracao).toMatch(
-      /foreign key \(tenant_id, grupo_id\)[\s\S]*references public\.fornecedor_grupo \(tenant_id, id\)/
+    expect(correcaoApp).toMatch(
+      /foreign key \(tenant_id, app_id, grupo_id\)[\s\S]*references public\.fornecedor_grupo \(tenant_id, app_id, id\)/
     );
   });
 
-  it("escritas exigem papel de gestor e anon não recebe grants", () => {
-    expect(migracao.match(/public\.is_tenant_manager\(tenant_id\)/g)?.length).toBeGreaterThanOrEqual(12);
-    expect(migracao).toMatch(/revoke all[\s\S]*from anon, authenticated/);
-    expect(migracao).not.toMatch(/grant [^;]+ to anon/);
+  it("escritas exigem gestor do app e anon não recebe grants", () => {
+    expect(correcaoApp.match(/private\.is_app_manager\(tenant_id, app_id\)/g)?.length).toBeGreaterThanOrEqual(12);
+    expect(correcaoApp).toMatch(/revoke all[\s\S]*from anon, authenticated/);
+    expect(correcaoApp).not.toMatch(/grant [^;]+ to anon/);
   });
 
   it("mantém o identificador legado apenas como rastreabilidade", () => {

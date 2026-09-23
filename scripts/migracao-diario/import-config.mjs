@@ -5,12 +5,14 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const REFERENCIAS_ESPERADAS = ["2", "5"];
+const TENANT_ID = /^[a-z0-9][a-z0-9_-]{1,62}$/;
 
-export function validarManifesto(manifesto) {
-  if (!manifesto || manifesto.schemaVersion !== 1 || manifesto.tenantId !== "carreiro") {
-    throw new Error("Manifesto incompatível ou destinado a outro tenant.");
+export function validarManifesto(manifesto, tenantEsperado = null) {
+  if (!manifesto || manifesto.schemaVersion !== 1 || !TENANT_ID.test(manifesto.tenantId ?? "")) {
+    throw new Error("Manifesto incompatível ou sem tenant válido.");
+  }
+  if (tenantEsperado && manifesto.tenantId !== tenantEsperado) {
+    throw new Error("Manifesto destinado a outro tenant.");
   }
   if (manifesto.somenteConfiguracoes !== true || !manifesto.dados) {
     throw new Error("Manifesto não está marcado como somente configurações.");
@@ -24,24 +26,6 @@ export function validarManifesto(manifesto) {
     if (!Array.isArray(manifesto.dados[tabela])) throw new Error(`Dados ausentes: ${tabela}.`);
   }
   return manifesto;
-}
-
-export function validarMapaUsuarios(texto) {
-  let mapa;
-  try {
-    mapa = JSON.parse(texto ?? "");
-  } catch {
-    throw new Error("MIGRACAO_USUARIO_MAP_JSON não é JSON válido.");
-  }
-  const chaves = Object.keys(mapa).sort();
-  if (JSON.stringify(chaves) !== JSON.stringify(REFERENCIAS_ESPERADAS)) {
-    throw new Error("O mapa deve conter exatamente os usuários legados 2 e 5.");
-  }
-  for (const ref of REFERENCIAS_ESPERADAS) {
-    if (!UUID.test(mapa[ref])) throw new Error(`UUID inválido para usuário legado ${ref}.`);
-  }
-  if (mapa["2"] === mapa["5"]) throw new Error("Usuários legados não podem apontar para o mesmo UUID.");
-  return mapa;
 }
 
 async function chamarRpc(nome, corpo) {
@@ -69,8 +53,14 @@ function valorArgumento(nome) {
 async function principal() {
   const arquivo = valorArgumento("--manifest");
   if (!arquivo) throw new Error("Informe --manifest <arquivo.json>.");
-  const manifesto = validarManifesto(JSON.parse(await readFile(resolve(arquivo), "utf8")));
-  const mapa = validarMapaUsuarios(process.env.MIGRACAO_USUARIO_MAP_JSON);
+  const tenant = process.env.MIGRACAO_TENANT_ID;
+  if (!tenant || !TENANT_ID.test(tenant)) {
+    throw new Error("Configure MIGRACAO_TENANT_ID com o tenant de destino.");
+  }
+  const manifesto = validarManifesto(
+    JSON.parse(await readFile(resolve(arquivo), "utf8")),
+    tenant
+  );
 
   const resumo = {
     tenantId: manifesto.tenantId,
@@ -78,7 +68,6 @@ async function principal() {
     usuarioGrupo: manifesto.dados.usuario_grupo.length,
     secaoMultiploCompra: manifesto.dados.secao_multiplo_compra.length,
     margemAlvo: manifesto.dados.margem_alvo.length,
-    usuariosMapeados: Object.keys(mapa),
   };
 
   if (!process.argv.includes("--apply")) {
@@ -87,9 +76,8 @@ async function principal() {
   }
 
   const resultado = await chamarRpc("importar_configuracoes_diario", {
-    p_tenant_id: "carreiro",
+    p_tenant_id: tenant,
     p_manifesto: manifesto,
-    p_mapa_usuarios: mapa,
   });
   console.log(JSON.stringify({ modo: "aplicado", resultado }, null, 2));
 }

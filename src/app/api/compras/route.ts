@@ -151,8 +151,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         {
           sucesso: false,
-          erro: "Violação de Isolamento de Tenant",
-          mensagem: erro.message,
+          erro: "Acesso negado",
+          mensagem: "Você não tem acesso aos dados solicitados.",
         },
         { status: 403 }
       );

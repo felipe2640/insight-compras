@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { middleware, rotaPublica, NextRequestLike } from "@/middleware";
-import { codificarCookieSessao } from "@/lib/autenticacao/sessao";
+import { codificarCookieSessao, decodificarCookieSessao } from "@/lib/autenticacao/sessao";
 import { ProvedorAutenticacaoDemo } from "@/lib/autenticacao/provedores/demo";
 import { limparInstanciasProvedores } from "@/lib/autenticacao/fabrica";
 
@@ -13,8 +13,14 @@ function requisicao(pathname: string, cookies: Record<string, string> = {}, host
 }
 
 describe("portão de sessão do middleware", () => {
+  const ambienteOriginal = { ...process.env };
   beforeEach(() => {
     process.env.AUTH_PROVIDER = "demo";
+    limparInstanciasProvedores();
+  });
+  afterEach(() => {
+    process.env = { ...ambienteOriginal };
+    vi.unstubAllGlobals();
     limparInstanciasProvedores();
   });
 
@@ -70,5 +76,31 @@ describe("portão de sessão do middleware", () => {
     const r = await middleware(requisicao("/login", { insight_sessao: cookie }));
     expect(r.status).toBe(307);
     expect(new URL(r.headers.get("location")!).pathname).toBe("/compras");
+  });
+
+  it("entrega a sessão renovada ao handler na própria requisição", async () => {
+    process.env.AUTH_PROVIDER = "supabase";
+    process.env.SUPABASE_URL = "https://exemplo.supabase.co";
+    process.env.SUPABASE_ANON_KEY = "publica";
+    limparInstanciasProvedores();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        access_token: "jwt-novo", refresh_token: "refresh-novo", expires_in: 3600,
+        user: { id: "11111111-1111-4111-8111-111111111111", app_metadata: {
+          tenant_id: "carreiro", papel: "ADMIN", usuario: "admin",
+        } },
+      }),
+    }));
+    const vencido = codificarCookieSessao({
+      provedor: "supabase", token: "jwt-vencido", tokenRenovacao: "refresh-antigo",
+      expiraEm: Date.now() - 1000,
+    });
+    const resposta = await middleware(requisicao("/api/compras", { insight_sessao: vencido }));
+    expect(resposta.decisaoSessao).toBe("renovada");
+    const header = resposta.request.headers.get("cookie") ?? "";
+    const valor = header.split("insight_sessao=")[1]?.split(";")[0];
+    expect(decodificarCookieSessao(valor)?.token).toBe("jwt-novo");
+    expect(resposta.headers.get("set-cookie")).toContain("insight_sessao=");
   });
 });

@@ -35,13 +35,18 @@ function criarEstoqueMock(produtoId: number, saldo: number): EstoqueFilial {
   return {
     produtoId,
     filialId: 1,
+    nomeFilial: "Matriz",
     saldoFisico: saldo,
     estoqueMinimoSeguranca: 2,
     quantidadeJaPedida: 0,
     consumoMedioDiarioErp: 1,
+    diasSemVenda: 0,
     sinalGovernancaCompra: null,
+    usoLimiteCompra: null,
     margemRealizada: 0.4,
     margemAlvo: 0.4,
+    dataUltimaVenda: null,
+    dataUltimaCompra: null,
   };
 }
 
@@ -57,11 +62,15 @@ function criarHistoricoMock(
     vendasLiquidas30dias: Math.round(vendas180d / 6),
     vendasLiquidas90dias: Math.round(vendas180d / 2),
     vendasLiquidas180dias: vendas180d,
+    devolucoes90dias: 0,
     notasFiscaisVenda90dias: Math.round(notas12m / 4),
     notasFiscaisVenda12meses: notas12m,
+    notasFiscaisDevolucao90dias: 0,
     mesesAtivos12meses: mesesAtivos12m,
     medianaLinhaVenda: 1,
+    diasRuptura90dias: 0,
     diasObservados: 180,
+    dataPrimeiraVendaRegistrada: null,
   };
 }
 
