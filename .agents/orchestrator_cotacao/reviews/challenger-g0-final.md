@@ -1,0 +1,24 @@
+# Challenger independente — G0 final
+
+**Veredito: PASS, sem blocker contratual identificado.** Este parecer desafia a especificação e as provas pré-G0; não afirma que exista implementação segura. Não editei contratos. Consultei `docs/SOURCE_OF_TRUTH.md`, OpenAPI, arquitetura, domínio, segurança, fixture dourada, harness stateful e pareceres finais. Os pareceres positivos não foram tomados como prova suficiente.
+
+| Eixo atacado | Tentativa de quebra e resultado |
+|---|---|
+| 1. Isolamento tenant | Tentei usar token A1 em recurso T2 e cursor de eventos T1 em T2. O harness obtém `404 resource_not_found`; IDs externos são escopados por tenant e namespace. Nenhum contrato permite escolher `tenant_id` no corpo de cotação. |
+| 2. Mesmo supplier em dois buyers | `supplier-network.md` separa organização global e `BuyerSupplierRelationship`; a fixture dourada usa A em T1 e T2 com mínimos e condições diferentes e repete `external_id=Q-17` sem colisão. O endpoint de cadastro retorna apenas relação visível ao tenant, sem confirmar identidade global prévia. |
+| 3. Convite vazado | O resgate exige OTP individual e gera sessão limitada à participação. Q1 não abre Q2 e convite de cotação não confere `order:respond`; o pedido tem convite e autenticação próprios. Replay, expiração e revogação têm códigos explícitos. A posse conjunta de link e caixa postal é uma concessão restrita, nunca membership global. |
+| 4. Resposta assistida | Upload e commit são etapas separadas; origem é derivada do ator. `assisted_unconfirmed` guarda operador buyer, fornecedor representado e hash; confirmação individual cria atribuição sem apagar autoria original. Política versionada `exclude|allow_with_warning|require_confirmation` governa corte/aprovação. |
+| 5. Mínimo e frete | Tentei escolher A pelo preço de item ou C pelo menor preço unitário em I04. A restrição é por fornecedor × destino × moeda; no P1 A não atinge mínimo, C tem frete fixo de 50 uma vez por pedido, e B vence o cenário conhecido. FOB de valor desconhecido exige revisão. |
+| 6. Múltiplos | Necessidade 7 versus venda em 10 não vira compra de 7: com `allow_overbuy=false`, A/C são inelegíveis em I01. Disponibilidade e mínimos são declarados na unidade de venda; conversão exige fator explícito. |
+| 7. Corridas | `submit` e `close`, bem como `reopen` e `issue`, têm ordem transacional autoritativa, `If-Match`, idempotência e desfechos 409/412. Reabertura com drafts cancela e supersede na mesma transação; pedido issued bloqueia. O harness simula casos sequenciais, não concorrência real, como previsto para pré-G0. |
+| 8. Replay | Idempotência cobre retry do mesmo payload e conflito com payload diferente; OTP/convite têm replay/TTL; webhook assina corpo bruto, timestamp e event ID e é deduplicado. O harness confirma os respectivos status e `problem+json.code`. |
+| 9. Divergência documental | `SOURCE_OF_TRUTH.md` retira autoridade dos planos C0–C9, RPC e Supabase; OpenAPI e domínio usam vocabulário de custo, frete, origem assistida e pedido canônico consistente. `openapi-validation-report.md` declara 44 paths, 49 operações, zero erro estrutural/semântico; os avisos Redocly são apenas de estilo. |
+| 10. Dependência escondida | Rotas públicas, autenticação M2M, supplier OTP, snapshot de itens, política, pedido e eventos são do Hub. Não encontrei FK, RPC, token, cadastro ou consulta indispensável de Insight, Diário, Supabase compartilhado ou Connectsoft. ERP é fonte opcional de importação e referência opaca, com projeção local. |
+
+## Limites observados, não bloqueantes para G0
+
+1. A execução stateful de `run_stateful.py` prova o percurso de terceiro e a lista negativa obrigatória, mas não executa no mesmo ensaio o upload XLSX assistido nem cria A como a mesma organização global em T1 e T2. Esses comportamentos estão definidos no OpenAPI/domínio e exercitados semanticamente na fixture dourada; transformá-los em testes de implementação isolada é trabalho de G1. Não apresentar as 111 verificações do mock como prova de persistência, autenticação criptográfica ou isolamento SQL.
+2. O harness implementa respostas sintéticas em memória. `stateful-result.json` com 111 verificações e nenhuma resposta não declarada atesta que os clientes podem encadear IDs/ETags pelo contrato, não que motor, outbox, storage ou webhook reais existam.
+3. O bootstrap de tenant, credencial e política ainda é uma pré-condição administrativa. É contrato operacional do Hub, sem dependência de host; H0 deve torná-lo real antes de ensaio fim a fim da implementação.
+
+**Conclusão:** não há acoplamento ou lacuna contratual crítica que impeça a aplicação terceira fictícia de criar cotação, convidar, responder, executar corte e gerar pedido usando apenas `/api/v1` após o bootstrap do Hub. PASS para o challenger pré-G0; a decisão consolidada ainda depende do auditor e da revisão humana.

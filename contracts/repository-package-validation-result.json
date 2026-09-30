@@ -1,0 +1,30 @@
+{
+  "verdict": "PASS",
+  "files": 51,
+  "references_checked": 116,
+  "broken_references": 0,
+  "approved_openapi_sha256": "bdba10b37ab3e9e756892d4c2b77baefee396659d8f5472b151362d2308cbb6e",
+  "email_domains": [
+    "aurora.example",
+    "example.test"
+  ],
+  "phone_literals": [
+    "+5511999990000",
+    "+5511999990001"
+  ],
+  "urls": [
+    "http://127.0.0.1:4010",
+    "https://api.cotacao-hub.example",
+    "https://cliente-terceiro.example/hub-events",
+    "https://cliente-terceiro.example/retorno",
+    "https://cotacao-hub.example/problems/",
+    "https://evil.example.test",
+    "https://evil.example.test/steal",
+    "https://example.test/event",
+    "https://files.example.test/",
+    "https://idp.example.test",
+    "https://portal.cotacao-hub.example/launch/"
+  ],
+  "errors": [],
+  "audit_limits": "Pattern scan plus manual review; no scanner proves absence of every secret. Names/prices are synthetic contract data; host names only describe exclusions/integrations."
+}

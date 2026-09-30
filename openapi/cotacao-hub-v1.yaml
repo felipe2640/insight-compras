@@ -1,0 +1,2114 @@
+openapi: 3.1.0
+info:
+  title: Cotação Hub API
+  version: 1.0.0-draft
+  description: |
+    Contrato pré-G0 de uma plataforma multi-tenant independente. IDs externos são opacos.
+    O tenant e o ator são derivados do token; parâmetros de corpo nunca selecionam tenant.
+    Dinheiro e quantidade são strings decimais, sem expoente, com até seis casas.
+    Datas são UTC. Mutação exige Idempotency-Key; mutação de recurso existente exige If-Match.
+    A chave idempotente é retida por ao menos 72 horas por tenant, ator/aplicação,
+    método e caminho; repetição com mesmo corpo devolve a resposta original e corpo
+    diferente devolve 409. ETag é uma versão opaca, inclusive em respostas de leitura.
+    Comandos são serializados no servidor: uma resposta que chega após fechamento
+    falha com 409, mesmo se o cliente alegar timestamp anterior.
+    Limites iniciais: 100 itens por página, 1000 itens por cotação, 500 linhas por bulk,
+    XLSX até 10 MiB e 10000 linhas; excesso retorna 413 ou 422.
+    Bootstrap de tenant, credenciais e namespace de origem é provisionamento público
+    administrativo, documentado fora desta API de operação; não requer banco compartilhado.
+    Supplier machine-to-machine está fora do MVP e não é aceito em /api/v1.
+    Apenas sessões individuais do fornecedor, vinculadas a participação ou pedido,
+    autorizam os endpoints supplier. TrustedIdentityProvider é configuração do Hub
+    com provider_id, type (oidc, jwt_jwks, hub_session), issuer, audience, JWKS/key
+    source, tenant/subject/role mappings, enabled e policy_version; nenhuma identidade
+    passada em header ou corpo é confiável sem verificação criptográfica.
+    Defaults pré-produção: sugestão de convite 7 dias na UI (API exige expires_at,
+    máximo 30 dias), OTP 5 min, 5 tentativas, reenvio após 60 s,
+    sessão supplier 30 min ociosa/12 h absoluta e buyer federada 30 min ociosa/8 h absoluta,
+    URL assinada de documento 5 min, webhook replay window 5 min.
+    Rate limits por IP, identidade, tenant, convite e aplicação são cumulativos;
+    valores iniciais e política de revisão constam da specification canônica.
+servers:
+  - url: https://api.cotacao-hub.example
+security:
+  - bearerAuth: []
+tags:
+  - name: Authentication
+  - name: Suppliers
+  - name: Quotations
+  - name: Supplier portal
+  - name: Imports
+  - name: Award
+  - name: Purchasing
+  - name: Integrations
+paths:
+  /api/v1/oauth/token:
+    post:
+      operationId: post_oauth_token
+      tags: [Authentication]
+      summary: Obter token machine-to-machine
+      description: Credencial de aplicação é vinculada a um único tenant e a escopos concedidos.
+      security:
+        - clientBasic: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [grant_type]
+              properties:
+                grant_type: {type: string, const: client_credentials}
+                scope: {type: string, example: 'supplier:manage quotation:write quotation:manage invitation:write award:write award:approve order:write order:issue integration:manage'}
+      responses:
+        '200':
+          description: Token curto para a API
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, token_type, expires_in, scope]
+                properties:
+                  access_token: {type: string}
+                  token_type: {type: string, const: Bearer}
+                  expires_in: {type: integer, example: 900}
+                  scope: {type: string}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/sso/launches:
+    post:
+      operationId: post_sso_launches
+      tags: [Authentication]
+      summary: Criar abertura autenticada do portal buyer
+      description: |
+        Alternativas: sessão buyer própria do Hub com portal:launch; ou credencial
+        de aplicação vinculada ao tenant mais asserção Bearer de TrustedIdentityProvider
+        registrado. A segunda alternativa exige ambos os esquemas. Hub verifica
+        assinatura, issuer, audience, expiração, subject, jti/nonce de uso único,
+        mapeamento de tenant e papéis, e igualdade com o tenant da aplicação.
+        return_url deve constar da allowlist registrada do host. Nunca aceita
+        tenant_id informado pelo host como prova.
+      security:
+        - hubBuyerSession: []
+        - bearerAuth: [portal:launch]
+          trustedIdentityAssertion: []
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [quotation_id]
+              properties:
+                quotation_id: {$ref: '#/components/schemas/Id'}
+                return_url: {type: string, format: uri}
+      responses:
+        '201':
+          description: URL de abertura de uso único e vida curta
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [launch_url, expires_at]
+                properties:
+                  launch_url: {type: string, format: uri}
+                  expires_at: {type: string, format: date-time}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/suppliers:
+    get:
+      operationId: get_suppliers
+      tags: [Suppliers]
+      summary: Listar relações visíveis ao tenant
+      security: [{bearerAuth: ['supplier:read']}]
+      parameters: [{$ref: '#/components/parameters/Cursor'}, {$ref: '#/components/parameters/Limit'}]
+      responses:
+        '200':
+          description: Página de relações privadas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/SupplierRelationship'}}
+                  next_cursor: {type: [string, 'null']}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      operationId: post_suppliers
+      tags: [Suppliers]
+      summary: Criar ou associar fornecedor ao tenant sem revelar outro buyer
+      description: Resposta não indica se organização global preexistia; CNPJ não concede representação.
+      security: [{bearerAuth: ['supplier:manage']}]
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SupplierCreate'}
+            example:
+              legal_name: Distribuidora Aurora Ltda
+              tax_identifier: '00000000000191'
+              contacts: [{name: Ana, email: ana@aurora.example, phone: '+5511999990001'}]
+              external_refs: [{source_system: cliente-terceiro, external_id: FORN-001}]
+      responses:
+        '201':
+          description: Relação criada
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/SupplierRelationship'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/suppliers/{supplierId}/relationship:
+    get:
+      operationId: get_suppliers_supplierId_relationship
+      tags: [Suppliers]
+      summary: Consultar relação privada
+      security: [{bearerAuth: ['supplier:read']}]
+      parameters: [{$ref: '#/components/parameters/SupplierId'}]
+      responses:
+        '200':
+          description: Relação do tenant autenticado
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/SupplierRelationship'}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    put:
+      operationId: put_suppliers_supplierId_relationship
+      tags: [Suppliers]
+      summary: Atualizar dados privados do vínculo comercial
+      security: [{bearerAuth: ['supplier:manage']}]
+      parameters: [{$ref: '#/components/parameters/SupplierId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/SupplierRelationshipUpdate'}}}
+      responses:
+        '200':
+          description: Relação atualizada
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/SupplierRelationship'}}}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/quotations:
+    get:
+      operationId: get_quotations
+      tags: [Quotations]
+      summary: Listar cotações do tenant
+      security: [{bearerAuth: ['quotation:read']}]
+      parameters: [{$ref: '#/components/parameters/Cursor'}, {$ref: '#/components/parameters/Limit'}, {name: status, in: query, schema: {$ref: '#/components/schemas/QuotationStatus'}}]
+      responses:
+        '200':
+          description: Página
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/Quotation'}}
+                  next_cursor: {type: [string, 'null']}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      operationId: post_quotations
+      tags: [Quotations]
+      summary: Criar cotação com snapshots de itens e destino
+      security: [{bearerAuth: ['quotation:write']}]
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/QuotationCreate'}
+            example:
+              source_system: cliente-terceiro
+              external_id: COT-OPAQUE-1
+              currency: BRL
+              response_deadline_at: '2026-10-10T18:00:00Z'
+              buyer_snapshot: {name: Compradora Exemplo Ltda, tax_identifier: '11111111000191'}
+              destinations: [{external_id: LOJA-A, name: Filial A, address: Rua Exemplo 1}]
+              items:
+                - {external_id: ITEM-1, description: Bucha de suspensão, requested_reference: REF-X, requested_brand: MARCA-X, requested_quantity: '7.000000', requested_unit: peça, destination_external_id: LOJA-A}
+      responses:
+        '201':
+          description: Cotação em rascunho
+          headers: {ETag: {$ref: '#/components/headers/ETag'}, Location: {schema: {type: string}}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/Quotation'}}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/quotations/{quotationId}:
+    get:
+      operationId: get_quotations_quotationId
+      tags: [Quotations]
+      summary: Consultar cotação
+      security: [{bearerAuth: ['quotation:read']}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}]
+      responses:
+        '200':
+          description: Snapshot atual
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/Quotation'}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/quotations/{quotationId}/items:bulk:
+    post:
+      operationId: post_quotations_quotationId_items_bulk
+      tags: [Quotations]
+      summary: Adicionar ou substituir itens em rascunho em uma operação atômica
+      description: Até 500 linhas; valida tudo antes de gravar. IDs externos não são FKs.
+      security: [{bearerAuth: ['quotation:write']}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [mode, items]
+              properties:
+                mode: {type: string, enum: [append, replace]}
+                items: {type: array, minItems: 1, maxItems: 500, items: {$ref: '#/components/schemas/QuotationItemInput'}}
+      responses:
+        '200':
+          description: Cotação atualizada
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/Quotation'}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/quotations/{quotationId}:open:
+    post:
+      operationId: post_quotations_quotationId_open
+      tags: [Quotations]
+      summary: Abrir cotação para respostas
+      security: [{bearerAuth: ['quotation:manage']}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      responses:
+        '200': {$ref: '#/components/responses/QuotationChanged'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/quotations/{quotationId}:close:
+    post:
+      operationId: post_quotations_quotationId_close
+      tags: [Quotations]
+      summary: Fechar respostas e congelar revisões submetidas
+      security: [{bearerAuth: ['quotation:manage']}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      responses:
+        '200': {$ref: '#/components/responses/QuotationChanged'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/quotations/{quotationId}:reopen:
+    post:
+      operationId: post_quotations_quotationId_reopen
+      tags: [Quotations]
+      summary: Reabrir cotação fechada com revisão explícita
+      description: |
+        Operação atômica. Supersede o award vigente e cancela/supersede todos os
+        pedidos draft vinculados antes de reabrir. Se qualquer pedido estiver issued
+        ou em estado posterior, retorna 409 quotation_has_issued_orders. Corridas
+        com emissão de pedido são serializadas pela versão da cotação; só uma vence.
+      security: [{bearerAuth: ['quotation:manage']}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [reason], properties: {reason: {type: string, minLength: 3, maxLength: 2000}}}}}
+      responses:
+        '200': {$ref: '#/components/responses/QuotationChanged'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/quotations/{quotationId}/invitations:
+    post:
+      operationId: post_quotations_quotationId_invitations
+      tags: [Quotations]
+      summary: Convidar destinatários para uma participação supplier
+      description: Convite não cria membership global; manual_link só retorna uma vez.
+      security: [{bearerAuth: ['invitation:write']}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/InvitationCreate'}}}
+      responses:
+        '201':
+          description: Convites restritos à cotação
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/InvitationResult'}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/supplier/invitations:redeem:
+    post:
+      operationId: post_supplier_invitations_redeem
+      tags: [Supplier portal]
+      summary: Resgatar convite apenas para seu contexto explícito
+      security: []
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties: {token: {type: string, minLength: 32}}
+      responses:
+        '200':
+          description: Contexto mínimo e sem sessão de escrita
+          content: {application/json: {schema: {$ref: '#/components/schemas/InvitationContext'}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '410': {$ref: '#/components/responses/Gone'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/supplier/auth/challenges:
+    post:
+      operationId: post_supplier_auth_challenges
+      tags: [Supplier portal]
+      summary: Enviar OTP individual ao canal associado ao convite
+      security: []
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [challenge_context_id, channel]
+              properties:
+                challenge_context_id: {$ref: '#/components/schemas/Id'}
+                channel: {type: string, enum: [email, phone]}
+      responses:
+        '202':
+          description: Resposta uniforme para evitar enumeração
+          content: {application/json: {schema: {$ref: '#/components/schemas/Challenge'}}}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/supplier/auth/challenges/{challengeId}:verify:
+    post:
+      operationId: post_supplier_auth_challenges_challengeId_verify
+      tags: [Supplier portal]
+      summary: Verificar OTP e criar sessão individual restrita
+      security: []
+      parameters: [{name: challengeId, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties: {code: {type: string, minLength: 6, maxLength: 12}}
+      responses:
+        '200':
+          description: Sessão só da participação e ações concedidas
+          content: {application/json: {schema: {$ref: '#/components/schemas/SupplierSession'}}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '410': {$ref: '#/components/responses/Gone'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/supplier/auth/order-challenges:
+    post:
+      operationId: post_supplier_auth_order_challenges
+      tags: [Supplier portal]
+      summary: Solicitar autenticação individual para um pedido emitido
+      description: Exige contexto de convite específico do pedido ou membership com papel de resposta. Convite de cotação não concede este acesso.
+      security: []
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [order_invitation_context_id]
+              properties:
+                order_invitation_context_id: {$ref: '#/components/schemas/Id'}
+      responses:
+        '202':
+          description: Resposta uniforme; verificar pelo endpoint de desafios
+          content: {application/json: {schema: {$ref: '#/components/schemas/Challenge'}}}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/supplier/order-invitations:redeem:
+    post:
+      operationId: post_supplier_order_invitations_redeem
+      tags: [Supplier portal]
+      summary: Resgatar convite restrito a um pedido
+      security: []
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [token], properties: {token: {type: string, minLength: 32}}}}}
+      responses:
+        '200':
+          description: Contexto sem permissão de escrita antes de OTP
+          content: {application/json: {schema: {$ref: '#/components/schemas/OrderInvitationContext'}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '410': {$ref: '#/components/responses/Gone'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/supplier/quotations/{quotationId}:
+    get:
+      operationId: get_supplier_quotations_quotationId
+      tags: [Supplier portal]
+      summary: Ler apenas a cotação da participação autorizada
+      security: [{supplierBearer: []}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}]
+      responses:
+        '200':
+          description: Itens e oferta da própria organização
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/SupplierQuotation'}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/supplier/quotations/{quotationId}/offer:
+    put:
+      operationId: put_supplier_quotations_quotationId_offer
+      tags: [Supplier portal]
+      summary: Salvar cabeçalho comercial da proposta
+      security: [{supplierBearer: []}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/CommercialTerms'}}}
+      responses:
+        '200': {$ref: '#/components/responses/OfferChanged'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/supplier/quotations/{quotationId}/offer-items:bulk:
+    put:
+      operationId: put_supplier_quotations_quotationId_offer_items_bulk
+      tags: [Supplier portal]
+      summary: Salvar até 500 linhas em uma versão atômica da oferta
+      description: |
+        Validação aponta linhas erradas; nenhuma linha é gravada se houver erro.
+        A organização fornecedora vem da sessão individual. supplier_id no corpo
+        é rejeitado como campo desconhecido; não altera o escopo.
+      security: [{supplierBearer: []}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [items]
+              properties: {items: {type: array, minItems: 1, maxItems: 500, items: {$ref: '#/components/schemas/OfferItemInput'}}}
+      responses:
+        '200': {$ref: '#/components/responses/OfferChanged'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/supplier/quotations/{quotationId}:submit:
+    post:
+      operationId: post_supplier_quotations_quotationId_submit
+      tags: [Supplier portal]
+      summary: Concluir revisão parcial ou total
+      security: [{supplierBearer: []}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      responses:
+        '200':
+          description: Revisão imutável e pendências explícitas
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/OfferSubmission'}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/supplier/quotations/{quotationId}/assisted-revisions/{revisionId}:confirm:
+    post:
+      operationId: post_supplier_quotations_quotationId_assisted_revisions_revisionId_confirm
+      tags: [Supplier portal]
+      summary: Confirmar individualmente revisão assistida sem reescrever sua origem
+      description: |
+        Exige supplier session da participação e ator individual. A revisão
+        assisted_unconfirmed permanece imutável; confirmação cria registro de
+        atribuição e passa seu estado para assisted_confirmed. O comprador que
+        digitou ou importou continua identificado no histórico.
+      security: [{supplierBearer: []}]
+      parameters:
+        - {$ref: '#/components/parameters/QuotationId'}
+        - {name: revisionId, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {$ref: '#/components/parameters/IfMatch'}
+      responses:
+        '200': {$ref: '#/components/responses/OfferChanged'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/quotations/{quotationId}/supplier-responses/imports:
+    post:
+      operationId: post_quotations_quotationId_supplier_responses_imports
+      tags: [Imports]
+      summary: Subir XLSX para staging sem escrever oferta final
+      description: Origem é derivada do ator autenticado; buyer não pode alegar authenticated_supplier. Proposta assistida mantém ator buyer e fornecedor representado separados.
+      security: [{bearerAuth: ['import:write']}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [supplier_id, file, origin]
+              properties:
+                supplier_id: {$ref: '#/components/schemas/Id'}
+                origin: {type: string, const: assisted_unconfirmed}
+                source_note: {type: string, maxLength: 1000}
+                file: {type: string, format: binary}
+      responses:
+        '202':
+          description: Staging criado; sem compromisso da oferta
+          content: {application/json: {schema: {$ref: '#/components/schemas/ImportJob'}}}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+  /api/v1/supplier/quotations/{quotationId}/imports:
+    post:
+      operationId: post_supplier_quotations_quotationId_imports
+      tags: [Imports]
+      summary: Supplier autenticado sobe seu próprio XLSX para staging
+      description: Supplier e origem authenticated_supplier são derivados da sessão; o cliente não pode selecionar outra organização.
+      security: [{supplierBearer: []}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file: {type: string, format: binary}
+      responses:
+        '202':
+          description: Staging criado
+          content: {application/json: {schema: {$ref: '#/components/schemas/ImportJob'}}}
+        '413': {$ref: '#/components/responses/TooLarge'}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+  /api/v1/imports/{importId}:
+    get:
+      operationId: get_imports_importId
+      tags: [Imports]
+      summary: Consultar validação e prévia, incluindo linhas ambíguas
+      security: [{bearerAuth: ['import:read']}, {supplierBearer: []}]
+      parameters: [{$ref: '#/components/parameters/ImportId'}]
+      responses:
+        '200':
+          description: Job com prévia
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/ImportJob'}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/imports/{importId}:commit:
+    post:
+      operationId: post_imports_importId_commit
+      tags: [Imports]
+      summary: Confirmar mapeamento e aplicar staging à oferta
+      description: Buyer assistente é registrado como ator; jamais como supplier autenticado.
+      security: [{bearerAuth: ['import:write']}, {supplierBearer: []}]
+      parameters: [{$ref: '#/components/parameters/ImportId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file_sha256, mappings, expected_offer_etag]
+              properties:
+                file_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+                expected_offer_etag: {type: string}
+                mappings: {type: array, items: {type: object, additionalProperties: false, required: [row_number, quotation_item_id], properties: {row_number: {type: integer, minimum: 1}, quotation_item_id: {$ref: '#/components/schemas/Id'}}}}
+      responses:
+        '200': {$ref: '#/components/responses/OfferChanged'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/award-policies:
+    get:
+      operationId: get_award_policies
+      tags: [Award]
+      summary: Políticas versionadas visíveis ao tenant
+      security: [{bearerAuth: ['award:read']}]
+      parameters: [{$ref: '#/components/parameters/Cursor'}, {$ref: '#/components/parameters/Limit'}]
+      responses:
+        '200':
+          description: Políticas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: {type: array, items: {$ref: '#/components/schemas/AwardPolicy'}}
+                  next_cursor: {type: [string, 'null']}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /api/v1/quotations/{quotationId}/award-runs:
+    post:
+      operationId: post_quotations_quotationId_award_runs
+      tags: [Award]
+      summary: Calcular cenário a partir do snapshot fechado
+      security: [{bearerAuth: ['award:write']}]
+      parameters: [{$ref: '#/components/parameters/QuotationId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [policy_id, policy_version]
+              properties:
+                policy_id: {$ref: '#/components/schemas/Id'}
+                policy_version: {type: string}
+      responses:
+        '201':
+          description: Execução imutável
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/AwardRun'}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/award-runs/{awardRunId}:
+    get:
+      operationId: get_award_runs_awardRunId
+      tags: [Award]
+      summary: Consultar entradas, decisão e razões reproduzíveis
+      security: [{bearerAuth: ['award:read']}]
+      parameters: [{$ref: '#/components/parameters/AwardRunId'}]
+      responses:
+        '200':
+          description: Resultado e hashes
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/AwardRun'}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/award-runs/{awardRunId}/snapshot:
+    get:
+      operationId: get_award_runs_awardRunId_snapshot
+      tags: [Award]
+      summary: Obter snapshot canônico usado no corte para replay autorizado
+      description: Contém entradas e política congeladas, com hash e versão do artefato. Acesso restrito ao buyer do tenant.
+      security: [{bearerAuth: ['award:read']}]
+      parameters: [{$ref: '#/components/parameters/AwardRunId'}]
+      responses:
+        '200':
+          description: Snapshot imutável
+          content: {application/json: {schema: {$ref: '#/components/schemas/AwardSnapshot'}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/award-runs/{awardRunId}:adjust:
+    post:
+      operationId: post_award_runs_awardRunId_adjust
+      tags: [Award]
+      summary: Criar execução derivada com intervenção humana
+      description: Não altera o corte original; cada ajuste tem razão e confirmação de impacto.
+      security: [{bearerAuth: ['award:write']}]
+      parameters: [{$ref: '#/components/parameters/AwardRunId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [adjustments]
+              properties:
+                adjustments: {type: array, minItems: 1, items: {$ref: '#/components/schemas/AwardAdjustment'}}
+      responses:
+        '201':
+          description: Execução derivada calculada
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/AwardRun'}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/award-runs/{awardRunId}:approve:
+    post:
+      operationId: post_award_runs_awardRunId_approve
+      tags: [Award]
+      summary: Aprovar execução vigente
+      security: [{bearerAuth: ['award:approve']}]
+      parameters: [{$ref: '#/components/parameters/AwardRunId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [acknowledged_alert_codes]
+              properties:
+                acknowledged_alert_codes: {type: array, items: {type: string}}
+                approval_note: {type: string, maxLength: 1000}
+      responses:
+        '200':
+          description: Execução aprovada
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/AwardRun'}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/award-runs/{awardRunId}/purchase-orders:
+    post:
+      operationId: post_award_runs_awardRunId_purchase_orders
+      tags: [Purchasing]
+      summary: Preparar pedidos em rascunho a partir do corte aprovado
+      description: Um pedido por fornecedor, destino e moeda; repetição retorna os mesmos IDs.
+      security: [{bearerAuth: ['order:write']}]
+      parameters: [{$ref: '#/components/parameters/AwardRunId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      responses:
+        '201':
+          description: Pedidos preparados, ainda não enviados
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [orders]
+                properties: {orders: {type: array, items: {$ref: '#/components/schemas/PurchaseOrder'}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/purchase-orders/{orderId}:
+    get:
+      operationId: get_purchase_orders_orderId
+      tags: [Purchasing]
+      summary: Consultar pedido e snapshot
+      security: [{bearerAuth: ['order:read']}]
+      parameters: [{$ref: '#/components/parameters/OrderId'}]
+      responses:
+        '200':
+          description: Pedido
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/PurchaseOrder'}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    patch:
+      operationId: patch_purchase_orders_orderId
+      tags: [Purchasing]
+      summary: Revisar dados permitidos do pedido em rascunho
+      description: Alterações que divergirem das alocações aprovadas exigem novo corte; não se altera pedido emitido.
+      security: [{bearerAuth: ['order:write']}]
+      parameters: [{$ref: '#/components/parameters/OrderId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                delivery_note: {type: string, maxLength: 2000}
+                buyer_reference: {type: string, maxLength: 255}
+      responses:
+        '200': {$ref: '#/components/responses/OrderChanged'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/purchase-orders/{orderId}:cancel:
+    post:
+      operationId: post_purchase_orders_orderId_cancel
+      tags: [Purchasing]
+      summary: Cancelar pedido com transição auditada
+      description: Draft cancela sem aviso de emissão; pedido já emitido segue transição formal.
+      security: [{bearerAuth: ['order:write']}]
+      parameters: [{$ref: '#/components/parameters/OrderId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [reason], properties: {reason: {type: string, minLength: 3, maxLength: 1000}}}}}
+      responses:
+        '200': {$ref: '#/components/responses/OrderChanged'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/purchase-orders/{orderId}:issue:
+    post:
+      operationId: post_purchase_orders_orderId_issue
+      tags: [Purchasing]
+      summary: Emitir pedido revisado ao fornecedor
+      security: [{bearerAuth: ['order:issue']}]
+      parameters: [{$ref: '#/components/parameters/OrderId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      responses:
+        '200': {$ref: '#/components/responses/OrderChanged'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/purchase-orders/{orderId}/invitations:
+    post:
+      operationId: post_purchase_orders_orderId_invitations
+      tags: [Purchasing]
+      summary: Convidar pessoa específica para responder ao pedido emitido
+      description: Delegação curta e restrita a order_id e ações order:read/order:respond. Não cria membership nem amplia token de cotação.
+      security: [{bearerAuth: ['order:write']}]
+      parameters: [{$ref: '#/components/parameters/OrderId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [recipient, delivery_mode, expires_at]
+              properties:
+                recipient: {$ref: '#/components/schemas/Contact'}
+                delivery_mode: {type: string, enum: [email, manual]}
+                expires_at: {type: string, format: date-time}
+      responses:
+        '201':
+          description: Convite criado; link manual retornado somente uma vez
+          content: {application/json: {schema: {$ref: '#/components/schemas/InvitationResult'}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/supplier/purchase-orders/{orderId}:
+    get:
+      operationId: get_supplier_purchase_orders_orderId
+      tags: [Supplier portal]
+      summary: Ler pedido emitido da organização autorizada
+      security: [{supplierBearer: []}]
+      parameters: [{$ref: '#/components/parameters/OrderId'}]
+      responses:
+        '200':
+          description: Pedido da organização
+          headers: {ETag: {$ref: '#/components/headers/ETag'}}
+          content: {application/json: {schema: {$ref: '#/components/schemas/PurchaseOrder'}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/supplier/purchase-orders/{orderId}:confirm:
+    post:
+      operationId: post_supplier_purchase_orders_orderId_confirm
+      tags: [Supplier portal]
+      summary: Confirmar pedido como usuário individual
+      security: [{supplierBearer: []}]
+      parameters: [{$ref: '#/components/parameters/OrderId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      responses:
+        '200': {$ref: '#/components/responses/OrderChanged'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/supplier/purchase-orders/{orderId}:decline:
+    post:
+      operationId: post_supplier_purchase_orders_orderId_decline
+      tags: [Supplier portal]
+      summary: Recusar pedido com motivo
+      security: [{supplierBearer: []}]
+      parameters: [{$ref: '#/components/parameters/OrderId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {type: object, additionalProperties: false, required: [reason], properties: {reason: {type: string, minLength: 3, maxLength: 1000}}}}}
+      responses:
+        '200': {$ref: '#/components/responses/OrderChanged'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/purchase-orders/{orderId}/documents:
+    post:
+      operationId: post_purchase_orders_orderId_documents
+      tags: [Purchasing]
+      summary: Gerar documento PDF ou XLSX do snapshot do pedido
+      description: Pedido draft produz prévia marcada; pedido emitido produz documento final.
+      security: [{bearerAuth: ['order:read']}]
+      parameters: [{$ref: '#/components/parameters/OrderId'}, {$ref: '#/components/parameters/IdempotencyKey'}, {$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [format]
+              properties:
+                format: {type: string, enum: [pdf, xlsx]}
+      responses:
+        '201':
+          description: Documento versionado
+          content: {application/json: {schema: {$ref: '#/components/schemas/Document'}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+  /api/v1/documents/{documentId}:
+    get:
+      operationId: get_documents_documentId
+      tags: [Purchasing]
+      summary: Obter metadados e URL temporária de download
+      description: |
+        Autorização deriva do pedido pai: buyer do mesmo tenant com order:read,
+        supplier autenticado do próprio pedido, ou aplicação explicitamente autorizada
+        nesse tenant. Conhecer documentId não autoriza acesso. Resposta a recurso
+        invisível é 404 resource_not_found. URL assinada é específica para documento,
+        método GET e ator, expira em 5 min e não permite enumeração.
+      security: [{bearerAuth: ['order:read']}, {supplierBearer: []}]
+      parameters: [{name: documentId, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}]
+      responses:
+        '200':
+          description: URL curta com escopo, sujeita a autorização na emissão
+          content: {application/json: {schema: {$ref: '#/components/schemas/DocumentDownload'}}}
+          headers:
+            Cache-Control: {schema: {type: string, const: 'private, no-store'}, description: Resposta privada sem cache compartilhado}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /api/v1/webhook-subscriptions:
+    get:
+      operationId: get_webhook_subscriptions
+      tags: [Integrations]
+      summary: Listar apenas assinaturas do tenant
+      security: [{bearerAuth: ['integration:manage']}]
+      responses:
+        '200':
+          description: Assinaturas
+          content: {application/json: {schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/WebhookSubscription'}}}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      operationId: post_webhook_subscriptions
+      tags: [Integrations]
+      summary: Registrar webhook HTTPS para eventos filtrados
+      description: URL é validada contra SSRF; sem redirects. Segredo retorna uma vez.
+      security: [{bearerAuth: ['integration:manage']}]
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/WebhookSubscriptionCreate'}}}
+      responses:
+        '201':
+          description: Assinatura criada
+          content: {application/json: {schema: {$ref: '#/components/schemas/WebhookSubscriptionCreated'}}}
+        '422': {$ref: '#/components/responses/Unprocessable'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /api/v1/events:
+    get:
+      operationId: get_events
+      tags: [Integrations]
+      summary: Ler eventos do tenant para reconciliação de webhook
+      description: Cursor opaco vinculado ao tenant e filtro, retenção publicada; cursor de outro tenant retorna 404 sem dados.
+      security: [{bearerAuth: ['event:read']}]
+      parameters: [{$ref: '#/components/parameters/Cursor'}, {$ref: '#/components/parameters/Limit'}, {name: type, in: query, schema: {type: string}}]
+      responses:
+        '200':
+          description: Eventos versionados
+          content: {application/json: {schema: {type: object, required: [data], properties: {data: {type: array, items: {$ref: '#/components/schemas/EventEnvelope'}}, next_cursor: {type: [string, 'null']}}}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /api/v1/usage:
+    get:
+      operationId: get_usage
+      tags: [Integrations]
+      summary: Entitlement e contadores idempotentes do tenant
+      security: [{bearerAuth: ['usage:read']}]
+      responses:
+        '200':
+          description: Uso corrente
+          content: {application/json: {schema: {$ref: '#/components/schemas/Usage'}}}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+webhooks:
+  eventNotification:
+    post:
+      operationId: post_eventNotification
+      summary: Entrega de evento ao assinante
+      description: |
+        At least once. Verificar HMAC-SHA256 sobre timestamp + '.' + event_id + '.' + bytes exatos do corpo.
+        Rejeitar timestamp fora da janela de cinco minutos e deduplicar event_id. Segredos rotacionáveis por key id.
+      parameters:
+        - {name: X-Hub-Event-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-Hub-Timestamp, in: header, required: true, schema: {type: string}}
+        - {name: X-Hub-Key-Id, in: header, required: true, schema: {type: string}}
+        - {name: X-Hub-Signature, in: header, required: true, schema: {type: string, example: 'sha256=hex-digest'}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/EventEnvelope'}}}
+      responses:
+        '204': {description: Aceito; qualquer 2xx confirma entrega}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: /api/v1/oauth/token
+          scopes:
+            'supplier:read': Ler relações
+            'supplier:manage': Gerir relações
+            'quotation:read': Ler cotações
+            'quotation:write': Criar e editar rascunhos
+            'quotation:manage': Abrir e fechar
+            'invitation:write': Convidar
+            'award:read': Ler políticas e cortes
+            'award:write': Calcular e ajustar
+            'award:approve': Aprovar
+            'order:read': Ler pedidos
+            'order:write': Preparar pedidos
+            'order:issue': Emitir
+            'import:read': Ler staging
+            'import:write': Importar
+            'integration:manage': Gerir webhooks
+            'event:read': Conciliar eventos
+            'usage:read': Ler uso
+            'portal:launch': Abrir portal
+    clientBasic: {type: http, scheme: basic}
+    hubBuyerSession:
+      type: apiKey
+      in: cookie
+      name: hub_session
+      description: Sessão individual buyer emitida pelo Hub; mutações exigem CSRF verificado.
+    trustedIdentityAssertion:
+      type: apiKey
+      in: header
+      name: X-Hub-Identity-Assertion
+      description: JWT assinado de IdP registrado, com iss/aud/sub/exp/jti/nonce e vínculo de tenant; só válido junto à credencial da aplicação.
+    supplierBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Sessão de pessoa física identificada, vinculada a uma única participação ou pedido; supplier M2M fora do MVP.
+  parameters:
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 16, maxLength: 128}, description: 'Retida por no mínimo 72 h; mesmo payload reproduz resposta original, payload diferente retorna 409 idempotency_key_conflict'}
+    IfMatch: {name: If-Match, in: header, required: true, schema: {type: string}, description: ETag opaca recebida em GET ou última mutação}
+    Cursor: {name: cursor, in: query, schema: {type: string}, description: Cursor opaco}
+    Limit: {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+    SupplierId: {name: supplierId, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}
+    QuotationId: {name: quotationId, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}
+    AwardRunId: {name: awardRunId, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}
+    OrderId: {name: orderId, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}
+    ImportId: {name: importId, in: path, required: true, schema: {$ref: '#/components/schemas/Id'}}
+  headers:
+    ETag: {description: Versão opaca do recurso, schema: {type: string, example: '"v3"'}}
+  responses:
+    QuotationChanged:
+      description: Cotação alterada
+      headers: {ETag: {$ref: '#/components/headers/ETag'}}
+      content: {application/json: {schema: {$ref: '#/components/schemas/Quotation'}}}
+    OfferChanged:
+      description: Oferta alterada
+      headers: {ETag: {$ref: '#/components/headers/ETag'}}
+      content: {application/json: {schema: {$ref: '#/components/schemas/Offer'}}}
+    OrderChanged:
+      description: Pedido alterado
+      headers: {ETag: {$ref: '#/components/headers/ETag'}}
+      content: {application/json: {schema: {$ref: '#/components/schemas/PurchaseOrder'}}}
+    BadRequest: {description: Requisição inválida, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    Unauthorized: {description: Autenticação ausente ou inválida, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    Forbidden: {description: Escopo insuficiente, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    NotFound: {description: Inexistente ou invisível ao ator, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    Gone: {description: Convite ou OTP expirado ou revogado, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    Conflict: {description: 'Estado, idempotência ou referência externa em conflito', content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    PreconditionFailed: {description: ETag divergente, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    Unprocessable: {description: Regra de domínio violada, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    PreconditionRequired: {description: If-Match ausente, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    RateLimited: {description: Limite de taxa, headers: {Retry-After: {schema: {type: integer}}}, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+    TooLarge: {description: Arquivo excede limite, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+  x-problem-codes:
+    400: [invalid_request]
+    401: [invalid_token, invalid_otp]
+    403: [insufficient_scope, tenant_mismatch, supplier_mismatch]
+    404: [resource_not_found]
+    409: [idempotency_key_conflict, quotation_closed, duplicate_issue, quotation_has_issued_orders, webhook_replay]
+    410: [expired_otp, invitation_expired, invitation_revoked, invitation_replayed]
+    412: [version_conflict]
+    422: [domain_violation]
+    428: [precondition_required]
+    429: [rate_limited]
+  schemas:
+    Id: {type: string, format: uuid, example: 11111111-1111-4111-8111-111111111111}
+    Decimal: {type: string, pattern: '^(0|[1-9][0-9]{0,13})(\.[0-9]{1,6})?$', example: '10.500000', description: 'DECIMAL(20,6) positivo ou zero; sinal negativo apenas em ajustes tipados'}
+    Currency: {type: string, pattern: '^[A-Z]{3}$', example: BRL}
+    QuotationStatus: {type: string, enum: [draft, open, closed_for_responses, awarded, ordered, cancelled]}
+    ExternalRef:
+      type: object
+      additionalProperties: false
+      required: [source_system, external_id]
+      properties:
+        source_system: {type: string, minLength: 1, maxLength: 80}
+        external_id: {type: string, minLength: 1, maxLength: 255, description: Valor opaco}
+    Contact:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, maxLength: 200}
+        email: {type: string, format: email}
+        phone: {type: string, pattern: '^\+[1-9][0-9]{1,14}$'}
+    SupplierCreate:
+      type: object
+      additionalProperties: false
+      required: [legal_name, contacts]
+      properties:
+        legal_name: {type: string, minLength: 1, maxLength: 250}
+        tax_identifier: {type: string, maxLength: 32}
+        contacts: {type: array, minItems: 1, items: {$ref: '#/components/schemas/Contact'}}
+        external_refs: {type: array, items: {$ref: '#/components/schemas/ExternalRef'}}
+    SupplierRelationshipUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        status: {type: string, enum: [active, suspended]}
+        contacts: {type: array, items: {$ref: '#/components/schemas/Contact'}}
+        external_refs: {type: array, items: {$ref: '#/components/schemas/ExternalRef'}}
+        commercial_defaults: {$ref: '#/components/schemas/CommercialTerms'}
+        private_note: {type: string, maxLength: 2000}
+    SupplierRelationship:
+      type: object
+      required: [id, legal_name, status, contacts, version]
+      properties:
+        id: {$ref: '#/components/schemas/Id'}
+        legal_name: {type: string}
+        tax_identifier: {type: [string, 'null']}
+        status: {type: string, enum: [active, suspended]}
+        contacts: {type: array, items: {$ref: '#/components/schemas/Contact'}}
+        external_refs: {type: array, items: {$ref: '#/components/schemas/ExternalRef'}}
+        commercial_defaults: {$ref: '#/components/schemas/CommercialTerms'}
+        version: {type: integer, minimum: 1}
+    Destination:
+      type: object
+      additionalProperties: false
+      required: [external_id, name, address]
+      properties:
+        external_id: {type: string, description: ID opaco da filial/destino}
+        name: {type: string}
+        address: {type: string}
+    BuyerSnapshot:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string}
+        tax_identifier: {type: string}
+        address: {type: string}
+    QuotationItemInput:
+      type: object
+      additionalProperties: false
+      required: [external_id, description, requested_quantity, requested_unit, destination_external_id]
+      properties:
+        external_id: {type: string, minLength: 1}
+        description: {type: string, minLength: 1, maxLength: 500}
+        requested_reference: {type: string, maxLength: 200}
+        requested_brand: {type: string, maxLength: 200}
+        accepted_brands: {type: array, items: {type: string}}
+        requested_quantity: {$ref: '#/components/schemas/Decimal'}
+        requested_unit: {type: string, minLength: 1, maxLength: 40}
+        destination_external_id: {type: string}
+        source_snapshot: {type: object, additionalProperties: true, description: Metadados sanitizados; não usados pelo motor sem contrato tipado}
+    QuotationItem:
+      type: object
+      description: DTO de resposta extensível; clientes devem ignorar campos desconhecidos.
+      required:
+      - external_id
+      - description
+      - requested_quantity
+      - requested_unit
+      - destination_external_id
+      - id
+      properties:
+        external_id:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          minLength: 1
+          maxLength: 500
+        requested_reference:
+          type: string
+          maxLength: 200
+        requested_brand:
+          type: string
+          maxLength: 200
+        accepted_brands:
+          type: array
+          items:
+            type: string
+        requested_quantity:
+          $ref: '#/components/schemas/Decimal'
+        requested_unit:
+          type: string
+          minLength: 1
+          maxLength: 40
+        destination_external_id:
+          type: string
+        source_snapshot:
+          type: object
+          additionalProperties: true
+          description: Metadados sanitizados; não usados pelo motor sem contrato tipado
+        id:
+          $ref: '#/components/schemas/Id'
+    QuotationCreate:
+      type: object
+      additionalProperties: false
+      required: [source_system, external_id, currency, response_deadline_at, buyer_snapshot, destinations, items]
+      properties:
+        source_system: {type: string}
+        external_id: {type: string}
+        currency: {$ref: '#/components/schemas/Currency'}
+        response_deadline_at: {type: string, format: date-time}
+        buyer_snapshot: {$ref: '#/components/schemas/BuyerSnapshot'}
+        destinations: {type: array, minItems: 1, items: {$ref: '#/components/schemas/Destination'}}
+        items: {type: array, minItems: 1, maxItems: 1000, items: {$ref: '#/components/schemas/QuotationItemInput'}}
+    Quotation:
+      type: object
+      required: [id, status, version, revision, currency, response_deadline_at, buyer_snapshot, destinations, items]
+      properties:
+        id: {$ref: '#/components/schemas/Id'}
+        status: {$ref: '#/components/schemas/QuotationStatus'}
+        version: {type: integer, minimum: 1}
+        revision: {type: integer, minimum: 1}
+        currency: {$ref: '#/components/schemas/Currency'}
+        response_deadline_at: {type: string, format: date-time}
+        buyer_snapshot: {$ref: '#/components/schemas/BuyerSnapshot'}
+        destinations: {type: array, items: {$ref: '#/components/schemas/Destination'}}
+        items: {type: array, items: {$ref: '#/components/schemas/QuotationItem'}}
+        external_refs: {type: array, items: {$ref: '#/components/schemas/ExternalRef'}}
+    InvitationCreate:
+      type: object
+      additionalProperties: false
+      required: [supplier_id, recipients, delivery_mode, expires_at]
+      properties:
+        supplier_id: {$ref: '#/components/schemas/Id'}
+        recipients: {type: array, minItems: 1, items: {$ref: '#/components/schemas/Contact'}}
+        delivery_mode: {type: string, enum: [email, manual]}
+        expires_at: {type: string, format: date-time}
+    InvitationResult:
+      type: object
+      required: [invitation_ids, delivery_status]
+      properties:
+        invitation_ids: {type: array, items: {$ref: '#/components/schemas/Id'}}
+        delivery_status: {type: string, enum: [queued, manual, failed]}
+        manual_links: {type: array, description: Só para entrega manual e só nesta resposta, items: {type: string, format: uri}}
+    InvitationContext:
+      type: object
+      required: [challenge_context_id, quotation_id, supplier_id, permitted_channel]
+      properties:
+        challenge_context_id: {$ref: '#/components/schemas/Id'}
+        quotation_id: {$ref: '#/components/schemas/Id'}
+        supplier_id: {$ref: '#/components/schemas/Id'}
+        permitted_channel: {type: string, enum: [email, phone]}
+    OrderInvitationContext:
+      type: object
+      required: [order_invitation_context_id, order_id, supplier_id, permitted_channel]
+      properties:
+        order_invitation_context_id: {$ref: '#/components/schemas/Id'}
+        order_id: {$ref: '#/components/schemas/Id'}
+        supplier_id: {$ref: '#/components/schemas/Id'}
+        permitted_channel: {type: string, enum: [email, phone]}
+    Challenge:
+      type: object
+      required: [challenge_id, expires_at]
+      properties:
+        challenge_id: {$ref: '#/components/schemas/Id'}
+        expires_at: {type: string, format: date-time}
+    SupplierSession:
+      type: object
+      required: [access_token, actor_id, supplier_id, permissions, expires_at]
+      properties:
+        access_token: {type: string}
+        actor_id: {$ref: '#/components/schemas/Id'}
+        supplier_id: {$ref: '#/components/schemas/Id'}
+        quotation_id: {$ref: '#/components/schemas/Id'}
+        order_id: {$ref: '#/components/schemas/Id'}
+        permissions: {type: array, items: {type: string, enum: [offer:read, offer:write, offer:submit, order:read, order:respond]}}
+        expires_at: {type: string, format: date-time}
+    PaymentTerms:
+      type: object
+      additionalProperties: false
+      required: [description]
+      properties:
+        code: {type: string}
+        description: {type: string}
+        installments: {type: integer, minimum: 1}
+    FreightTerms:
+      type: object
+      additionalProperties: false
+      required: [mode, payer]
+      properties:
+        mode: {type: string, enum: [CIF, FOB, included, fixed, unknown]}
+        payer: {type: string, enum: [buyer, supplier, unknown]}
+        amount_kind: {type: string, enum: [fixed, unknown]}
+        amount: {$ref: '#/components/schemas/Decimal'}
+    Adjustment:
+      type: object
+      additionalProperties: false
+      required: [kind, scope, amount]
+      properties:
+        kind: {type: string, enum: [discount, surcharge]}
+        scope: {type: string, enum: [per_unit, per_order]}
+        amount: {$ref: '#/components/schemas/Decimal'}
+        note: {type: string}
+    CommercialTerms:
+      type: object
+      additionalProperties: false
+      required: [currency, payment_terms, freight_terms]
+      properties:
+        currency: {$ref: '#/components/schemas/Currency'}
+        payment_terms: {$ref: '#/components/schemas/PaymentTerms'}
+        minimum_order_amount: {$ref: '#/components/schemas/Decimal'}
+        minimum_scope: {type: string, enum: [per_order, per_destination]}
+        freight_terms: {$ref: '#/components/schemas/FreightTerms'}
+        default_lead_time_days: {type: integer, minimum: 0}
+        offer_valid_until: {type: string, format: date-time}
+        adjustments: {type: array, items: {$ref: '#/components/schemas/Adjustment'}}
+        commercial_note: {type: string}
+    PriceBasis:
+      type: object
+      additionalProperties: false
+      required: [currency, priced_unit, tax_status, freight_status, discounts_applied]
+      properties:
+        currency: {$ref: '#/components/schemas/Currency'}
+        priced_unit: {type: string}
+        tax_status: {type: string, enum: [included, excluded_with_amount, excluded_unknown]}
+        tax_amount: {$ref: '#/components/schemas/Decimal'}
+        freight_status: {type: string, enum: [included, separate_known, unknown]}
+        discounts_applied: {type: string, enum: ['yes', no_known, unknown]}
+        unit_conversion:
+          type: object
+          additionalProperties: false
+          required: [numerator, denominator, policy_version]
+          properties:
+            numerator: {$ref: '#/components/schemas/Decimal'}
+            denominator: {$ref: '#/components/schemas/Decimal'}
+            policy_version: {type: string}
+    OfferItemInput:
+      type: object
+      additionalProperties: false
+      required: [quotation_item_id, no_stock]
+      properties:
+        quotation_item_id: {$ref: '#/components/schemas/Id'}
+        offered_reference: {type: string}
+        offered_brand: {type: string}
+        available_quantity: {$ref: '#/components/schemas/Decimal'}
+        unit_price: {$ref: '#/components/schemas/Decimal'}
+        price_basis: {$ref: '#/components/schemas/PriceBasis'}
+        sales_unit: {type: string}
+        minimum_quantity: {$ref: '#/components/schemas/Decimal'}
+        sales_multiple: {$ref: '#/components/schemas/Decimal'}
+        lead_time_days: {type: integer, minimum: 0}
+        estimated_delivery_at: {type: string, format: date-time}
+        no_stock: {type: boolean}
+        substitution_type: {type: string, enum: [none, reference, brand, both]}
+        substitution_note: {type: string}
+        note: {type: string}
+      description: 'Se no_stock=true, available_quantity=0 e unit_price ausente. Caso contrário, quantidade e preço positivos e price_basis obrigatório.'
+    OfferItem:
+      type: object
+      description: DTO de resposta extensível; clientes devem ignorar campos desconhecidos.
+      required:
+      - quotation_item_id
+      - no_stock
+      - requested_reference
+      - requested_brand
+      - requested_quantity
+      - requested_unit
+      properties:
+        quotation_item_id:
+          $ref: '#/components/schemas/Id'
+        offered_reference:
+          type: string
+        offered_brand:
+          type: string
+        available_quantity:
+          $ref: '#/components/schemas/Decimal'
+        unit_price:
+          $ref: '#/components/schemas/Decimal'
+        price_basis:
+          $ref: '#/components/schemas/PriceBasis'
+        sales_unit:
+          type: string
+        minimum_quantity:
+          $ref: '#/components/schemas/Decimal'
+        sales_multiple:
+          $ref: '#/components/schemas/Decimal'
+        lead_time_days:
+          type: integer
+          minimum: 0
+        estimated_delivery_at:
+          type: string
+          format: date-time
+        no_stock:
+          type: boolean
+        substitution_type:
+          type: string
+          enum:
+          - none
+          - reference
+          - brand
+          - both
+        substitution_note:
+          type: string
+        note:
+          type: string
+        requested_reference:
+          type:
+          - string
+          - 'null'
+        requested_brand:
+          type:
+          - string
+          - 'null'
+        requested_quantity:
+          $ref: '#/components/schemas/Decimal'
+        requested_unit:
+          type: string
+    Offer:
+      type: object
+      required: [supplier_id, status, version, origin, items]
+      properties:
+        supplier_id: {$ref: '#/components/schemas/Id'}
+        status: {type: string, enum: [draft, submitted, superseded]}
+        version: {type: integer, minimum: 1}
+        origin: {type: string, enum: [authenticated_supplier, assisted_unconfirmed, assisted_confirmed]}
+        actor_id: {$ref: '#/components/schemas/Id'}
+        terms: {$ref: '#/components/schemas/CommercialTerms'}
+        items: {type: array, items: {$ref: '#/components/schemas/OfferItem'}}
+        evidence_file_sha256: {type: string}
+        on_behalf_of_supplier_id: {$ref: '#/components/schemas/Id'}
+        recorded_at: {type: string, format: date-time}
+        source: {type: string, enum: [portal, xlsx, buyer_entry, supplier_confirmation]}
+        supplier_confirmation_status: {type: string, enum: [not_required, pending, confirmed]}
+      description: assisted_unconfirmed conserva operador real e fornecedor representado; somente confirmação individual do supplier gera assisted_confirmed.
+    SupplierQuotation:
+      type: object
+      required: [quotation, offer]
+      properties:
+        quotation: {$ref: '#/components/schemas/Quotation'}
+        offer: {$ref: '#/components/schemas/Offer'}
+    OfferSubmission:
+      type: object
+      required: [submitted_revision_id, submitted_at, pending_item_ids, offer]
+      properties:
+        submitted_revision_id: {$ref: '#/components/schemas/Id'}
+        submitted_at: {type: string, format: date-time}
+        pending_item_ids: {type: array, items: {$ref: '#/components/schemas/Id'}}
+        offer: {$ref: '#/components/schemas/Offer'}
+    ImportIssue:
+      type: object
+      required: [row_number, code, message]
+      properties:
+        row_number: {type: integer}
+        code: {type: string}
+        message: {type: string}
+        candidate_item_ids: {type: array, items: {$ref: '#/components/schemas/Id'}}
+    ImportJob:
+      type: object
+      required: [id, status, supplier_id, quotation_id, file_sha256, origin, issues, preview]
+      properties:
+        id: {$ref: '#/components/schemas/Id'}
+        status: {type: string, enum: [uploaded, staging, validating, preview, committed, failed]}
+        supplier_id: {$ref: '#/components/schemas/Id'}
+        quotation_id: {$ref: '#/components/schemas/Id'}
+        file_sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        origin: {type: string, enum: [authenticated_supplier, assisted_unconfirmed]}
+        issues: {type: array, items: {$ref: '#/components/schemas/ImportIssue'}}
+        preview: {type: array, items: {$ref: '#/components/schemas/OfferItemInput'}}
+        version: {type: integer}
+    AwardPolicy:
+      type: object
+      required: [id, version, strategy_id, strategy_version, minimum_order_mode, assisted_response_mode, brand_policy, allow_overbuy, rounding]
+      properties:
+        id: {$ref: '#/components/schemas/Id'}
+        version: {type: string}
+        strategy_id: {type: string}
+        strategy_version: {type: string}
+        minimum_order_mode: {type: string, enum: [ignore, warning, hard_constraint], description: 'Avaliado por fornecedor × destino × moeda, nunca por linha'}
+        assisted_response_mode: {type: string, enum: [exclude, allow_with_warning, require_confirmation]}
+        brand_policy: {type: string, enum: [exact_only, accepted_brands, allow_review]}
+        allow_overbuy: {type: boolean, description: 'Se false, acquisition_quantity não pode superar saldo solicitado; se true, excedente e custo ficam explícitos'}
+        split_allowed: {type: boolean}
+        rounding: {type: string, enum: [HALF_UP]}
+        rules: {type: object, additionalProperties: true, description: Snapshot versionado; só regras tipadas implementadas entram na decisão}
+    AwardAllocation:
+      type: object
+      required: [id, quotation_item_id, supplier_id, allocated_quantity, acquisition_quantity, unit_price, goods_cost, comparison_status, reason_codes]
+      properties:
+        id: {$ref: '#/components/schemas/Id'}
+        quotation_item_id: {$ref: '#/components/schemas/Id'}
+        supplier_id: {$ref: '#/components/schemas/Id'}
+        allocated_quantity: {$ref: '#/components/schemas/Decimal'}
+        acquisition_quantity: {$ref: '#/components/schemas/Decimal'}
+        unit_price: {$ref: '#/components/schemas/Decimal'}
+        goods_cost: {$ref: '#/components/schemas/Decimal'}
+        landed_cost: {$ref: '#/components/schemas/Decimal'}
+        comparison_status: {type: string, enum: [comparable, requires_review]}
+        reason_codes: {type: array, items: {type: string}}
+        tie_break: {type: array, items: {type: string}}
+        payment_terms: {$ref: '#/components/schemas/PaymentTerms'}
+        lead_time_days: {type: integer}
+    AwardCandidate:
+      type: object
+      required: [quotation_item_id, supplier_id, eligibility_status, reason_codes]
+      properties:
+        quotation_item_id: {$ref: '#/components/schemas/Id'}
+        supplier_id: {$ref: '#/components/schemas/Id'}
+        nominal_unit_price: {$ref: '#/components/schemas/Decimal'}
+        eligibility_status: {type: string, enum: [eligible, ineligible, requires_review]}
+        reason_codes: {type: array, items: {type: string}}
+    AwardItemComparison:
+      type: object
+      required: [quotation_item_id, comparison_status]
+      properties:
+        quotation_item_id: {$ref: '#/components/schemas/Id'}
+        lowest_unit_price: {$ref: '#/components/schemas/Decimal'}
+        comparison_status: {type: string, enum: [comparable, requires_review, no_eligible_offer]}
+        reason_codes: {type: array, items: {type: string}}
+    SupplierDestinationScenario:
+      type: object
+      additionalProperties: false
+      required: [supplier_id, destination_external_id, currency, allocations, goods_subtotal, minimum_order_mode, minimum_order_amount, minimum_status, freight_status, comparison_status, scenario_feasibility, violations, alerts, non_comparable_fields]
+      properties:
+        supplier_id: {$ref: '#/components/schemas/Id'}
+        destination_external_id: {type: string}
+        currency: {$ref: '#/components/schemas/Currency'}
+        allocations: {type: array, items: {$ref: '#/components/schemas/AwardAllocation'}}
+        goods_subtotal: {$ref: '#/components/schemas/Decimal'}
+        acquired_quantity: {$ref: '#/components/schemas/Decimal'}
+        freight_mode: {type: string, enum: [CIF, FOB, included, fixed, unknown]}
+        freight_status: {type: string, enum: [known, unknown, not_applicable]}
+        freight_known_amount: {$ref: '#/components/schemas/Decimal'}
+        minimum_order_amount: {$ref: '#/components/schemas/Decimal'}
+        minimum_order_mode: {type: string, enum: [ignore, warning, hard_constraint]}
+        minimum_status: {type: string, enum: [met, ignored, warning, violated]}
+        commercial_known_total: {$ref: '#/components/schemas/Decimal'}
+        comparison_status: {type: string, enum: [comparable, requires_review]}
+        scenario_feasibility: {type: string, enum: [feasible, warning, requires_review, infeasible]}
+        violations: {type: array, items: {type: string}}
+        alerts: {type: array, items: {type: string}}
+        non_comparable_fields: {type: array, items: {type: string}}
+      allOf:
+        - if: {properties: {freight_status: {const: unknown}}}
+          then: {properties: {comparison_status: {const: requires_review}}}
+        - if: {properties: {minimum_order_mode: {const: hard_constraint}, minimum_status: {const: violated}}}
+          then: {properties: {scenario_feasibility: {const: infeasible}}}
+      description: Frete desconhecido exige comparação requires_review. Se também houver violação hard conhecida, scenario_feasibility é infeasible; caso contrário requires_review. Não há rateio arbitrário por item.
+    SuggestedAward:
+      type: object
+      additionalProperties: false
+      required: [strategy_id, strategy_version, allocation_ids, scenario_feasibility, reason_codes]
+      properties:
+        strategy_id: {type: string}
+        strategy_version: {type: string}
+        allocation_ids: {type: array, items: {$ref: '#/components/schemas/Id'}}
+        scenario_feasibility: {type: string, enum: [feasible, warning, requires_review, infeasible]}
+        reason_codes: {type: array, items: {type: string}}
+      description: Resultado da estratégia; menor preço unitário não implica melhor cenário comercial.
+    AwardRun:
+      type: object
+      required: [id, quotation_id, status, version, input_hash, result_hash, input_schema_version, policy, strategy_artifact_digest, item_comparisons, candidates, allocations, pending_items, supplier_destination_scenarios, suggested_award, alerts, rules_applied, rules_ignored]
+      properties:
+        id: {$ref: '#/components/schemas/Id'}
+        quotation_id: {$ref: '#/components/schemas/Id'}
+        parent_run_id: {$ref: '#/components/schemas/Id'}
+        status: {type: string, enum: [computed, approved, rejected, superseded]}
+        version: {type: integer, minimum: 1}
+        input_hash: {type: string, pattern: '^[a-f0-9]{64}$'}
+        result_hash: {type: string, pattern: '^[a-f0-9]{64}$'}
+        input_schema_version: {type: string}
+        strategy_artifact_digest: {type: string}
+        policy: {$ref: '#/components/schemas/AwardPolicy'}
+        item_comparisons: {type: array, items: {$ref: '#/components/schemas/AwardItemComparison'}}
+        candidates: {type: array, items: {$ref: '#/components/schemas/AwardCandidate'}}
+        allocations: {type: array, items: {$ref: '#/components/schemas/AwardAllocation'}}
+        pending_items: {type: array, items: {type: object, required: [quotation_item_id, remaining_quantity, reason_codes], properties: {quotation_item_id: {$ref: '#/components/schemas/Id'}, remaining_quantity: {$ref: '#/components/schemas/Decimal'}, reason_codes: {type: array, items: {type: string}}}}}
+        supplier_destination_scenarios: {type: array, items: {$ref: '#/components/schemas/SupplierDestinationScenario'}}
+        suggested_award: {$ref: '#/components/schemas/SuggestedAward'}
+        alerts: {type: array, items: {type: object, required: [code, message], properties: {code: {type: string}, message: {type: string}}}}
+        rules_applied: {type: array, items: {type: string}}
+        rules_ignored: {type: array, items: {type: string}}
+        adjustments: {type: array, items: {$ref: '#/components/schemas/AwardAdjustment'}}
+    AwardSnapshot:
+      type: object
+      required: [award_run_id, schema_version, canonicalization, input_hash, strategy_id, strategy_version, strategy_artifact_digest, captured_at, input]
+      properties:
+        award_run_id: {$ref: '#/components/schemas/Id'}
+        schema_version: {type: string}
+        canonicalization: {type: string, example: RFC8785}
+        input_hash: {type: string, pattern: '^[a-f0-9]{64}$'}
+        strategy_id: {type: string}
+        strategy_version: {type: string}
+        strategy_artifact_digest: {type: string}
+        captured_at: {type: string, format: date-time}
+        input: {type: object, additionalProperties: true, description: 'Snapshot completo de itens, propostas, condições, relacionamento e política; versionado por schema_version'}
+    AwardAdjustment:
+      type: object
+      additionalProperties: false
+      required: [quotation_item_id, supplier_id, allocated_quantity, reason, acknowledged_impact_codes]
+      properties:
+        quotation_item_id: {$ref: '#/components/schemas/Id'}
+        supplier_id: {$ref: '#/components/schemas/Id'}
+        allocated_quantity: {$ref: '#/components/schemas/Decimal'}
+        reason: {type: string, minLength: 3, maxLength: 2000}
+        acknowledged_impact_codes: {type: array, items: {type: string}}
+    OrderItem:
+      type: object
+      required: [quotation_item_id, requested_reference, offered_reference, requested_brand, offered_brand, ordered_quantity, unit, unit_price, line_total]
+      properties:
+        quotation_item_id: {$ref: '#/components/schemas/Id'}
+        requested_reference: {type: [string, 'null']}
+        offered_reference: {type: [string, 'null']}
+        requested_brand: {type: [string, 'null']}
+        offered_brand: {type: [string, 'null']}
+        ordered_quantity: {$ref: '#/components/schemas/Decimal'}
+        unit: {type: string}
+        unit_price: {$ref: '#/components/schemas/Decimal'}
+        line_total: {$ref: '#/components/schemas/Decimal'}
+    PurchaseOrder:
+      type: object
+      required: [id, number, status, version, quotation_id, award_run_id, buyer_snapshot, supplier_snapshot, destination, currency, items, goods_total, freight_total, total, commercial_terms]
+      properties:
+        id: {$ref: '#/components/schemas/Id'}
+        number: {type: string, example: PO-2026-0000123}
+        status: {type: string, enum: [draft, issued, acknowledged, confirmed, declined, cancelled, partially_received, received]}
+        version: {type: integer, minimum: 1}
+        quotation_id: {$ref: '#/components/schemas/Id'}
+        award_run_id: {$ref: '#/components/schemas/Id'}
+        buyer_snapshot: {$ref: '#/components/schemas/BuyerSnapshot'}
+        supplier_snapshot: {type: object, required: [id, legal_name], properties: {id: {$ref: '#/components/schemas/Id'}, legal_name: {type: string}, tax_identifier: {type: string}}}
+        destination: {$ref: '#/components/schemas/Destination'}
+        currency: {$ref: '#/components/schemas/Currency'}
+        items: {type: array, items: {$ref: '#/components/schemas/OrderItem'}}
+        goods_total: {$ref: '#/components/schemas/Decimal'}
+        freight_total: {$ref: '#/components/schemas/Decimal'}
+        total: {$ref: '#/components/schemas/Decimal'}
+        commercial_terms: {$ref: '#/components/schemas/CommercialTerms'}
+        external_refs: {type: array, items: {$ref: '#/components/schemas/ExternalRef'}}
+        transitions: {type: array, items: {type: object, required: [from, to, at, actor_id], properties: {from: {type: string}, to: {type: string}, at: {type: string, format: date-time}, actor_id: {$ref: '#/components/schemas/Id'}, reason: {type: string}}}}
+    Document:
+      type: object
+      required: [id, order_id, format, status, sha256, template_version]
+      properties:
+        id: {$ref: '#/components/schemas/Id'}
+        order_id: {$ref: '#/components/schemas/Id'}
+        format: {type: string, enum: [pdf, xlsx]}
+        status: {type: string, enum: [preview, final]}
+        sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+        template_version: {type: string}
+        download_url: {type: string, format: uri, description: URL temporária e restrita}
+        expires_at: {type: string, format: date-time}
+    DocumentDownload:
+      allOf:
+        - {$ref: '#/components/schemas/Document'}
+        - {type: object, required: [download_url, expires_at]}
+    WebhookSubscriptionCreate:
+      type: object
+      additionalProperties: false
+      required: [url, event_types]
+      properties:
+        url: {type: string, format: uri, pattern: '^https://'}
+        event_types: {type: array, minItems: 1, items: {type: string, enum: [quotation.created.v1, offer.submitted.v1, award.approved.v1, purchase_order.created.v1, purchase_order.issued.v1, purchase_order.confirmed.v1, purchase_order.declined.v1, purchase_order.cancelled.v1, purchase_order.partially_received.v1, purchase_order.received.v1]}}
+    WebhookSubscription:
+      type: object
+      description: DTO de resposta extensível; clientes devem ignorar campos desconhecidos.
+      required:
+      - url
+      - event_types
+      - id
+      - status
+      properties:
+        url:
+          type: string
+          format: uri
+          pattern: ^https://
+        event_types:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+            - quotation.created.v1
+            - offer.submitted.v1
+            - award.approved.v1
+            - purchase_order.created.v1
+            - purchase_order.issued.v1
+            - purchase_order.confirmed.v1
+            - purchase_order.declined.v1
+            - purchase_order.cancelled.v1
+            - purchase_order.partially_received.v1
+            - purchase_order.received.v1
+        id:
+          $ref: '#/components/schemas/Id'
+        status:
+          type: string
+          enum:
+          - active
+          - paused
+        key_id:
+          type: string
+    WebhookSubscriptionCreated:
+      type: object
+      description: DTO de resposta extensível; clientes devem ignorar campos desconhecidos.
+      required:
+      - url
+      - event_types
+      - id
+      - status
+      - signing_secret
+      properties:
+        url:
+          type: string
+          format: uri
+          pattern: ^https://
+        event_types:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+            - quotation.created.v1
+            - offer.submitted.v1
+            - award.approved.v1
+            - purchase_order.created.v1
+            - purchase_order.issued.v1
+            - purchase_order.confirmed.v1
+            - purchase_order.declined.v1
+            - purchase_order.cancelled.v1
+            - purchase_order.partially_received.v1
+            - purchase_order.received.v1
+        id:
+          $ref: '#/components/schemas/Id'
+        status:
+          type: string
+          enum:
+          - active
+          - paused
+        key_id:
+          type: string
+        signing_secret:
+          type: string
+          description: Retornado apenas uma vez
+    EventEnvelope:
+      oneOf:
+        - {$ref: '#/components/schemas/QuotationCreatedEvent'}
+        - {$ref: '#/components/schemas/OfferSubmittedEvent'}
+        - {$ref: '#/components/schemas/AwardApprovedEvent'}
+        - {$ref: '#/components/schemas/PurchaseOrderCreatedEvent'}
+        - {$ref: '#/components/schemas/PurchaseOrderIssuedEvent'}
+        - {$ref: '#/components/schemas/PurchaseOrderConfirmedEvent'}
+        - {$ref: '#/components/schemas/PurchaseOrderDeclinedEvent'}
+        - {$ref: '#/components/schemas/PurchaseOrderCancelledEvent'}
+        - {$ref: '#/components/schemas/PurchaseOrderPartiallyReceivedEvent'}
+        - {$ref: '#/components/schemas/PurchaseOrderReceivedEvent'}
+      discriminator:
+        propertyName: event_type
+        mapping:
+          quotation.created.v1: '#/components/schemas/QuotationCreatedEvent'
+          offer.submitted.v1: '#/components/schemas/OfferSubmittedEvent'
+          award.approved.v1: '#/components/schemas/AwardApprovedEvent'
+          purchase_order.created.v1: '#/components/schemas/PurchaseOrderCreatedEvent'
+          purchase_order.issued.v1: '#/components/schemas/PurchaseOrderIssuedEvent'
+          purchase_order.confirmed.v1: '#/components/schemas/PurchaseOrderConfirmedEvent'
+          purchase_order.declined.v1: '#/components/schemas/PurchaseOrderDeclinedEvent'
+          purchase_order.cancelled.v1: '#/components/schemas/PurchaseOrderCancelledEvent'
+          purchase_order.partially_received.v1: '#/components/schemas/PurchaseOrderPartiallyReceivedEvent'
+          purchase_order.received.v1: '#/components/schemas/PurchaseOrderReceivedEvent'
+    EventBase:
+      type: object
+      required: [event_id, event_type, schema_version, tenant_id, occurred_at, correlation_id, aggregate, payload]
+      properties:
+        event_id: {$ref: '#/components/schemas/Id'}
+        event_type: {type: string}
+        schema_version: {type: string, const: "1"}
+        tenant_id: {$ref: '#/components/schemas/Id'}
+        occurred_at: {type: string, format: date-time}
+        correlation_id: {type: string}
+        aggregate: {type: object, additionalProperties: false, required: [type, id, version], properties: {type: {type: string}, id: {$ref: '#/components/schemas/Id'}, version: {type: integer, minimum: 1}}}
+        payload: {type: object}
+      description: Envelope sem token, OTP, PIN, endereço privado, dados pessoais de contato ou URL assinada.
+    QuotationCreatedEvent:
+      unevaluatedProperties: false
+      allOf:
+        - {$ref: '#/components/schemas/EventBase'}
+        - type: object
+          required: [event_type, payload]
+          properties:
+            event_type: {type: string, const: quotation.created.v1}
+            payload:
+              type: object
+              additionalProperties: false
+              required: [quotation_id, quotation_version]
+              properties:
+                quotation_id: {$ref: '#/components/schemas/Id'}
+                quotation_version: {type: integer}
+    OfferSubmittedEvent:
+      unevaluatedProperties: false
+      allOf:
+        - {$ref: '#/components/schemas/EventBase'}
+        - type: object
+          required: [event_type, payload]
+          properties:
+            event_type: {type: string, const: offer.submitted.v1}
+            payload:
+              type: object
+              additionalProperties: false
+              required: [quotation_id, supplier_id, submitted_revision_id, origin]
+              properties:
+                quotation_id: {$ref: '#/components/schemas/Id'}
+                supplier_id: {$ref: '#/components/schemas/Id'}
+                submitted_revision_id: {$ref: '#/components/schemas/Id'}
+                origin: {type: string}
+    AwardApprovedEvent:
+      unevaluatedProperties: false
+      allOf:
+        - {$ref: '#/components/schemas/EventBase'}
+        - type: object
+          required: [event_type, payload]
+          properties:
+            event_type: {type: string, const: award.approved.v1}
+            payload:
+              type: object
+              additionalProperties: false
+              required: [quotation_id, award_run_id, policy_version, result_hash]
+              properties:
+                quotation_id: {$ref: '#/components/schemas/Id'}
+                award_run_id: {$ref: '#/components/schemas/Id'}
+                policy_version: {type: string}
+                result_hash: {type: string}
+    PurchaseOrderCreatedEvent:
+      unevaluatedProperties: false
+      allOf:
+        - {$ref: '#/components/schemas/EventBase'}
+        - type: object
+          required: [event_type, payload]
+          properties:
+            event_type: {type: string, const: purchase_order.created.v1}
+            payload:
+              type: object
+              additionalProperties: false
+              required: [order_id, quotation_id, supplier_id, order_status]
+              properties:
+                order_id: {$ref: '#/components/schemas/Id'}
+                quotation_id: {$ref: '#/components/schemas/Id'}
+                supplier_id: {$ref: '#/components/schemas/Id'}
+                order_status: {type: string}
+    PurchaseOrderIssuedEvent:
+      unevaluatedProperties: false
+      allOf:
+        - {$ref: '#/components/schemas/EventBase'}
+        - type: object
+          required: [event_type, payload]
+          properties:
+            event_type: {type: string, const: purchase_order.issued.v1}
+            payload:
+              type: object
+              additionalProperties: false
+              required: [order_id, quotation_id, supplier_id, currency, total, issued_at]
+              properties:
+                order_id: {$ref: '#/components/schemas/Id'}
+                quotation_id: {$ref: '#/components/schemas/Id'}
+                supplier_id: {$ref: '#/components/schemas/Id'}
+                currency: {$ref: '#/components/schemas/Currency'}
+                total: {$ref: '#/components/schemas/Decimal'}
+                issued_at: {type: string, format: date-time}
+    PurchaseOrderConfirmedEvent:
+      unevaluatedProperties: false
+      allOf:
+        - {$ref: '#/components/schemas/EventBase'}
+        - type: object
+          required: [event_type, payload]
+          properties:
+            event_type: {type: string, const: purchase_order.confirmed.v1}
+            payload:
+              type: object
+              additionalProperties: false
+              required: [order_id, supplier_id, confirmed_at]
+              properties:
+                order_id: {$ref: '#/components/schemas/Id'}
+                supplier_id: {$ref: '#/components/schemas/Id'}
+                confirmed_at: {type: string, format: date-time}
+    PurchaseOrderDeclinedEvent:
+      unevaluatedProperties: false
+      allOf:
+        - {$ref: '#/components/schemas/EventBase'}
+        - type: object
+          required: [event_type, payload]
+          properties:
+            event_type: {type: string, const: purchase_order.declined.v1}
+            payload:
+              type: object
+              additionalProperties: false
+              required: [order_id, supplier_id, declined_at, reason]
+              properties:
+                order_id: {$ref: '#/components/schemas/Id'}
+                supplier_id: {$ref: '#/components/schemas/Id'}
+                declined_at: {type: string, format: date-time}
+                reason: {type: string}
+    PurchaseOrderCancelledEvent:
+      unevaluatedProperties: false
+      allOf:
+        - {$ref: '#/components/schemas/EventBase'}
+        - type: object
+          required: [event_type, payload]
+          properties:
+            event_type: {type: string, const: purchase_order.cancelled.v1}
+            payload:
+              type: object
+              additionalProperties: false
+              required: [order_id, supplier_id, cancelled_at, reason]
+              properties:
+                order_id: {$ref: '#/components/schemas/Id'}
+                supplier_id: {$ref: '#/components/schemas/Id'}
+                cancelled_at: {type: string, format: date-time}
+                reason: {type: string}
+    PurchaseOrderPartiallyReceivedEvent:
+      unevaluatedProperties: false
+      allOf:
+        - {$ref: '#/components/schemas/EventBase'}
+        - type: object
+          required: [event_type, payload]
+          properties:
+            event_type: {type: string, const: purchase_order.partially_received.v1}
+            payload:
+              type: object
+              additionalProperties: false
+              required: [order_id, receipt_id, received_at]
+              properties:
+                order_id: {$ref: '#/components/schemas/Id'}
+                receipt_id: {$ref: '#/components/schemas/Id'}
+                received_at: {type: string, format: date-time}
+    PurchaseOrderReceivedEvent:
+      unevaluatedProperties: false
+      allOf:
+        - {$ref: '#/components/schemas/EventBase'}
+        - type: object
+          required: [event_type, payload]
+          properties:
+            event_type: {type: string, const: purchase_order.received.v1}
+            payload:
+              type: object
+              additionalProperties: false
+              required: [order_id, receipt_id, received_at]
+              properties:
+                order_id: {$ref: '#/components/schemas/Id'}
+                receipt_id: {$ref: '#/components/schemas/Id'}
+                received_at: {type: string, format: date-time}
+    Usage:
+      type: object
+      required: [module_enabled, plan, period_start, period_end, counters]
+      properties:
+        module_enabled: {type: boolean}
+        plan: {type: string}
+        period_start: {type: string, format: date-time}
+        period_end: {type: string, format: date-time}
+        limits: {type: object, additionalProperties: {type: integer}}
+        counters: {type: object, additionalProperties: {type: integer}, example: {quotations_created: 10, suppliers_invited: 18, responses_submitted: 12, orders_issued: 5}}
+    Problem:
+      type: object
+      required: [type, title, status, code, request_id]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        code: {type: string, enum: [invalid_request, invalid_token, invalid_otp, expired_otp, invitation_expired, invitation_revoked, invitation_replayed, resource_not_found, insufficient_scope, tenant_mismatch, supplier_mismatch, idempotency_key_conflict, version_conflict, precondition_required, quotation_closed, duplicate_issue, quotation_has_issued_orders, webhook_replay, rate_limited, domain_violation], example: version_conflict}
+        detail: {type: string}
+        request_id: {type: string}
+        resource_version: {type: integer}
+        invalid_params: {type: array, items: {type: object, required: [name, reason], properties: {name: {type: string}, reason: {type: string}, row_number: {type: integer}}}}

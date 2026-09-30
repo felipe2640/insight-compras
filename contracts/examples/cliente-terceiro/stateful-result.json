@@ -1,0 +1,560 @@
+{
+  "positive_and_negative": [
+    {
+      "case": "bootstrap T1",
+      "status": 201
+    },
+    {
+      "case": "bootstrap T2",
+      "status": 201
+    },
+    {
+      "case": "authenticate A1",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "authenticate A2",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "create supplier",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "create quotation",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "SSO trusted assertion launch",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "SSO assertion replay",
+      "status": 409,
+      "code": "idempotency_key_conflict"
+    },
+    {
+      "case": "SSO issuer rejected",
+      "status": 401,
+      "code": "invalid_token"
+    },
+    {
+      "case": "SSO audience rejected",
+      "status": 401,
+      "code": "invalid_token"
+    },
+    {
+      "case": "SSO tenant mismatch",
+      "status": 403,
+      "code": "tenant_mismatch"
+    },
+    {
+      "case": "SSO callback rejected",
+      "status": 400,
+      "code": "invalid_request"
+    },
+    {
+      "case": "SSO Hub buyer session launch",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "add items",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "open",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "invite",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "redeem quotation invitation",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "create OTP",
+      "status": 202,
+      "code": null
+    },
+    {
+      "case": "verify OTP",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "read supplier quotation",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "bulk offer",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "commercial terms",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "submit",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "buyer reread",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "close",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "read policy",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "calculate award",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "evaluate scenario",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "read award snapshot",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "manual adjustment",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "approve",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "prepare PO",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "review PO",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "revise PO draft",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "issue PO",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "issue timeout retry",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "invite order responder",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "redeem order invitation",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "order OTP",
+      "status": 202,
+      "code": null
+    },
+    {
+      "case": "verify order OTP",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "read supplier order",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "confirm order",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "read events",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "read event cursor page",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "T2 cannot use T1 event cursor",
+      "status": 404,
+      "code": "resource_not_found"
+    },
+    {
+      "case": "read next event cursor page",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "event chain",
+      "status": 200
+    },
+    {
+      "case": "create T2 quote",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "A1 cannot read T2",
+      "status": 404,
+      "code": "resource_not_found"
+    },
+    {
+      "case": "supplier T1 cannot read T2",
+      "status": 404,
+      "code": "resource_not_found"
+    },
+    {
+      "case": "Q1 invite cannot read Q2",
+      "status": 404,
+      "code": "resource_not_found"
+    },
+    {
+      "case": "create supplier B",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "create Q3",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "open Q3",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "invite B to Q3",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "redeem B Q3",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "OTP B Q3",
+      "status": 202,
+      "code": null
+    },
+    {
+      "case": "verify B Q3",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "supplier B cannot read Q1",
+      "status": 404,
+      "code": "resource_not_found"
+    },
+    {
+      "case": "supplier B cannot read PO A",
+      "status": 404,
+      "code": "resource_not_found"
+    },
+    {
+      "case": "read Q3 B",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "tenant body spoof",
+      "status": 400,
+      "code": "invalid_request"
+    },
+    {
+      "case": "supplier body spoof",
+      "status": 400,
+      "code": "invalid_request"
+    },
+    {
+      "case": "B bulk Q3",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "B terms Q3",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "B submit Q3",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "close Q3",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "late supplier save after close",
+      "status": 412,
+      "code": "version_conflict"
+    },
+    {
+      "case": "award Q3",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "approve Q3",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "prepare draft Q3",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "reopen Q3 with draft",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "reopen atomically supersedes draft and award",
+      "status": 200
+    },
+    {
+      "case": "T2 document IDOR",
+      "status": 404,
+      "code": "resource_not_found"
+    },
+    {
+      "case": "buyer document URL",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "document URL different actor",
+      "status": 404,
+      "code": "resource_not_found"
+    },
+    {
+      "case": "document URL expired",
+      "status": 410,
+      "code": "document_url_expired"
+    },
+    {
+      "case": "T2 order IDOR",
+      "status": 404,
+      "code": "resource_not_found"
+    },
+    {
+      "case": "quotation invite replay",
+      "status": 410,
+      "code": "invitation_replayed"
+    },
+    {
+      "case": "order invite replay",
+      "status": 410,
+      "code": "invitation_replayed"
+    },
+    {
+      "case": "OTP resend cooldown",
+      "status": 429,
+      "code": "rate_limited"
+    },
+    {
+      "case": "new OTP for negative",
+      "status": 202,
+      "code": null
+    },
+    {
+      "case": "wrong OTP",
+      "status": 401,
+      "code": "invalid_otp"
+    },
+    {
+      "case": "wrong OTP attempt 2",
+      "status": 401,
+      "code": "invalid_otp"
+    },
+    {
+      "case": "wrong OTP attempt 3",
+      "status": 401,
+      "code": "invalid_otp"
+    },
+    {
+      "case": "wrong OTP attempt 4",
+      "status": 401,
+      "code": "invalid_otp"
+    },
+    {
+      "case": "wrong OTP attempt 5",
+      "status": 401,
+      "code": "invalid_otp"
+    },
+    {
+      "case": "OTP attempts exhausted",
+      "status": 429,
+      "code": "rate_limited"
+    },
+    {
+      "case": "new expiring OTP",
+      "status": 202,
+      "code": null
+    },
+    {
+      "case": "expired OTP",
+      "status": 410,
+      "code": "expired_otp"
+    },
+    {
+      "case": "reread for invite",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "fresh invite expired invitation",
+      "status": 409,
+      "code": "quotation_closed"
+    },
+    {
+      "case": "expired invitation",
+      "status": 410,
+      "code": "invitation_expired"
+    },
+    {
+      "case": "reread for invite",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "fresh invite revoked invitation",
+      "status": 409,
+      "code": "quotation_closed"
+    },
+    {
+      "case": "revoked invitation",
+      "status": 410,
+      "code": "invitation_revoked"
+    },
+    {
+      "case": "idempotent create",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "same key same payload",
+      "status": 201,
+      "code": null
+    },
+    {
+      "case": "same key different payload",
+      "status": 409,
+      "code": "idempotency_key_conflict"
+    },
+    {
+      "case": "missing If-Match",
+      "status": 428,
+      "code": "precondition_required"
+    },
+    {
+      "case": "wrong ETag",
+      "status": 412,
+      "code": "version_conflict"
+    },
+    {
+      "case": "submit after close",
+      "status": 409,
+      "code": "quotation_closed"
+    },
+    {
+      "case": "close stale version",
+      "status": 412,
+      "code": "version_conflict"
+    },
+    {
+      "case": "duplicate issue",
+      "status": 409,
+      "code": "duplicate_issue"
+    },
+    {
+      "case": "reread before reopen",
+      "status": 200,
+      "code": null
+    },
+    {
+      "case": "reopen after issued",
+      "status": 409,
+      "code": "quotation_has_issued_orders"
+    },
+    {
+      "case": "webhook signature tampered",
+      "status": 401,
+      "code": "invalid_token"
+    },
+    {
+      "case": "webhook timestamp expired",
+      "status": 409,
+      "code": "webhook_replay"
+    },
+    {
+      "case": "webhook replay",
+      "status": 409,
+      "code": "webhook_replay"
+    },
+    {
+      "case": "missing scope",
+      "status": 403,
+      "code": "insufficient_scope"
+    },
+    {
+      "case": "supplier idle session expired",
+      "status": 401,
+      "code": "invalid_token"
+    }
+  ],
+  "count": 111,
+  "tenant_ids_distinct": true,
+  "quote_ids_distinct": true,
+  "issued_event_id": "853efa15-9b57-4d70-b00d-7f2147bf5159",
+  "undeclared_responses": []
+}

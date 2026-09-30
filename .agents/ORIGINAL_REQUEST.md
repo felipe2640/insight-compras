@@ -435,3 +435,37 @@ Três dependências reais, e só três:
 U0 e U1 vão primeiro não por dependência, mas por economia: U0 é o que o cliente
 novo vê, e U1 impede que cada agente seguinte gaste contexto investigando
 vermelho que não é dele.
+
+## 2026-09-27T14:05:00Z
+
+# Módulo de Cotação acoplado ao Insight Compras e ao Diário
+
+> Status: Planejado — aguardando despacho do orquestrador
+> Goal: execução multiagente do sistema de cotação com distribuidoras, indústrias e autopeças, acoplado aos projetos já em produção
+> Requested team: Full team (orquestrador, workers, reviewers, challengers, auditor, spec_miner)
+
+Criar o sistema de cotação que substitui o Cotaflash no ciclo falta → cotação →
+corte → pedido → entrada, conectado ao Insight Compras (dono do módulo) e ao
+Diário (que só envia as faltas), sem nenhuma mudança visível em produção até o
+piloto ser ligado.
+
+Documentos de referência:
+- `docs/cotacao/00-contexto.md` — processo atual e dores (áudios e vídeos do comprador, 25/09/2026)
+- `docs/cotacao/01-contratos.md` — migração, RPCs, tipos, rotas e flags congelados
+- `docs/cotacao/02-producao.md` — travas, sequência de entrada em produção e rollback
+- `.agents/orchestrator_cotacao/plan.md` — invariantes, matriz de posse, unidades C0 a C9 e S1, portões G0 a G3
+
+## Requisitos
+- R1. Portal do vendedor sem login (token por convite), com preço, marca ofertada, quantidade disponível, prazo, sem estoque, observação por item e botão "Terminei".
+- R2. Corte automático e revisável (menor preço por item, com desempates, divisão por quantidade, marcas aceitas e alerta de faturamento mínimo); ajuste manual exige motivo e vai para a auditoria.
+- R3. Pedido por fornecedor e filial gerado como `aprendizado_snapshot` (`origem='cotacao'`), com PDF no layout atual e XLSX para o carrinho do vendedor.
+- R4. Botão "Enviar para cotação" no Diário, criando o rascunho por RPC.
+- R5. Ciclo do pedido: aceite do vendedor → confirmado; entrada no ERP → recebido.
+- R6. Tudo desligado por padrão (flag dupla), migração só aditiva e ensaiada, sem `service_role` no runtime.
+
+## Critérios de Aceite
+- [ ] Com a flag desligada, produção idêntica à de hoje (teste de arquitetura + smoke nos dois apps).
+- [ ] Vendedor nunca vê convite, preço ou pedido de outro vendedor ou de outro tenant (teste adversarial SQL).
+- [ ] Corte automático igual ao do Cotaflash nas cotações do piloto, ou diferença explicada pela regra.
+- [ ] Pedido gerado confere com a folha atual (itens, quantidades, total).
+- [ ] Zero redigitação pelo comprador depois do corte.

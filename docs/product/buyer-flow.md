@@ -1,0 +1,11 @@
+# Jornada buyer — pré-G0 v2
+
+1. Importa faltas ou seleciona itens na UI própria ou sistema hospedeiro; confere unidade, quantidade e destino. O Hub salva snapshot e IDs externos opacos. Rascunho pode receber itens em lote, com seleção em massa de escopo visível e prévia por filial/destino.
+2. Escolhe fornecedores de sua relação comercial ou cadastra nova relação. O Hub mostra contatos daquele buyer, sem revelar carteira de outros tenants.
+3. Define prazo da cotação, política de marcas/substituição e política de corte; prévia mostra itens sem referência/unidade e condições faltantes. Publica e envia convites em lote por e-mail.
+4. Acompanha entregue, visualizado, respondendo e concluído; cobra por canal de notificação, sem copiar token para log. Pode importar resposta assistida de Excel, e-mail, WhatsApp ou telefone com origem/ator explícitos. Arquivo segue upload → staging → validation → preview → commit, com atestado/proveniência; não se apresenta como resposta autenticada do fornecedor.
+5. Fecha respostas com ETag; salvamento supplier concorrente que perdeu a corrida recebe 409/412 e não entra no corte. Vê mapa item × fornecedor, menor preço nominal, menor custo elegível, corte sugerido, pendências e causas de exclusão. Mínimo e frete são avaliados por pedido fornecedor × destino, nunca por item isolado. Preço incomparável aparece como `requires_review`. Em celular, razões e saldos aparecem em cartões, sem tabela horizontal obrigatória.
+6. Ajusta quantidade/fornecedor com motivo, aprova execução versionada, gera pedidos em rascunho. Revisa condições, destino e totais antes de emitir. Pedido dependente de proposta assistida sem confirmação do supplier requer resolução ou exceção governada registrada.
+7. Emite pedidos, acompanha confirmação/recusa e recebe eventos. Atalhos para ações em lote devem preservar revisão de exceções; números e detalhes ficam acessíveis por teclado e em tela móvel.
+
+Métricas de UX a verificar em protótipo: número de ações para 100 itens/10 fornecedores, campos digitados repetidamente, tempo até envio, erros de matching, tempo de revisão de pendências e visibilidade de alterações não salvas. Nenhum item exige abrir uma página individual para cotá-lo.
