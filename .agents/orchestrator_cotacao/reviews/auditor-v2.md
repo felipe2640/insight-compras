@@ -1,3 +1,5 @@
+> **SUPERSEDED — NÃO UTILIZAR PARA IMPLEMENTAÇÃO.** Revisão intermediária; fontes vigentes em `docs/SOURCE_OF_TRUTH.md`, pareceres finais em `reviews/*-g0-final.md`.
+
 # A8 Auditor — revisão pré-G0 v2 do Cotação Hub
 
 **Veredito: BLOCKED.** Auditoria realizada depois da publicação do OpenAPI, do smoke contra Prism e do veredito final A7. Este parecer não altera contratos nem autoriza H0–H7, I1, D1 ou C0–C9.

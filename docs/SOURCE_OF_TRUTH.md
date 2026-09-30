@@ -1,6 +1,6 @@
 # Cotação Hub — fonte de verdade pré-G0
 
-**Estado:** contratos em revisão; nenhuma unidade de implementação autorizada. Esta árvore documental no branch de planejamento será transferida ao futuro repositório independente `cotacao-hub` quando G0 for aprovado e revisado por humano.
+**Estado:** G0 READY contratual. Esta etapa consolida o pacote para revisão humana de transferência; não autoriza criação de repositório nem implementação. A execução anteriormente iniciada em outro checkout foi suspensa pela missão de consolidação de 30/09/2026; ver `docs/repository-readiness-report.md`.
 
 ## Autoridade por assunto
 
@@ -16,6 +16,19 @@
 | Portões e ownership multiagente | `.agents/orchestrator_cotacao/{plan-v2,GATE_STATUS}.md` |
 
 Se um documento conceitual e o OpenAPI divergirem em campo ou comportamento HTTP, **G0 fica BLOCKED** até ambos serem corrigidos; o OpenAPI prevalece apenas para wire format, não para alterar regra de domínio silenciosamente. ADR vigente prevalece sobre nota histórica. Nenhum agente pode receber documentos `SUPERSEDED` como instrução de implementação.
+
+## Precedência e resolução de conflitos
+
+1. Este índice determina quais documentos são vigentes e seu escopo.
+2. ADR vigente determina decisão arquitetural.
+3. OpenAPI determina nomes, schemas e comportamento wire/API.
+4. Domínio e segurança determinam regras e invariantes.
+5. Plano multiagente determina ownership, dependências e gates.
+6. Fixtures exemplificam e verificam contratos.
+7. `docs/gates/G0.md` registra a evidência histórica de aprovação.
+8. Histórico/SUPERSEDED não tem autoridade de implementação.
+
+Conflito entre fontes vigentes deve ser registrado em `.agents/orchestrator_cotacao/contract-change-requests.md` e bloqueia transferência ou o gate afetado até revisão. A precedência não autoriza modificar silenciosamente invariantes. O OpenAPI aprovado é preservado nesta consolidação.
 
 ## Ordem obrigatória de leitura para H0–H7 após liberação humana
 
@@ -37,7 +50,7 @@ H0–H7 continuam proibidos enquanto G0 estiver `BLOCKED`, mesmo que a leitura a
 | `docs/cotacao/02-producao.md` | Prescreve migração no Supabase compartilhado e implantação acoplada |
 | `.agents/orchestrator_cotacao/{DISPATCH,plan,pedidos-de-contrato,progress}.md` (corpo antigo) | Plano C0–C9/S1 cancelado; usar apenas os avisos de supersessão e `plan-v2.md` |
 | Anexo do Diário `2026-09-27-enviar-para-cotacao.md` | C7 por RPC do plano anterior; não executar |
-| `/Users/felipebarbosa/Documents/Codex/2026-09-29/antes-de-implementar-qualquer-c-digo/outputs/cotacao-hub-especificacao-v1.md` | Rascunho v1 antes dos contratos comerciais/segurança v2; não enviar a workers |
+| `docs/archive/pre-g0/cotacao-hub-especificacao-v1.md` | Rascunho v1 antes dos contratos comerciais/segurança v2; não enviar a workers |
 | ADR 0001–0007 do repositório Insight | Vigentes para o Insight, não são ADRs do Hub; não transferir como contrato do Hub |
 
-Relatórios em `.agents/orchestrator_cotacao/reviews/` são evidência histórica de revisão, não fonte de contrato. No novo repositório, transferir apenas fontes canônicas e ADRs vigentes, mantendo este índice atualizado.
+Relatórios finais em `.agents/orchestrator_cotacao/reviews/*-g0-final.md` são evidência de aprovação e devem acompanhar a transferência; não substituem contratos. Revisões intermediárias são históricas.

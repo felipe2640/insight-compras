@@ -1,3 +1,5 @@
+> **SUPERSEDED — NÃO UTILIZAR PARA IMPLEMENTAÇÃO.** Revisão intermediária; fontes vigentes em `docs/SOURCE_OF_TRUTH.md`, pareceres finais em `reviews/*-g0-final.md`.
+
 # Consolidação do orquestrador — pré-G0 v2
 
 **Branch:** `codex/cotacao-pre-g0-v2`, derivado de `origin/claude/plano-cotacao-multiagente`. **Estado:** documentação/contratos; sem produto implementado.

@@ -5,6 +5,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 fixture = json.loads((Path(__file__).parent / "scenario.json").read_text())
+assert json.loads((Path(__file__).parent / "input/scenario.json").read_text()) == {k: v for k, v in fixture.items() if k != "quotations"}
+assert json.loads((Path(__file__).parent / "expected/quotations.json").read_text()) == fixture["quotations"]
 assert fixture["currency"] == "BRL"
 assert fixture["policy"]["minimum_order_mode"] == "hard_constraint"
 assert fixture["policy"]["assisted_response_mode"] == "allow_with_warning"

@@ -67,10 +67,15 @@ Q2, tenant T2, contém I12 no destino D2: necessidade de 2 peças `REF-12` / ORI
 5. Tentar comprar 7 unidades de A em I01, 3 adicionais de B em I10, ou aceitar I07 de A sem aceite: contrato retorna restrição/erro de domínio.
 6. Testar Q2 com token buyer T1 e sessão de convite Q1: `403` ou `404` sem revelar preços/relacionamento T2.
 
-Veredito A2: **fixture consistente para revisar domínio e motor; G0 continua pendente até OpenAPI e execução de contrato contra mock validarem estes resultados.**
+Veredito histórico A2: fixture consistente. **G0 READY contratual** após validações e pareceres finais; esta fixture não é implementação do motor.
 
 ## Probes adicionais e vocabulário do contrato
 
 `scenario.json` contém `minimum_modes`: subtotal 200.00 abaixo do mínimo 1500.00 produz `warning` ou `infeasible` conforme `minimum_order_mode`; duas linhas 800.00 + 700.00 tornam o agrupamento `feasible`. O agrupamento é fornecedor × destino × moeda; nunca se testa mínimo por item. O probe `scenario_vs_unit` prova que C tem `lowest_unit_price` em I04, mas B tem menor custo de cenário isolado conhecido. A estratégia pode sugerir B sem declarar ótimo global.
 
 `freight_modes` distingue CIF/included com zero adicional, fixed com 50.00 cobrado uma vez, FOB/unknown com valor ausente e `requires_review`. `assisted_modes` testa `exclude`, `allow_with_warning`, `require_confirmation` e a confirmação posterior da mesma revisão. `alternative_reference` exige aceite explícito; `tie` distingue o desempate local por prazo da inviabilidade comercial do mínimo. `verify.py` calcula todos os valores usando `Decimal` e valida o contrato esperado, sem implementar `AwardStrategy`.
+
+
+## Leitura humana de cada caso
+
+A tabela I01–I11 acima documenta necessidade, três propostas e decisão por linha; I12/Q2 demonstra isolamento e condição privada. As seções P1, Q2 e probes documentam cenário final, alertas, pendências, nominal versus elegível e motivos. Os arquivos em `input/` e `expected/` são projeções verificadas de `scenario.json`, que continua sendo a fixture aprovada.

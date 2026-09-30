@@ -1,3 +1,5 @@
+> **SUPERSEDED — NÃO UTILIZAR PARA IMPLEMENTAÇÃO.** Revisão intermediária; fontes vigentes em `docs/SOURCE_OF_TRUTH.md`, pareceres finais em `reviews/*-g0-final.md`.
+
 # A7 Challenger — revisão adversarial pré-G0 v2
 
 **Estado:** revisão do OpenAPI e fixtures disponíveis, incluindo smoke test Prism. Nenhum contrato foi editado por esta revisão.

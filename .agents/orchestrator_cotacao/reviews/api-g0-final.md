@@ -1,6 +1,6 @@
 # Revisão independente de API — G0
 
-**Veredito: APPROVE para o contrato pré-G0.** Revisei `docs/SOURCE_OF_TRUTH.md`, `openapi/cotacao-hub-v1.yaml`, `contracts/validate_openapi.py`, `contracts/examples/cliente-terceiro/{README,run_stateful,stateful_mock}.py/md`, `openapi-validation-report.md` e os contratos de segurança. Não alterei contratos de produto.
+**Veredito: APPROVE para o contrato pré-G0.** Revisei `docs/SOURCE_OF_TRUTH.md`, `openapi/cotacao-hub-v1.yaml`, `contracts/validate_openapi.py`, `contracts/examples/cliente-terceiro/README.md`, `contracts/examples/cliente-terceiro/{run_stateful,stateful_mock}.py`, `openapi-validation-report.md` e os contratos de segurança. Não alterei contratos de produto.
 
 ## Reavaliação dos bloqueios anteriores
 

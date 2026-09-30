@@ -1,0 +1,135 @@
+{
+  "schema_version": "1",
+  "currency": "BRL",
+  "tenants": [
+    "T1",
+    "T2"
+  ],
+  "suppliers": [
+    "A",
+    "B",
+    "C"
+  ],
+  "destinations": [
+    "F1",
+    "F2",
+    "D2"
+  ],
+  "policy": {
+    "minimum_order_mode": "hard_constraint",
+    "assisted_response_mode": "allow_with_warning",
+    "allow_overbuy": false,
+    "rounding": "HALF_UP"
+  },
+  "commercial_probes": {
+    "box_vs_unit": {
+      "requested": "7",
+      "A_unit_price": "10.00",
+      "A_minimum": "10",
+      "A_multiple": "10",
+      "B_unit_price": "10.50",
+      "expected_lowest_nominal": "A",
+      "expected_eligible": "B"
+    },
+    "freight_per_order": {
+      "requested": "10",
+      "C_unit_price": "29.00",
+      "C_fixed_freight": "50.00",
+      "B_unit_price": "31.00",
+      "expected_eligible": "B"
+    },
+    "minimum_order": {
+      "supplier": "A",
+      "minimum": "1500.00",
+      "generous_maximum_merchandise": "880.00",
+      "treatment": "hard_constraint",
+      "expected": "ineligible_as_order"
+    },
+    "partial": {
+      "item": "I10",
+      "requested": "6",
+      "B_available": "3",
+      "expected_pending": "3"
+    },
+    "substitution": {
+      "item": "I07",
+      "requested_brand": "MOBENSANI",
+      "offered_brand": "MARCA-X",
+      "accepted": false,
+      "expected": "SUBSTITUTION_REJECTED"
+    },
+    "unknown_freight": {
+      "item": "I04",
+      "mode": "FOB",
+      "amount": null,
+      "expected_comparison_status": "requires_review"
+    },
+    "snapshot_replay": {
+      "minimum_in_run": "1500.00",
+      "minimum_after_run": "2000.00",
+      "expected_replay_minimum": "1500.00"
+    },
+    "minimum_modes": {
+      "supplier": "A",
+      "destination": "F1",
+      "currency": "BRL",
+      "minimum": "1500.00",
+      "low_allocations": [
+        "200.00"
+      ],
+      "high_allocations": [
+        "800.00",
+        "700.00"
+      ],
+      "expected_low_warning": "warning",
+      "expected_low_hard_constraint": "infeasible",
+      "expected_high_hard_constraint": "feasible"
+    },
+    "assisted_modes": {
+      "origin": "assisted_unconfirmed",
+      "operator": "buyer-operator-1",
+      "on_behalf_of": "A",
+      "file_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "expected": {
+        "exclude": "ineligible",
+        "allow_with_warning": "warning",
+        "require_confirmation": "requires_review"
+      },
+      "confirmed_origin": "assisted_confirmed",
+      "confirmed_expected": "feasible"
+    },
+    "freight_modes": {
+      "CIF": "0.00",
+      "included": "0.00",
+      "fixed": "50.00",
+      "FOB_unknown": null,
+      "unknown": null,
+      "expected_unknown": "requires_review"
+    },
+    "alternative_reference": {
+      "item": "I08",
+      "requested": "REF-08",
+      "offered": "ALT-08",
+      "explicitly_accepted": true,
+      "expected": "eligible"
+    },
+    "tie": {
+      "item": "I09",
+      "A_price": "11.00",
+      "B_price": "11.00",
+      "A_days": 2,
+      "B_days": 4,
+      "expected_by_line": "A",
+      "expected_suggested_hard_minimum": "B"
+    },
+    "scenario_vs_unit": {
+      "item": "I04",
+      "C_unit_price": "29.00",
+      "B_unit_price": "31.00",
+      "C_scenario_total": "340.00",
+      "B_scenario_total": "310.00",
+      "expected_lowest_unit_price": "C",
+      "expected_suggested_award": "B"
+    }
+  }
+}
