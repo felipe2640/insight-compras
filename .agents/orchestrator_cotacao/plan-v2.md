@@ -1,6 +1,6 @@
 # Plano multiagente pré-G0 v2 — Cotação Hub
 
-**Estado:** revisão de contratos. C0–C9 e S1 anteriores estão suspensos; H0–H7, I1 e D1 não podem iniciar. Este branch é estacionamento documental até existir o repositório independente `cotacao-hub`. Transferir `docs/architecture/**`, `docs/domain/**`, `docs/security/**`, `docs/product/**`, `openapi/**`, `contracts/examples/**` e ADRs aprovadas ao novo repositório sem mudar contratos silenciosamente.
+**Estado:** G0 READY após revisões independentes e auditor CLEAN. C0–C9 e S1 anteriores foram cancelados. Os contratos foram transferidos ao checkout independente `cotacao-hub` em 29/09/2026; o usuário autorizou iniciar H0/H1 no novo repositório. I1 e D1 dependem de Hub isolado operacional. Este branch do Insight conserva a trilha documental G0; o plano de execução vigente está em `cotacao-hub/.agents/orchestrator_cotacao/plan-g1.md`.
 
 ## Equipe e ownership
 
@@ -22,10 +22,10 @@ Agentes trabalham em arquivos isolados. O orquestrador resolve conflitos por dec
 
 **G0:** OpenAPI 3.1 válido e completo, mock gerável, fixture `cliente-terceiro` executável cobrindo 20 passos sem SQL nem código dos hospedeiros; cenário dourado com 2 tenants, 3 suppliers, 2 filiais e 8–12 itens; concorrência, preço comparável, mínimo/múltiplo, snapshots e autorização definidos; reviewers APPROVE, challenger sem crítico e auditor CLEAN. Se qualquer critério faltar, `G0 BLOCKED`. G0 é contratual e não requer implementação do Hub. Parar após documentação e veredito para revisão humana.
 
-**G1 após liberação humana:** H0 fundação/tenancy/identidade, H1 sourcing e supplier network, H2 API/idempotência, H3 supplier/OTP/importação, H4 award, H5 purchasing/documentos, H6 outbox/comunicação, H7 buyer/observabilidade. Cada unidade: worker com ownership exclusivo → reviewer → challenger; auditor em cada portão. Teste contra Hub real isolado e segurança adversarial no G1.
+**G1 após liberação humana:** autorizado em 29/09/2026 no repositório independente; H0 fundação/tenancy/identidade e H1 sourcing/supplier network em execução. H2 API/idempotência, H3 supplier/OTP/importação, H4 award, H5 purchasing/documentos, H6 outbox/comunicação e H7 buyer/observabilidade seguem o plano G1. Cada unidade: worker com ownership exclusivo → reviewer → challenger; auditor em cada portão. Teste contra Hub real isolado e segurança adversarial no G1.
 
 **G2:** preview com tenant sintético, provedores isolados e fluxo ponta a ponta. **G3:** piloto consentido e reversível. I1 Insight e D1 Diário só após Hub isolado operacional; E1 ERP é opcional. Adapters usam API, SSO e eventos públicos, nunca banco compartilhado. Mudança de contrato após G0 exige proposta, revisão impactada e nova versão quando quebrar compatibilidade.
 
 ## Riscos e status
 
-Antes de G0, registrar em `reviews/` cada achado, correção, decisão descartada e evidência. A emissão de `CLEAN` requer verificação dos artefatos reais, não só intenção descrita. Status atual: **G0 BLOCKED** até validação do OpenAPI, execução das fixtures e pareceres finais.
+G0 foi encerrado como **READY**: OpenAPI e fixtures passaram; arquitetura, domínio, API e segurança `APPROVE`; challenger `PASS`; auditor `CLEAN`. Ver `GATE_STATUS.md` e `reviews/*-g0-final.md`. G1 permanece aberto no repositório independente.
