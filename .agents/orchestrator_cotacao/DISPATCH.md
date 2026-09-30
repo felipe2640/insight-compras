@@ -1,4 +1,7 @@
-# DISPATCH — Orquestrador do Módulo de Cotação
+# SUPERSEDED — DISPATCH anterior do Módulo de Cotação
+
+> **Pré-G0 v2:** instruções operacionais abaixo são históricas. Usar
+> `.agents/orchestrator_cotacao/plan-v2.md`. Não iniciar C0–C9 nem H0–H7.
 
 ## 2026-09-27T14:05:00Z
 

@@ -1,4 +1,8 @@
-# Módulo de Cotação — Contexto de negócio
+# SUPERSEDED — Módulo de Cotação — Contexto histórico do piloto
+
+> Este contexto registra um caso de uso inicial, não limita o domínio da
+> plataforma independente. Contratos atuais ficam em `docs/domain/` e
+> `openapi/cotacao-hub-v1.yaml` após a revisão pré-G0 v2.
 
 > Leitura obrigatória para qualquer agente que trabalhe no módulo de cotação.
 > Fonte: áudios, vídeos e foto enviados pelo comprador da Rede Carreiro em

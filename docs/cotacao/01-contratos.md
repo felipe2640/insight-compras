@@ -1,4 +1,10 @@
-# Módulo de Cotação — Contratos congelados
+# SUPERSEDED — Módulo de Cotação — Contratos anteriores
+
+> **Pré-G0 v2:** este plano C0–C9 foi substituído pela arquitetura de plataforma
+> independente em `docs/architecture/overview.md` e pelos novos contratos em
+> `openapi/cotacao-hub-v1.yaml`. Nada abaixo está congelado ou autoriza código.
+> Em especial, não usar `aprendizado_snapshot` como pedido, RPC do Diário no
+> Supabase compartilhado ou token de convite para listar outras cotações.
 
 > Este arquivo é a **fronteira entre as unidades de trabalho**. A unidade C0
 > transforma o que está aqui em código (migração, tipos, porta, flag). Depois

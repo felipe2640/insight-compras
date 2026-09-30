@@ -1,4 +1,9 @@
-# Módulo de Cotação — Acoplamento aos projetos em produção
+# SUPERSEDED — Módulo de Cotação — Plano de produção anterior
+
+> **Pré-G0 v2:** a implantação neste arquivo pertence ao plano C0–C9 anterior.
+> O Hub terá repositório e infraestrutura próprios. Não aplicar migração em
+> `rede-carreiro`, não criar portal por RPC compartilhada e não ligar flags
+> conforme esta sequência. Ver o novo plano em `.agents/orchestrator_cotacao/plan-v2.md`.
 
 > Como o trabalho dos agentes entra no Diário e no Insight Compras, que já
 > estão em produção, sem que o comprador perceba nada até o piloto ser ligado.

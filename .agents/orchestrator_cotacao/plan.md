@@ -1,4 +1,8 @@
-# Plano de Execução — Módulo de Cotação (C0 a C9)
+# SUPERSEDED — Plano de Execução anterior C0 a C9
+
+> **Pré-G0 v2:** C0–C9 e S1 não podem ser despachadas. Este documento é
+> histórico. A revisão e os novos portões estão em `plan-v2.md`; nenhum código
+> de produto começa antes da revisão humana após o novo G0.
 
 Leia antes: `docs/cotacao/00-contexto.md` (negócio), `docs/cotacao/01-contratos.md`
 (fronteiras congeladas), `docs/cotacao/02-producao.md` (como entra no ar).
