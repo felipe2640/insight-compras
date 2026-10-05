@@ -1,6 +1,12 @@
 "use client";
 
-import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import React, {
+  useState,
+  useMemo,
+  useCallback,
+  useRef,
+  useEffect,
+} from "react";
 import Link from "next/link";
 import {
   useReactTable,
@@ -15,6 +21,7 @@ import {
   VisibilityState,
   RowSelectionState,
   ColumnSizingState,
+  ColumnOrderState,
 } from "@tanstack/react-table";
 import {
   Search,
@@ -27,12 +34,19 @@ import {
   Ban,
 } from "lucide-react";
 
-import { LinhaCockpitMatriz, ItemDeltaRascunho, LinhaCockpitCompras } from "@/tipos/cockpit";
+import {
+  LinhaCockpitMatriz,
+  ItemDeltaRascunho,
+  LinhaCockpitCompras,
+} from "@/tipos/cockpit";
 import { useFiltrosCockpit } from "@/hooks/useFiltrosCockpit";
 import { useSessionDraft } from "@/hooks/useSessionDraft";
 import { useSession } from "@/hooks/useSession";
 import { AppSidebar, UsuarioSidebar } from "@/components/layout/app-sidebar";
-import { PayloadGradeTabular, PAYLOAD_TABULAR_VAZIO } from "@/lib/cockpit/codificacao-tabular";
+import {
+  PayloadGradeTabular,
+  PAYLOAD_TABULAR_VAZIO,
+} from "@/lib/cockpit/codificacao-tabular";
 import { funcaoFiltroColuna } from "@/lib/cockpit/filtro-tanstack";
 import { ChipsFiltroColuna } from "@/components/cockpit/ChipsFiltroColuna";
 import { MenuFiltrosGrade } from "@/components/ui/menu-filtros-grade";
@@ -99,8 +113,8 @@ const CONTAGENS_VAZIAS: ContagensStatusGrade = {
   transferir: 0,
   ruptura: 0,
   zumbi: 0,
+  sugestaoErp: 0,
 };
-
 
 const OPCOES_ORDENACAO = [
   { id: "custo-desc", label: "Maior Custo (R$)", desc: true },
@@ -110,6 +124,52 @@ const OPCOES_ORDENACAO = [
   { id: "diasSemVenda-desc", label: "Mais Dias Sem Venda", desc: true },
   { id: "codigo-asc", label: "Código SKU (A-Z)", desc: false },
 ];
+
+// Ordem inicial por contexto de decisão: identificação → estoque → demanda →
+// risco/histórico → custo e datas → ação. O comprador ainda pode personalizar
+// essa sequência pelo menu "Colunas".
+const ORDEM_COLUNAS_CONTEXTO: ColumnOrderState = [
+  "select",
+  "codigo",
+  "codigoAgrupador",
+  "descricao",
+  "aplicacao",
+  "marca",
+  "subgrupo",
+  "refFabricante",
+  "curvaAbcSistema",
+  "estoqueLojaFoco",
+  "estoqueRede",
+  "produtosVend90d",
+  "consumoUltimos30DiasQtd",
+  "consumoDiario",
+  "consumoMensal",
+  "vendaACadaDias",
+  "notasLiquidas90d",
+  "frequencia",
+  "classificacaoConsumo",
+  "giroUltimaVenda",
+  "dtUltVenda",
+  "diasSemVenda",
+  "ruptura",
+  "cobertura",
+  "periodoIdeal",
+  "histVendas90d",
+  "histProdVend90d",
+  "custo",
+  "dtUltimaCompra",
+  "dtUltimoPedido",
+  "statusMovimentacao",
+  "pedido",
+  "transferencia",
+];
+
+const VISIBILIDADE_COLUNAS_PADRAO: VisibilityState = {
+  // Coluna virtual disponível no menu "Filtrar", sem ocupar espaço na grade.
+  codigoAgrupador: false,
+};
+
+const VERSAO_PREFERENCIAS_GRADE = 1;
 
 export function CockpitPrincipal({
   itensIniciais,
@@ -150,7 +210,9 @@ export function CockpitPrincipal({
 
   // Falha fechada: comprador sem carteira (allowedSupplierIds: [] ou sem fornecedores atribuídos)
   // enxerga zero fornecedor (grade vazia com mensagem amigável), e NÃO o catálogo todo.
-  const ehCompradorSemCarteira = ehComprador && (fornecedoresAtivos === null || fornecedoresAtivos.length === 0);
+  const ehCompradorSemCarteira =
+    ehComprador &&
+    (fornecedoresAtivos === null || fornecedoresAtivos.length === 0);
 
   // 0. Grade: acionáveis agora, catálogo completo em segundo plano.
   const grade = useGradeProgressiva({
@@ -159,7 +221,9 @@ export function CockpitPrincipal({
     filialId: lojaFocoId,
     automatico: !ehCompradorSemCarteira,
   });
-  const linhasBase = ehCompradorSemCarteira ? [] : (itensIniciais ?? grade.itens);
+  const linhasBase = ehCompradorSemCarteira
+    ? []
+    : (itensIniciais ?? grade.itens);
 
   /**
    * 1. Carteira — a do usuário LOGADO, e mais nenhuma.
@@ -184,22 +248,22 @@ export function CockpitPrincipal({
 
   // 2. Estado de Deltas / Ajustes do Comprador
   const [deltas, setDeltas] = useState<Record<string, ItemDeltaRascunho>>({});
+  const [produtosExportados, setProdutosExportados] = useState<ReadonlySet<number>>(
+    () => new Set(),
+  );
 
   // 3. Hook de Rascunho de Sessão em LocalStorage com Debounce indexado pela sessão real
-  const userIdSessao = sessao?.id ?? usuarioSessao?.id ?? sessao?.usuario ?? "comprador";
-  const {
-    draftAvailable,
-    isSaving,
-    restaurarRascunho,
-    descartarRascunho,
-  } = useSessionDraft({
-    // Do tenant, não "carreiro" fixo: a chave do rascunho no navegador era a
-    // mesma para todo cliente, e dois clientes na mesma máquina misturavam o
-    // que ainda não tinham enviado.
-    tenantId: tenantAtivo.id,
-    userId: userIdSessao,
-    deltas,
-  });
+  const userIdSessao =
+    sessao?.id ?? usuarioSessao?.id ?? sessao?.usuario ?? "comprador";
+  const { draftAvailable, isSaving, restaurarRascunho, descartarRascunho } =
+    useSessionDraft({
+      // Do tenant, não "carreiro" fixo: a chave do rascunho no navegador era a
+      // mesma para todo cliente, e dois clientes na mesma máquina misturavam o
+      // que ainda não tinham enviado.
+      tenantId: tenantAtivo.id,
+      userId: userIdSessao,
+      deltas,
+    });
 
   const handleRestaurarRascunho = useCallback(() => {
     const rascunho = restaurarRascunho();
@@ -215,9 +279,13 @@ export function CockpitPrincipal({
 
   // 4. Aplicação dos Deltas sobre a base de dados
   const itensComOverrides = useMemo(() => {
-    if (Object.keys(deltas).length === 0) return linhasBase;
+    const linhasPendentes =
+      produtosExportados.size === 0
+        ? linhasBase
+        : linhasBase.filter((item) => !produtosExportados.has(item.produtoId));
+    if (Object.keys(deltas).length === 0) return linhasPendentes;
 
-    return linhasBase.map((item) => {
+    return linhasPendentes.map((item) => {
       const delta = deltas[item.codigoSku] ?? deltas[String(item.produtoId)];
       if (!delta) return item;
 
@@ -242,7 +310,7 @@ export function CockpitPrincipal({
           : item.motivoDecisao,
       };
     });
-  }, [linhasBase, deltas]);
+  }, [linhasBase, deltas, produtosExportados]);
 
   // 5. Hook de Filtros de Alta Performance (< 250ms para 25.000 SKUs)
   const {
@@ -261,7 +329,11 @@ export function CockpitPrincipal({
   } = useFiltrosCockpit({
     itens: ehCompradorSemCarteira ? [] : itensComOverrides,
     fornecedoresPermitidos: fornecedoresAtivos,
-    contagensCatalogo: gradeInicial ? (ehCompradorSemCarteira ? CONTAGENS_VAZIAS : grade.contagens) : undefined,
+    contagensCatalogo: gradeInicial
+      ? ehCompradorSemCarteira
+        ? CONTAGENS_VAZIAS
+        : grade.contagens
+      : undefined,
   });
 
   // 6. Callbacks de Ajuste de Pedido e Transferência
@@ -277,7 +349,7 @@ export function CockpitPrincipal({
         },
       }));
     },
-    []
+    [],
   );
 
   const handleCommitTransferencia = useCallback(
@@ -292,7 +364,7 @@ export function CockpitPrincipal({
         },
       }));
     },
-    []
+    [],
   );
 
   const handleRejeitarItem = useCallback(
@@ -350,7 +422,8 @@ export function CockpitPrincipal({
     // "Catálogo Total" cair para 114 ao abrir em Comprar, e "Travas Anti-Encalhe"
     // zerar mesmo com 2.001 itens travados — o cabeçalho contradizia os chips.
     for (const item of itensComOverrides) {
-      const qtdCompra = item.pedidoCustom > 0 ? item.pedidoCustom : item.sugestaoFinalCompra;
+      const qtdCompra =
+        item.pedidoCustom > 0 ? item.pedidoCustom : item.sugestaoFinalCompra;
       if (qtdCompra > 0) {
         pecasTotaisSugeridas += qtdCompra;
         valorTotalSugerido += qtdCompra * item.precoCusto;
@@ -358,7 +431,10 @@ export function CockpitPrincipal({
       if (item.rupturaPercentual !== null) {
         rupturaMedida = true;
       }
-      if (item.classificacaoRuptura === "Grave" || item.classificacaoRuptura === "Atenção") {
+      if (
+        item.classificacaoRuptura === "Grave" ||
+        item.classificacaoRuptura === "Atenção"
+      ) {
         totalRupturas++;
       }
       if (item.quantidadeTransferenciaSugerida > 0) {
@@ -373,7 +449,9 @@ export function CockpitPrincipal({
       // Tamanho do CATÁLOGO, não do que já chegou ao navegador. Durante a carga
       // progressiva, contar o que está em memória faria esta KPI dizer 2.236
       // enquanto o chip "Todos" diz 19.118 — dois números para a mesma coisa.
-      totalSkus: gradeInicial ? grade.contagens.total : itensComOverrides.length,
+      totalSkus: gradeInicial
+        ? grade.contagens.total
+        : itensComOverrides.length,
       pecasTotaisSugeridas,
       valorTotalSugerido,
       totalRupturas,
@@ -381,7 +459,12 @@ export function CockpitPrincipal({
       totalTransferencias,
       totalZumbis,
     };
-  }, [itensComOverrides, gradeInicial, grade.contagens.total, ehCompradorSemCarteira]);
+  }, [
+    itensComOverrides,
+    gradeInicial,
+    grade.contagens.total,
+    ehCompradorSemCarteira,
+  ]);
 
   // 8. Lista de Lojas — do cadastro do TENANT, nunca de um adapter de cliente.
   // A interface é a mesma para todo mundo; quem muda é a configuração.
@@ -398,7 +481,8 @@ export function CockpitPrincipal({
 
   // 9. Diálogo de Similares
   const [dialogSimilaresAberto, setDialogSimilaresAberto] = useState(false);
-  const [itemSimilaresSelecionado, setItemSimilaresSelecionado] = useState<LinhaCockpitCompras | null>(null);
+  const [itemSimilaresSelecionado, setItemSimilaresSelecionado] =
+    useState<LinhaCockpitCompras | null>(null);
 
   const handleAbrirSimilares = useCallback((linha: LinhaCockpitCompras) => {
     setItemSimilaresSelecionado(linha);
@@ -408,27 +492,135 @@ export function CockpitPrincipal({
   // 10. Estados da Tabela TanStack (Ordenação, Visibilidade, Fixação, Resizing, Altura)
   const [sorting, setSorting] = useState<SortingState>([]);
   const [sortValue, setSortValue] = useState<string>("custo-desc");
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
-    // Coluna virtual disponível no menu "Filtrar", sem ocupar espaço na grade.
-    codigoAgrupador: false,
-  });
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
+    VISIBILIDADE_COLUNAS_PADRAO,
+  );
   const [columnPinning, setColumnPinning] = useState<ColumnPinningState>({
     left: ["select", "codigo", "descricao"],
     right: ["pedido", "transferencia"],
   });
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(
+    ORDEM_COLUNAS_CONTEXTO,
+  );
+  const [preferenciasGradeCarregadas, setPreferenciasGradeCarregadas] =
+    useState(false);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   // Filtros tipados por coluna: compõem com a busca livre e os chips de status.
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [rowHeight, setRowHeight] = useState<"compact" | "default" | "relaxed">("default");
+  const [rowHeight, setRowHeight] = useState<"compact" | "default" | "relaxed">(
+    "default",
+  );
+
+  const chavePreferenciasGrade = useMemo(
+    () => `insight-compras-grade-${tenantAtivo.id}-${userIdSessao}`,
+    [tenantAtivo.id, userIdSessao],
+  );
+
+  // A personalização pertence ao usuário neste navegador. O primeiro acesso
+  // usa a ordem recomendada; os próximos retomam exatamente o último layout.
+  useEffect(() => {
+    setPreferenciasGradeCarregadas(false);
+    try {
+      const salvo = window.localStorage.getItem(chavePreferenciasGrade);
+      if (salvo) {
+        const preferencias = JSON.parse(salvo) as {
+          versao?: number;
+          ordem?: unknown;
+          visibilidade?: unknown;
+        };
+        if (preferencias.versao === VERSAO_PREFERENCIAS_GRADE) {
+          if (Array.isArray(preferencias.ordem)) {
+            const idsValidos = new Set(ORDEM_COLUNAS_CONTEXTO);
+            const vistos = new Set<string>();
+            const ordemSalva = preferencias.ordem.filter(
+              (id): id is string =>
+                typeof id === "string" &&
+                idsValidos.has(id) &&
+                !vistos.has(id) &&
+                !!vistos.add(id),
+            );
+            setColumnOrder([
+              ...ordemSalva,
+              ...ORDEM_COLUNAS_CONTEXTO.filter((id) => !vistos.has(id)),
+            ]);
+          }
+          if (
+            preferencias.visibilidade &&
+            typeof preferencias.visibilidade === "object"
+          ) {
+            const visibilidade = Object.fromEntries(
+              Object.entries(preferencias.visibilidade).filter(
+                ([, valor]) => typeof valor === "boolean",
+              ),
+            ) as VisibilityState;
+            setColumnVisibility({
+              ...VISIBILIDADE_COLUNAS_PADRAO,
+              ...visibilidade,
+            });
+          }
+        }
+      }
+    } catch {
+      // Preferência corrompida ou storage bloqueado: mantém o padrão seguro.
+      setColumnOrder(ORDEM_COLUNAS_CONTEXTO);
+      setColumnVisibility(VISIBILIDADE_COLUNAS_PADRAO);
+    } finally {
+      setPreferenciasGradeCarregadas(true);
+    }
+  }, [chavePreferenciasGrade]);
+
+  useEffect(() => {
+    if (!preferenciasGradeCarregadas) return;
+    try {
+      window.localStorage.setItem(
+        chavePreferenciasGrade,
+        JSON.stringify({
+          versao: VERSAO_PREFERENCIAS_GRADE,
+          ordem: columnOrder,
+          visibilidade: columnVisibility,
+        }),
+      );
+    } catch {
+      // A grade continua funcional mesmo se o navegador bloquear persistência.
+    }
+  }, [
+    chavePreferenciasGrade,
+    columnOrder,
+    columnVisibility,
+    preferenciasGradeCarregadas,
+  ]);
+
+  const restaurarLayoutPadrao = useCallback(() => {
+    setColumnOrder(ORDEM_COLUNAS_CONTEXTO);
+    setColumnVisibility(VISIBILIDADE_COLUNAS_PADRAO);
+  }, []);
 
   const handleLojaFocoChange = useCallback((novaLojaId: number) => {
     setLojaFocoId(novaLojaId);
     // Ajustes e seleção pertencem à grade da filial anterior.
     setDeltas({});
     setRowSelection({});
+    setProdutosExportados(new Set());
     setColumnFilters([]);
   }, []);
+
+  const handleItensExportados = useCallback(
+    (itens: readonly LinhaCockpitMatriz[]) => {
+      const ids = new Set(itens.map((item) => item.produtoId));
+      const chaves = new Set(
+        itens.flatMap((item) => [item.codigoSku, String(item.produtoId)]),
+      );
+      setProdutosExportados((atuais) => new Set([...atuais, ...ids]));
+      setRowSelection({});
+      setDeltas((atuais) =>
+        Object.fromEntries(
+          Object.entries(atuais).filter(([chave]) => !chaves.has(chave)),
+        ),
+      );
+    },
+    [],
+  );
 
   const handleSortChange = useCallback((optionId: string, desc?: boolean) => {
     setSortValue(optionId);
@@ -442,8 +634,10 @@ export function CockpitPrincipal({
       nomeLojaFoco,
       nomeOutrasLojas: "Rede",
       onAbrirSimilares: handleAbrirSimilares,
-      onPedirCommit: (skuId, valor) => handleCommitPedido(skuId, valor, "Ajuste manual na grade"),
-      onTransferirCommit: (skuId, valor) => handleCommitTransferencia(skuId, valor, "Ajuste manual na grade"),
+      onPedirCommit: (skuId, valor) =>
+        handleCommitPedido(skuId, valor, "Ajuste manual na grade"),
+      onTransferirCommit: (skuId, valor) =>
+        handleCommitTransferencia(skuId, valor, "Ajuste manual na grade"),
       onRejeitarCommit: handleRejeitarItem,
       onDesfazerRejeicaoCommit: handleDesfazerRejeicao,
     });
@@ -465,10 +659,12 @@ export function CockpitPrincipal({
       columnVisibility,
       columnPinning,
       columnSizing,
+      columnOrder,
       rowSelection,
       columnFilters,
     },
     enableRowSelection: true,
+    getRowId: (row) => String(row.produtoId),
     enableColumnResizing: true,
     columnResizeMode: "onChange",
     onRowSelectionChange: setRowSelection,
@@ -479,6 +675,7 @@ export function CockpitPrincipal({
     onColumnVisibilityChange: setColumnVisibility,
     onColumnPinningChange: setColumnPinning,
     onColumnSizingChange: setColumnSizing,
+    onColumnOrderChange: setColumnOrder,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     // Valores distintos por coluna, para o filtro "é um de". Calculado sob demanda.
@@ -549,7 +746,10 @@ export function CockpitPrincipal({
   // 12. Atalho de Teclado Global (pressionar '/' ou Ctrl+F para focar busca)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === "/" || (e.ctrlKey && e.key.toLowerCase() === "f")) && document.activeElement?.tagName !== "INPUT") {
+      if (
+        (e.key === "/" || (e.ctrlKey && e.key.toLowerCase() === "f")) &&
+        document.activeElement?.tagName !== "INPUT"
+      ) {
         e.preventDefault();
         searchInputRef.current?.focus();
       }
@@ -570,7 +770,12 @@ export function CockpitPrincipal({
       nomeLoja: nomesFiliaisTenant[lojaFocoId] ?? `Loja ${lojaFocoId}`,
       dataReferencia: new Date(),
     }),
-    [tenantAtivo, nomesFiliaisTenant, lojaFocoId]
+    [tenantAtivo, nomesFiliaisTenant, lojaFocoId],
+  );
+  const itensSelecionadosParaExportacao = useMemo(
+    () =>
+      itensComOverrides.filter((item) => rowSelection[String(item.produtoId)]),
+    [itensComOverrides, rowSelection],
   );
 
   return (
@@ -579,7 +784,10 @@ export function CockpitPrincipal({
       <AppSidebar
         usuario={
           usuarioSessao?.nome && usuarioSessao?.papelRotulo
-            ? { nome: usuarioSessao.nome, papelRotulo: usuarioSessao.papelRotulo }
+            ? {
+                nome: usuarioSessao.nome,
+                papelRotulo: usuarioSessao.papelRotulo,
+              }
             : null
         }
       />
@@ -588,9 +796,11 @@ export function CockpitPrincipal({
         aberto={dialogExportacaoAberto}
         onFechar={() => setDialogExportacaoAberto(false)}
         itensFiltrados={itensFiltrados as LinhaCockpitMatriz[]}
-        itensSelecionados={table.getSelectedRowModel().rows.map((r) => r.original as LinhaCockpitMatriz)}
+        itensCatalogo={itensComOverrides}
+        itensSelecionados={itensSelecionadosParaExportacao}
         configuracao={tenantAtivo.exportacao}
         onModeloSalvo={() => setVersaoModelos((v) => v + 1)}
+        onExportado={handleItensExportados}
         contexto={contextoExportacao}
       />
 
@@ -608,7 +818,9 @@ export function CockpitPrincipal({
                   {tenantAtivo.nome.toUpperCase()}
                 </span>
               </div>
-              <span className="hidden sm:inline-block text-slate-400 text-xs">|</span>
+              <span className="hidden sm:inline-block text-slate-400 text-xs">
+                |
+              </span>
               <span className="text-xs text-slate-300 font-medium hidden md:inline">
                 Cockpit de Inteligência & Decisão de Compras
               </span>
@@ -617,20 +829,23 @@ export function CockpitPrincipal({
             {/* Carteira do usuário da sessão — leitura, não escolha. */}
             <div className="flex items-center flex-wrap gap-2 text-xs">
               <div className="flex items-center bg-white/10 rounded px-2.5 py-1 border border-white/20 text-white">
-                <span className="text-slate-300 mr-2 font-medium">Carteira:</span>
-                <span className="font-semibold text-white">{rotuloCarteira}</span>
+                <span className="text-slate-300 mr-2 font-medium">
+                  Carteira:
+                </span>
+                <span className="font-semibold text-white">
+                  {rotuloCarteira}
+                </span>
               </div>
 
               {/* Um botão por modelo: o comprador exporta o de sempre num clique. */}
               <BotoesExportacao
                 itens={itensFiltrados as LinhaCockpitMatriz[]}
-                itensSelecionados={table.getSelectedRowModel().rows.map(
-                  (r) => r.original as LinhaCockpitMatriz
-                )}
+                itensSelecionados={itensSelecionadosParaExportacao}
                 contexto={contextoExportacao}
                 csvPadrao={tenantAtivo.exportacao.csvPadrao}
                 modeloPadraoId={tenantAtivo.exportacao.layoutPadraoId}
                 onAbrirConfiguracao={() => setDialogExportacaoAberto(true)}
+                onExportado={handleItensExportados}
                 versao={versaoModelos}
               />
 
@@ -659,10 +874,15 @@ export function CockpitPrincipal({
             <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm flex items-start gap-3">
               <ShieldCheck className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <h3 className="font-bold text-sm text-amber-900">Nenhum fornecedor vinculado à sua carteira</h3>
+                <h3 className="font-bold text-sm text-amber-900">
+                  Nenhum fornecedor vinculado à sua carteira
+                </h3>
                 <p className="text-xs text-amber-800 mt-1">
-                  Sua conta de comprador está sem fornecedores associados à sua carteira homologada (falha fechada por segurança).
-                  Para visualizar produtos no Cockpit, solicite a um administrador a liberação da sua carteira em <strong>Configurações &gt; Usuários</strong>.
+                  Sua conta de comprador está sem fornecedores associados à sua
+                  carteira homologada (falha fechada por segurança). Para
+                  visualizar produtos no Cockpit, solicite a um administrador a
+                  liberação da sua carteira em{" "}
+                  <strong>Configurações &gt; Usuários</strong>.
                 </p>
               </div>
             </div>
@@ -681,89 +901,6 @@ export function CockpitPrincipal({
         )}
 
         {/* 3. Painel de KPIs Rápidos */}
-        <section className="max-w-[1920px] mx-auto px-4 pt-3 pb-1 w-full">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
-            {/* Total SKUs */}
-            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm dark:border-slate-800 dark:bg-slate-900 flex flex-col justify-between">
-              <span className="text-slate-500 font-medium uppercase text-[10px]">Catálogo Total</span>
-              <div className="flex items-baseline justify-between mt-1">
-                <span className="text-xl font-black text-slate-800 dark:text-white">
-                  {kpis.totalSkus.toLocaleString("pt-BR")}
-                </span>
-                <span className="text-[11px] text-slate-400">100% Censo</span>
-              </div>
-            </div>
-
-            {/* Sugestão de Compra */}
-            <div className="bg-white p-3 rounded-xl border border-emerald-200 bg-emerald-50/40 shadow-sm dark:border-emerald-900 dark:bg-emerald-950/20 flex flex-col justify-between">
-              <span className="text-emerald-800 font-semibold uppercase text-[10px] dark:text-emerald-300">
-                Sugestão de Compra
-              </span>
-              <div className="flex items-baseline justify-between mt-1">
-                <span className="text-xl font-black text-emerald-700 dark:text-emerald-400">
-                  {kpis.pecasTotaisSugeridas.toLocaleString("pt-BR")} un
-                </span>
-                <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
-                  {kpis.valorTotalSugerido.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                </span>
-              </div>
-            </div>
-
-            {/* Rupturas no Balcão */}
-            {kpis.rupturaMedida ? (
-              <div className="bg-white p-3 rounded-xl border border-rose-200 bg-rose-50/40 shadow-sm flex flex-col justify-between">
-                <span className="text-rose-800 font-semibold uppercase text-[10px]">
-                  Rupturas Críticas
-                </span>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="text-xl font-black text-rose-700">
-                    {kpis.totalRupturas.toLocaleString("pt-BR")}
-                  </span>
-                  <span className="text-[11px] font-medium text-rose-600">Saldo 0 com saída</span>
-                </div>
-              </div>
-            ) : (
-              <div
-                className="bg-white p-3 rounded-xl border border-slate-200 bg-slate-50/60 shadow-sm flex flex-col justify-between"
-                title="A fonte de dados deste cliente não expõe histórico de saldo diário, então dias de ruptura não são medidos. Exibir zero aqui afirmaria que nenhuma peça faltou."
-              >
-                <span className="text-slate-600 font-semibold uppercase text-[10px]">
-                  Rupturas Críticas
-                </span>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="text-xl font-black text-slate-400">—</span>
-                  <span className="text-[11px] font-medium text-slate-500">Não medido na fonte</span>
-                </div>
-              </div>
-            )}
-
-            {/* Transferência Segura */}
-            <div className="bg-white p-3 rounded-xl border border-indigo-200 bg-indigo-50/40 shadow-sm dark:border-indigo-900 dark:bg-indigo-950/20 flex flex-col justify-between">
-              <span className="text-indigo-800 font-semibold uppercase text-[10px] dark:text-indigo-300">
-                Transferência Segura
-              </span>
-              <div className="flex items-baseline justify-between mt-1">
-                <span className="text-xl font-black text-indigo-700 dark:text-indigo-400">
-                  {kpis.totalTransferencias.toLocaleString("pt-BR")} un
-                </span>
-                <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-medium">Sobra da rede</span>
-              </div>
-            </div>
-
-            {/* Travas Anti-Encalhe */}
-            <div className="bg-white p-3 rounded-xl border border-amber-200 bg-amber-50/40 shadow-sm dark:border-amber-900 dark:bg-amber-950/20 flex flex-col justify-between col-span-2 sm:col-span-1">
-              <span className="text-amber-800 font-semibold uppercase text-[10px] dark:text-amber-300">
-                Travas Anti-Encalhe
-              </span>
-              <div className="flex items-baseline justify-between mt-1">
-                <span className="text-xl font-black text-amber-700 dark:text-amber-400">
-                  {kpis.totalZumbis.toLocaleString("pt-BR")}
-                </span>
-                <span className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">Sem saída 180d</span>
-              </div>
-            </div>
-          </div>
-        </section>
 
         {/* 4. Barra de Menus e Filtros Rápidos (DataGridMenuBar & QuickFilterChips) */}
         <section className="max-w-[1920px] mx-auto px-4 py-2 w-full space-y-2">
@@ -794,7 +931,9 @@ export function CockpitPrincipal({
 
             {/* Seletor de Loja Foco */}
             <div className="flex items-center gap-1.5 text-xs">
-              <span className="font-semibold text-slate-600 dark:text-slate-400">Loja Foco:</span>
+              <span className="font-semibold text-slate-600 dark:text-slate-400">
+                Loja Foco:
+              </span>
               <select
                 value={lojaFocoId}
                 onChange={(e) => handleLojaFocoChange(Number(e.target.value))}
@@ -824,7 +963,10 @@ export function CockpitPrincipal({
                 value={rowHeight}
                 onChange={setRowHeight}
               />
-              <DataGridViewMenu table={table} />
+              <DataGridViewMenu
+                table={table}
+                onResetLayout={restaurarLayoutPadrao}
+              />
               <DataGridKeyboardShortcuts />
             </DataGridMenuBar>
           </div>
@@ -834,11 +976,41 @@ export function CockpitPrincipal({
             {/* Status Pills */}
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
               {[
-                { id: "ALL", rotulo: "Todos", count: facetas.contagensStatus.total },
-                { id: "PEDIR", rotulo: "Comprar", count: facetas.contagensStatus.pedir, cor: "text-emerald-700" },
-                { id: "TRANSFERIR", rotulo: "Transferir", count: facetas.contagensStatus.transferir, cor: "text-indigo-700" },
-                { id: "RUPTURA", rotulo: "Ruptura", count: facetas.contagensStatus.ruptura, cor: "text-rose-700" },
-                { id: "ZUMBI", rotulo: "Trava Zumbi", count: facetas.contagensStatus.zumbi, cor: "text-amber-700" },
+                {
+                  id: "ALL",
+                  rotulo: "Todos",
+                  count: facetas.contagensStatus.total,
+                },
+                {
+                  id: "PEDIR",
+                  rotulo: "Comprar",
+                  count: facetas.contagensStatus.pedir,
+                  cor: "text-emerald-700",
+                },
+                {
+                  id: "TRANSFERIR",
+                  rotulo: "Transferir",
+                  count: facetas.contagensStatus.transferir,
+                  cor: "text-indigo-700",
+                },
+                {
+                  id: "SUGESTAO_ERP",
+                  rotulo: "Sugestão ERP",
+                  count: facetas.contagensStatus.sugestaoErp,
+                  cor: "text-amber-700",
+                },
+                {
+                  id: "RUPTURA",
+                  rotulo: "Ruptura",
+                  count: facetas.contagensStatus.ruptura,
+                  cor: "text-rose-700",
+                },
+                {
+                  id: "ZUMBI",
+                  rotulo: "Trava Zumbi",
+                  count: facetas.contagensStatus.zumbi,
+                  cor: "text-amber-700",
+                },
               ].map((opcao) => {
                 const ativo = statusFiltro === opcao.id;
                 return (
@@ -850,7 +1022,7 @@ export function CockpitPrincipal({
                       "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors border",
                       ativo
                         ? "bg-primaria text-white border-primaria shadow-sm"
-                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200",
                     )}
                   >
                     <span>{opcao.rotulo}</span>
@@ -859,7 +1031,7 @@ export function CockpitPrincipal({
                         "rounded-full px-1.5 py-0.2 text-[10px] font-bold",
                         ativo
                           ? "bg-white/20 text-white"
-                          : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                          : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
                       )}
                     >
                       {opcao.count}
@@ -884,7 +1056,11 @@ export function CockpitPrincipal({
                 options={opcoesCurva}
                 deselected={curvasDeselecionadas as any}
                 counts={contagensCurva}
-                onApply={(novas) => definirCurvasDeselecionadas(new Set(Array.from(novas) as CurvaABC[]))}
+                onApply={(novas) =>
+                  definirCurvasDeselecionadas(
+                    new Set(Array.from(novas) as CurvaABC[]),
+                  )
+                }
               />
 
               <QuickFilterChip
@@ -895,7 +1071,10 @@ export function CockpitPrincipal({
                 onApply={(novas) => definirMarcasDeselecionadas(novas)}
               />
 
-              {(rawQuery || marcasDeselecionadas.size > 0 || curvasDeselecionadas.size > 0 || statusFiltro !== "ALL") && (
+              {(rawQuery ||
+                marcasDeselecionadas.size > 0 ||
+                curvasDeselecionadas.size > 0 ||
+                statusFiltro !== "ALL") && (
                 <button
                   type="button"
                   onClick={limparFiltros}
@@ -954,7 +1133,10 @@ export function CockpitPrincipal({
         <DialogSimilares
           aberto={dialogSimilaresAberto}
           onOpenChange={setDialogSimilaresAberto}
-          produtoPrincipalCodigo={itemSimilaresSelecionado.codigo || itemSimilaresSelecionado.codigoSku}
+          produtoPrincipalCodigo={
+            itemSimilaresSelecionado.codigo ||
+            itemSimilaresSelecionado.codigoSku
+          }
           produtoPrincipalDescricao={itemSimilaresSelecionado.descricao}
           similares={itemSimilaresSelecionado.similares}
         />

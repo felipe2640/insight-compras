@@ -55,5 +55,6 @@ export function montarOpcoesMatriz(
     leadTimePadraoDias: parametros.leadTimePadraoDias,
     parametrosMotor: parametros.motor,
     nomesFiliais: montarNomesFiliais(tenant),
+    configuracaoCurvaAbc: tenant.curvaAbc,
   };
 }

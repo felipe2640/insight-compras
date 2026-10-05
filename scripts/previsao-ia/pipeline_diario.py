@@ -269,7 +269,16 @@ def executar_pipeline(
     print(f'[Pipeline] Inferência concluída em {dt_inf:.1f}s ({total_series / max(dt_inf, 0.001):.0f} séries/s).')
 
     # Montar registros para o Supabase
-    tenant_id = os.getenv('TENANT_ATIVO', 'carreiro')
+    #
+    # TENANT_ATIVO é OBRIGATÓRIO. O padrão 'carreiro' publicava a previsão de
+    # qualquer execução mal configurada dentro do cliente Carreiro — inclusive
+    # a de outro cliente, já que o workflow roda o mesmo pipeline em laço.
+    tenant_id = (os.getenv('TENANT_ATIVO') or '').strip()
+    if not tenant_id:
+        raise SystemExit(
+            '[Pipeline] TENANT_ATIVO é obrigatório: sem ele a previsão seria '
+            'publicada no cliente errado.'
+        )
     data_hoje = date.today().isoformat()
     now_iso = datetime.now().isoformat()
 
@@ -352,6 +361,36 @@ def executar_pipeline(
             lotes_falhos.append((i, len(lote), str(ultimo_erro)))
 
     print(f'[Pipeline] Upsert concluído: {total_enviados:,}/{len(registros):,} registros salvos no Supabase em {time.time()-t_upsert:.1f}s.')
+
+    # Limpeza das projeções que não fazem mais parte do lote de hoje.
+    #
+    # O upsert é por (tenant, filial, produto) e NUNCA apaga: item que saiu do
+    # lote — porque parou de vender no último ano, ou porque a loja mudou de nome
+    # no ERP — deixava a linha antiga viva no banco. O cockpit a tratava como
+    # vigente enquanto ela couber na janela de validade, e comprava contra demanda
+    # que não existe mais.
+    #
+    # Só roda quando TODOS os lotes subiram: apagar o resto depois de uma
+    # publicação parcial deixaria a rede com meio catálogo.
+    if not lotes_falhos:
+        try:
+            resposta = (
+                supabase.table('demanda_ia_previsao')
+                .delete()
+                .eq('tenant_id', tenant_id)
+                .lt('data_previsao', data_hoje)
+                .execute()
+            )
+            removidas = len(resposta.data or [])
+            if removidas:
+                print(f'[Pipeline] Limpeza: {removidas:,} projeções anteriores a {data_hoje} removidas.')
+            else:
+                print('[Pipeline] Limpeza: nenhuma projeção obsoleta a remover.')
+        except Exception as e:
+            # Não falha a execução: as projeções de hoje já estão publicadas, e a
+            # janela de validade ainda barra o que for velho demais.
+            print(f'[Pipeline] AVISO: limpeza de projeções obsoletas falhou: {e}')
+
     print(f'[Pipeline] Tempo total de execução: {time.time()-t_inicio:.1f}s.')
 
     if lotes_falhos:

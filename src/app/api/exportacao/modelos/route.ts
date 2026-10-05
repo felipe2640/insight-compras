@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
 
   if (!modelosPersistidos()) {
     return NextResponse.json(
-      { erro: "Sem banco configurado, os modelos não podem ser salvos." },
+      { erro: "Não é possível salvar modelos no momento. Tente novamente mais tarde." },
       { status: 503 }
     );
   }

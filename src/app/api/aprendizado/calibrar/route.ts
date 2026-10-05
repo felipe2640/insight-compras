@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
     publicado: false,
     dias: r.dias,
     linhasAprendizado: r.linhas,
-    vigente: { margens: r.margensVigentes, fatorCalibracao: r.fatorVigente, versao: r.publicados?.versao ?? "arquivo do tenant" },
+    vigente: { margens: r.margensVigentes, fatorCalibracao: r.fatorVigente, versao: r.publicados?.versao ?? "configuração atual" },
     proposta: r.proposta,
     margensPropostas: r.margensPropostas,
   });

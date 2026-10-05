@@ -52,10 +52,11 @@ describe("escopo da grade", () => {
       transferir: 2,
       ruptura: 1,
       zumbi: 1,
+      sugestaoErp: 0,
     });
   });
 
   it("lista vazia conta zero em tudo", () => {
-    expect(contarStatusGrade([])).toEqual({ total: 0, pedir: 0, transferir: 0, ruptura: 0, zumbi: 0 });
+    expect(contarStatusGrade([])).toEqual({ total: 0, pedir: 0, transferir: 0, ruptura: 0, zumbi: 0, sugestaoErp: 0 });
   });
 });

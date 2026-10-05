@@ -32,7 +32,9 @@ export const TENANT_DEMONSTRACAO: ConfiguracaoTenant = {
   ],
   // Sintética SEMPRE. O mostruário existe para mostrar a plataforma a quem não
   // é cliente; ele não pode, em hipótese alguma, abrir o estoque de quem é.
-  fonteDados: "sintetica",
+  fonte: {
+    adaptador: "sintetica",
+  },
   cores: {
     primaria: "#1E293B", // Slate 800 — sóbrio, sem remeter a marca de cliente
     primariaHover: "#0F172A",
@@ -264,53 +266,4 @@ export const TENANT_DEMONSTRACAO: ConfiguracaoTenant = {
     ],
   },
 
-  processoCompra: {
-    habilitado: true,
-    tipoERP: "generico",
-    etapas: {
-      solicitacao: true,
-      cotacao: true,
-      pedido: true,
-      notaEntrada: true,
-    },
-    tabelasERP: {
-      solicitacoes: "solicitacoes_compra",
-      solicitacoesEventos: "solicitacoes_eventos",
-      cotacoes: "cotacoes",
-      cotacoesItens: "cotacoes_itens",
-      cotacoesFornecedores: "cotacoes_fornecedores",
-      ligacaoPedidoSolicitacao: "pedidos_solicitacoes",
-      pedidos: "pedidos",
-      notas: "notas",
-    },
-    statusAprovacaoSolicitacao: {
-      A: "Aprovada",
-      R: "Recusada",
-      P: "Pendente",
-    },
-    statusCotacao: {
-      A: "Aberta",
-      F: "Fechada",
-    },
-    motivosRecusa: [
-      {
-        codigo: "PRECO_ELEVADO",
-        rotulo: "Preço Elevado",
-        descricao: "Preço cotado acima do mercado.",
-        categoria: "preco",
-      },
-      {
-        codigo: "SEM_ESTOQUE",
-        rotulo: "Sem Estoque",
-        descricao: "Fornecedor sem estoque no momento.",
-        categoria: "disponibilidade",
-      },
-      {
-        codigo: "CANCELADO_CLIENTE",
-        rotulo: "Cancelado pelo Cliente",
-        descricao: "Cliente desistiu da compra.",
-        categoria: "cliente",
-      },
-    ],
-  },
 };

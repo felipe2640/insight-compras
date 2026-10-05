@@ -14,6 +14,7 @@ import { Info } from "lucide-react";
 import { FormularioLogin } from "./formulario-login";
 import { idProvedorConfigurado } from "@/lib/autenticacao";
 import { USUARIOS_DEMO } from "@/lib/autenticacao/provedores/demo";
+import { naturezaTenant } from "@config/tenants";
 import { obterTenantAtivo } from "@/lib/cockpit/opcoes-tenant";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export default function PaginaLogin() {
   const tenantIdHeader = headers().get("x-tenant-id");
   const tenant = obterTenantAtivo(tenantIdHeader);
   const modoDemonstracao =
-    idProvedorConfigurado() === "demo" && tenant.fonteDados === "sintetica";
+    idProvedorConfigurado() === "demo" && naturezaTenant(tenant) === "sintetica";
   const senhaDemo = process.env.DEMO_SENHA ?? "demo";
 
   return (
@@ -47,8 +48,8 @@ export default function PaginaLogin() {
             Ambiente de demonstração
           </p>
           <p className="mb-2 text-[11px] leading-snug">
-            Sem banco de autenticação configurado, a plataforma roda com contas internas e
-            dados sintéticos. Nenhuma informação aqui é de cliente real.
+            Use as contas abaixo para conhecer a plataforma. Os dados desta demonstração
+            são fictícios.
           </p>
           <table className="w-full">
             <thead className="text-[10px] uppercase tracking-wide text-sky-700">
@@ -75,8 +76,7 @@ export default function PaginaLogin() {
             </tbody>
           </table>
           <p className="mt-2 text-[10px] leading-snug text-sky-800">
-            Exibindo <strong>{tenant.nome}</strong>. Para apontar esta instalação a um cliente,
-            defina TENANT_ATIVO e as credenciais dele.
+            Ambiente: <strong>{tenant.nome}</strong>.
           </p>
         </div>
       )}

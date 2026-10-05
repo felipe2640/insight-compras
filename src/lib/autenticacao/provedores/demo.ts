@@ -24,7 +24,27 @@ import {
   normalizarFornecedores,
 } from "../porta";
 import { base64UrlCodificar, base64UrlDecodificar } from "../sessao";
-import { resolverTenantConfigurado } from "@config/tenants";
+import {
+  TENANT_PADRAO,
+  buscarConfiguracaoTenant,
+  naturezaTenant,
+  resolverTenantConfigurado,
+} from "@config/tenants";
+
+/**
+ * Tenant do ambiente, ou `null` quando não há um configurado.
+ *
+ * O provedor demo é o de DESENVOLVIMENTO e mostruário: ele não pode explodir
+ * na montagem só porque a instalação ainda não declarou TENANT_ATIVO — quem
+ * cobra isso é a validação de ambiente, com mensagem própria.
+ */
+function tenantDoAmbienteOuNulo() {
+  try {
+    return process.env.TENANT_ATIVO?.trim() ? resolverTenantConfigurado() : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface UsuarioDemo {
   readonly id: string;
@@ -114,7 +134,7 @@ export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao, Administr
         nome: u.nome,
         papel: u.papel,
         fornecedores: u.fornecedores,
-        tenantId: u.tenantId ?? resolverTenantConfigurado().id,
+        tenantId: u.tenantId ?? (tenantDoAmbienteOuNulo() ?? TENANT_PADRAO).id,
         ativo: u.ativo ?? true,
         criadoEm: u.criadoEm ?? "2026-09-01T00:00:00.000Z",
         senha: this.senhaPadrao,
@@ -149,13 +169,27 @@ export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao, Administr
      * Demonstração", com dado sintético e nome de rede nenhum, e ainda assim
      * recusava o login — ninguém conseguia ver a demonstração.
      *
-     * Quem decide é o mesmo critério de todo o resto: a `fonteDados` do tenant.
-     * Sintética, entra; cliente real, não entra — em produção ou fora dela.
+     * Quem decide é a NATUREZA do tenant. Sintética, entra; cliente real, não
+     * entra — em produção ou fora dela.
+     *
+     * A checagem olhava só o tenant do AMBIENTE. Numa instalação multi-cliente
+     * (sem TENANT_ATIVO), isso resolvia para a demonstração e o login demo era
+     * aceito para QUALQUER tenant pedido no cabeçalho, inclusive um cliente
+     * real. Agora vale o tenant DA REQUISIÇÃO, e o do ambiente por cima dele.
      */
-    if (resolverTenantConfigurado().fonteDados !== "sintetica") {
+    const tenantPedido = buscarConfiguracaoTenant(credenciais.tenantId);
+    if (!tenantPedido || naturezaTenant(tenantPedido) !== "sintetica") {
       throw new ErroProvedorIndisponivel(
         "demo",
         "contas de demonstração não entram na instalação de um cliente; configure SUPABASE_URL e SUPABASE_ANON_KEY."
+      );
+    }
+
+    const tenantDoAmbiente = tenantDoAmbienteOuNulo();
+    if (tenantDoAmbiente && naturezaTenant(tenantDoAmbiente) !== "sintetica") {
+      throw new ErroProvedorIndisponivel(
+        "demo",
+        "esta instalação atende um cliente real; contas de demonstração não entram."
       );
     }
 
@@ -308,7 +342,7 @@ export class ProvedorAutenticacaoDemo implements ProvedorAutenticacao, Administr
   }
 
   async listarUsuarios(tenantId: string): Promise<UsuarioCadastrado[]> {
-    const tenantConfiguradoId = resolverTenantConfigurado().id;
+    const tenantConfiguradoId = (tenantDoAmbienteOuNulo() ?? TENANT_PADRAO).id;
     return Array.from(this.usuariosInternos.values())
       .filter(
         (u) =>

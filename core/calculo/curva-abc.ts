@@ -3,7 +3,30 @@
  * Camada: Core Puro (TypeScript 100% puro, sem dependências externas)
  */
 
-import { CurvaABC } from "../dominio/produto";
+import { CurvaABC, PerfilRotatividade } from "../dominio/produto";
+
+/**
+ * Converte diretamente o Perfil de Rotatividade (Giro do Motor) para a classificação Curva ABC.
+ * Heurística operacional do varejo/autopeças:
+ * - ALTO_GIRO (>= 6 un/mês com recorrência comprovada) -> "A" (peça de alto giro de balcão)
+ * - MEDIO_GIRO (2.5 a 5.9 un/mês com recorrência) -> "B" (giro regular)
+ * - BAIXO_GIRO_INTERMITENTE (< 2.5 un/mês) -> "C" (demanda baixa/esporádica)
+ * - SEM_HISTORICO_SUFICIENTE (sem recorrência mínima de notas/meses) -> "C"
+ */
+export function converterPerfilGiroParaCurvaAbc(
+  perfil: PerfilRotatividade
+): CurvaABC {
+  switch (perfil) {
+    case "ALTO_GIRO":
+      return "A";
+    case "MEDIO_GIRO":
+      return "B";
+    case "BAIXO_GIRO_INTERMITENTE":
+    case "SEM_HISTORICO_SUFICIENTE":
+    default:
+      return "C";
+  }
+}
 
 export interface ItemParaCurvaAbc {
   readonly produtoId: number;

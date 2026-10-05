@@ -26,6 +26,7 @@ export function formatarListaNumericaDax(numeros: readonly number[]): string {
   return `{ ${numerosValidados.join(", ")} }`;
 }
 
+
 /**
  * CADEIA DE FILTROS DE "VENDA VÁLIDA AO CONSUMIDOR" DA REDE CARREIRO.
  *
@@ -126,12 +127,24 @@ export function gerarConsultaDaxProdutosEstoque(
   filtro?: FiltroCargaInventario,
   /** Último ACODPRODUTO da página anterior. null = primeira página. */
   cursor?: string | null,
-  /** Nome exato da filial no CADEMP para recortar vendas na própria fonte. */
-  nomeFilialFoco?: string
+  /**
+   * Identificador da filial na fonte (CADEMP[ACODEMP]) para recortar vendas.
+   *
+   * Era o nome fantasia. O nome é EDITÁVEL no ERP, e uma renomeação lá fazia o
+   * filtro casar com nada — catálogo vazio, sem erro. O ACODEMP é estável e,
+   * conferido ao vivo em 17/09/2026, está em todas as tabelas do modelo.
+   */
+  identificadorFilialFoco?: string
 ): string {
   let clausulaFiltro = "";
 
-  if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
+  /**
+   * `null` = irrestrito (gestor/admin). Lista VAZIA = comprador SEM carteira,
+   * e não é a mesma coisa: sem a distinção, a consulta saía sem cláusula e a
+   * fonte devolvia o catálogo inteiro para quem não pode ver nada. A falha
+   * fechada existia nas rotas; agora existe também na fonte.
+   */
+  if (filtro?.fornecedoresPermitidos !== null && filtro?.fornecedoresPermitidos !== undefined) {
     const listaDax = formatarListaNumericaDax(filtro.fornecedoresPermitidos);
     clausulaFiltro += ` && 'PRODUTOS'[ICODFORN] IN ${listaDax}`;
   }
@@ -141,11 +154,11 @@ export function gerarConsultaDaxProdutosEstoque(
   }
 
   if (filtro?.apenasComEstoqueOuVenda) {
-    const filialSegura = nomeFilialFoco?.replace(/["\\]/g, "").trim();
+    const filialSegura = identificadorFilialFoco?.replace(/["\\]/g, "").trim();
     if (filialSegura) {
       clausulaFiltro += ` && CALCULATE(
         [Quantidade Vendida Produto],
-        FILTER(ALL('CADEMP'[ANOMEFANTASIA]), 'CADEMP'[ANOMEFANTASIA] = "${filialSegura}"),
+        FILTER(ALL('CADEMP'[ACODEMP]), 'CADEMP'[ACODEMP] = "${filialSegura}"),
         DATESINPERIOD('dCalendario'[Data], TODAY(), -180, DAY),
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta")
       ) > 0`;
@@ -181,12 +194,15 @@ TOPN(
   SELECTCOLUMNS(
     FILTER(
         PRODUTOS,
-        NOT ISBLANK('PRODUTOS'[ACODPRODUTO])${clausulaFiltro}${clausulaCursor}
+        NOT ISBLANK('PRODUTOS'[ACODPRODUTO])
+        && COALESCE('PRODUTOS'[LINATIVO], "F") <> "T"
+        && SEARCH("INATIV", UPPER('PRODUTOS'[ADESCRICAO]), 1, 0) = 0${clausulaFiltro}${clausulaCursor}
     ),
     "Empresa", 'PRODUTOS'[ACODEMPRESA],
     "Produto", 'PRODUTOS'[ACODPRODUTO],
     "CodigoBase", 'PRODUTOS'[ACODPRODUTO_BASE],
     "Descricao", 'PRODUTOS'[ADESCRICAO],
+    "Inativo", 'PRODUTOS'[LINATIVO],
     "Marca", 'PRODUTOS'[MARCA],
     "RefFabricante", 'PRODUTOS'[AREFERENCIA],
     "Aplicacao", 'PRODUTOS'[APLICACAO],
@@ -244,17 +260,17 @@ ORDER BY [Produto]
  * volta nula sem contexto de data — 0 de 5.664 linhas preenchidas ao vivo.
  */
 export function gerarConsultaDaxPosicaoEstoque(
-  nomeFilial: string,
+  identificadorFilial: string,
   filtro?: FiltroCargaInventario
 ): string {
-  // Sanitiza o nome da filial: só aceita o que veio do mapeamento oficial do tenant.
-  const filialSegura = nomeFilial.replace(/["\\]/g, "").trim();
+  // Só entra aqui o identificador declarado no cadastro do cliente.
+  const filialSegura = identificadorFilial.replace(/["\\]/g, "").trim();
   if (!filialSegura) {
-    throw new Error("Nome de filial obrigatório para a consulta de posição de estoque.");
+    throw new Error("Identificador de filial obrigatório para a consulta de posição de estoque.");
   }
 
   let filtroFornecedores = "";
-  if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
+  if (filtro?.fornecedoresPermitidos !== null && filtro?.fornecedoresPermitidos !== undefined) {
     const listaDax = formatarListaNumericaDax(filtro.fornecedoresPermitidos);
     // FILTER(ALL(...)) e NÃO KEEPFILTERS(coluna IN {...}): a segunda forma é rejeitada
     // pelo motor ("A single value for column 'ICODFORN' cannot be determined").
@@ -266,7 +282,7 @@ EVALUATE
 FILTER(
     SUMMARIZECOLUMNS(
         'PRODUTOS'[ACODPRODUTO],
-        FILTER(ALL('CADEMP'[ANOMEFANTASIA]), 'CADEMP'[ANOMEFANTASIA] = "${filialSegura}"),
+        FILTER(ALL('CADEMP'[ACODEMP]), 'CADEMP'[ACODEMP] = "${filialSegura}"),
         ${filtroFornecedores}
         "EstoqueQtd", [Estoque Qtd Atual (Base)],
         "EstoqueMinimo", [Estoque Mínimo ERP],
@@ -379,7 +395,7 @@ export const CAMPOS_INDISPONIVEIS_CARREIRO = {
  */
 export function gerarConsultaDaxHistoricoVendas(filtro?: FiltroCargaInventario): string {
   let filtroFornecedores = "";
-  if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
+  if (filtro?.fornecedoresPermitidos !== null && filtro?.fornecedoresPermitidos !== undefined) {
     const listaDax = formatarListaNumericaDax(filtro.fornecedoresPermitidos);
     filtroFornecedores = `KEEPFILTERS('PRODUTOS'[ICODFORN] IN ${listaDax}),`;
   }
@@ -389,6 +405,7 @@ EVALUATE
 VAR DataLimite = TODAY()
 VAR Periodo180d = DATESINPERIOD('dCalendario'[Data], DataLimite, -180, DAY)
 VAR Periodo90d = DATESINPERIOD('dCalendario'[Data], DataLimite, -90, DAY)
+VAR Periodo60d = DATESINPERIOD('dCalendario'[Data], DataLimite, -60, DAY)
 VAR Periodo30d = DATESINPERIOD('dCalendario'[Data], DataLimite, -30, DAY)
 VAR Periodo365d = DATESINPERIOD('dCalendario'[Data], DataLimite, -365, DAY)
 VAR HistoricoComVenda =
@@ -408,6 +425,11 @@ SUMMARIZECOLUMNS(
         [Quantidade Vendida Produto],
         KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
         Periodo30d
+    ),
+    "VendasQtd60d", CALCULATE(
+        [Quantidade Vendida Produto],
+        KEEPFILTERS('NOTAS'[Tipo Movimentação] = "Venda Direta"),
+        Periodo60d
     ),
     "NotasVenda90d", CALCULATE(
         [Quantidade de Notas],
@@ -490,7 +512,7 @@ FILTER(HistoricoComVenda, [VendasQtd180d] > 0)
  */
 export function gerarConsultaDaxContagemHistoricoVendas(filtro?: FiltroCargaInventario): string {
   let filtroFornecedores = "";
-  if (filtro?.fornecedoresPermitidos && filtro.fornecedoresPermitidos.length > 0) {
+  if (filtro?.fornecedoresPermitidos !== null && filtro?.fornecedoresPermitidos !== undefined) {
     const listaDax = formatarListaNumericaDax(filtro.fornecedoresPermitidos);
     filtroFornecedores = `KEEPFILTERS('PRODUTOS'[ICODFORN] IN ${listaDax}),`;
   }
@@ -731,7 +753,8 @@ ORDER BY [DataEmissao] DESC
  */
 export function gerarConsultaDaxPedidosCompra(opcoes: {
   dias?: number;
-  filialCademp?: string;
+  /** Identificador da loja na fonte (PEDIDOS[ACODEMPRESA]). */
+  identificadorFilial?: string;
   fornecedorId?: number;
   limite?: number;
 } = {}): string {
@@ -740,6 +763,15 @@ export function gerarConsultaDaxPedidosCompra(opcoes: {
   let filtros = `[Tipo] = "C" && [DataEmissao] >= TODAY() - ${dias}`;
   if (opcoes.fornecedorId) {
     filtros += ` && [FornecedorId] = ${Math.floor(opcoes.fornecedorId)}`;
+  }
+  /**
+   * O filtro de loja precisa entrar ANTES do TOPN. Filtrando em JS depois, o
+   * TOPN já tinha cortado no limite olhando a rede inteira: pedir a loja 4
+   * podia devolver 3 pedidos quando existiam 50, sem nada indicar o corte.
+   */
+  const filialSegura = opcoes.identificadorFilial?.replace(/["\\]/g, "").trim();
+  if (filialSegura) {
+    filtros += ` && [EmpresaId] = "${filialSegura}"`;
   }
 
   return `
@@ -774,10 +806,16 @@ export function gerarConsultaDaxItensPedidosCompra(opcoes: {
   pedidoId?: number;
   dias?: number;
   limite?: number;
+  /** Identificador da loja na fonte (ITEMSPEDIDO[ACODEMPRESA]). */
+  identificadorFilial?: string;
 } = {}): string {
   const limite = Math.min(5000, Math.max(1, opcoes.limite ?? 500));
   const dias = Math.min(365, Math.max(1, opcoes.dias ?? 60));
   let filtros = `NOT ISBLANK(ITEMSPEDIDO[PRODUTO_ID])`;
+  const filialSeguraItens = opcoes.identificadorFilial?.replace(/["\\]/g, "").trim();
+  if (filialSeguraItens) {
+    filtros += ` && ITEMSPEDIDO[ACODEMPRESA] = "${filialSeguraItens}"`;
+  }
   if (opcoes.pedidoId) {
     filtros += ` && ITEMSPEDIDO[PEDIDO_ID] = ${Math.floor(opcoes.pedidoId)}`;
   } else {
@@ -817,9 +855,16 @@ TOPN(
 export function gerarConsultaDaxCotacoes(opcoes: {
   dias?: number;
   limite?: number;
+  /** Identificador da loja na fonte (TBL_COTACAO[ACODEMPRESA]). */
+  identificadorFilial?: string;
 } = {}): string {
   const limite = Math.min(500, Math.max(1, opcoes.limite ?? 100));
   const dias = Math.min(365, Math.max(1, opcoes.dias ?? 60));
+  // Mesma razão dos pedidos: filtrar depois do TOPN esconde corte de resultado.
+  const filialSegura = opcoes.identificadorFilial?.replace(/["\\]/g, "").trim();
+  const filtroFilial = filialSegura
+    ? ` && TBL_COTACAO[ACODEMPRESA] = "${filialSegura}"`
+    : "";
 
   return `
 EVALUATE
@@ -838,10 +883,63 @@ TOPN(
             "PropostasVencedoras", CALCULATE(COUNTROWS(TBL_COTACAO_FORN), KEEPFILTERS(TBL_COTACAO_FORN[GANHADOR] = "T")),
             "MenorValorCotado", MIN(TBL_COTACAO_FORN[VR_UNIT])
         ),
-        TBL_COTACAO[DATAHORA] >= TODAY() - ${dias}
+        TBL_COTACAO[DATAHORA] >= TODAY() - ${dias}${filtroFilial}
     ),
     TBL_COTACAO[DATAHORA],
     DESC
 )
 `.trim();
+}
+
+/**
+ * 11. Sugestões e Solicitações de Compra Geradas Hoje no ERP.
+ * Permite que a plataforma white-label opere em paralelo com o processo de compras
+ * do ERP do cliente, trazendo os itens sugeridos hoje com a quantidade indicada pelo sistema.
+ */
+export const CONSULTA_DAX_SUGESTOES_ERP_HOJE = `
+EVALUATE
+SELECTCOLUMNS(
+    FILTER(
+        TBL_SOLICITACOES_COMPRAS,
+        TBL_SOLICITACOES_COMPRAS[DH_CRIACAO] >= TODAY()
+          && TBL_SOLICITACOES_COMPRAS[STATUS] <> "C"
+          && NOT ISBLANK(TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO])
+    ),
+    "Empresa", TBL_SOLICITACOES_COMPRAS[ACODEMPRESA],
+    "Produto", TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO],
+    "Quantidade", TBL_SOLICITACOES_COMPRAS[QTDE],
+    "DataHora", TBL_SOLICITACOES_COMPRAS[DH_CRIACAO],
+    "Tipo", TBL_SOLICITACOES_COMPRAS[TIPO],
+    "Descricao", TBL_SOLICITACOES_COMPRAS[DESCRICAO],
+    "Solicitador", TBL_SOLICITACOES_COMPRAS[NOME_SOLICITADOR]
+)
+`.trim();
+
+/**
+ * Gera consulta DAX parametrizada para listar sugestões do ERP por janela de dias.
+ */
+export function gerarConsultaDaxSugestoesErp(dias: number = 0): string {
+  const filtroData =
+    dias > 0
+      ? `TBL_SOLICITACOES_COMPRAS[DH_CRIACAO] >= TODAY() - ${Math.min(365, Math.max(1, Math.floor(dias)))}`
+      : `TBL_SOLICITACOES_COMPRAS[DH_CRIACAO] >= TODAY()`;
+
+  return `
+EVALUATE
+SELECTCOLUMNS(
+    FILTER(
+        TBL_SOLICITACOES_COMPRAS,
+        ${filtroData}
+          && TBL_SOLICITACOES_COMPRAS[STATUS] <> "C"
+          && NOT ISBLANK(TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO])
+    ),
+    "Empresa", TBL_SOLICITACOES_COMPRAS[ACODEMPRESA],
+    "Produto", TBL_SOLICITACOES_COMPRAS[CODIGO_PRODUTO],
+    "Quantidade", TBL_SOLICITACOES_COMPRAS[QTDE],
+    "DataHora", TBL_SOLICITACOES_COMPRAS[DH_CRIACAO],
+    "Tipo", TBL_SOLICITACOES_COMPRAS[TIPO],
+    "Descricao", TBL_SOLICITACOES_COMPRAS[DESCRICAO],
+    "Solicitador", TBL_SOLICITACOES_COMPRAS[NOME_SOLICITADOR]
+)
+  `.trim();
 }

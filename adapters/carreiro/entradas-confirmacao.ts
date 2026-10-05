@@ -18,7 +18,7 @@
  */
 
 import { ClienteDaxPowerBI } from "./cliente-dax";
-import { NOMES_CADEMP_CARREIRO, extrairIdProduto } from "./mapeador-dax";
+import { extrairIdProduto } from "./mapeador-dax";
 
 export interface EntradasPorItem {
   readonly produtoId: number;
@@ -37,14 +37,18 @@ function dataDax(d: Date): string {
  * Consulta as entradas de compra por produto na loja, entre `inicio` (inclusive)
  * e `fim` (exclusive). Uma chamada por loja, como as demais consultas do adapter.
  */
-export function gerarConsultaDaxEntradas(nomeCademp: string, inicio: Date, fim: Date): string {
-  const filialSegura = nomeCademp.replace(/["\\]/g, "").trim();
+export function gerarConsultaDaxEntradas(
+  identificadorFilial: string,
+  inicio: Date,
+  fim: Date
+): string {
+  const filialSegura = identificadorFilial.replace(/["\\]/g, "").trim();
   return `
 EVALUATE
 FILTER(
     SUMMARIZECOLUMNS(
         'PRODUTOS'[ACODPRODUTO],
-        FILTER(ALL('CADEMP'[ANOMEFANTASIA]), 'CADEMP'[ANOMEFANTASIA] = "${filialSegura}"),
+        FILTER(ALL('CADEMP'[ACODEMP]), 'CADEMP'[ACODEMP] = "${filialSegura}"),
         FILTER(
             ALL('dCalendario'[Data]),
             'dCalendario'[Data] >= ${dataDax(inicio)} && 'dCalendario'[Data] < ${dataDax(fim)}
@@ -60,17 +64,18 @@ export async function buscarEntradasCarreiro(
   cliente: ClienteDaxPowerBI,
   parametros: {
     readonly filialId: number;
+    /** Identificador da loja na fonte, vindo do cadastro do cliente. */
+    readonly identificadorFilial: string;
     readonly inicio: Date;
     readonly fim: Date;
     readonly produtoIds: ReadonlySet<number>;
   }
 ): Promise<Map<number, EntradasPorItem>> {
-  const nomeCademp = NOMES_CADEMP_CARREIRO[parametros.filialId];
   const resultado = new Map<number, EntradasPorItem>();
-  if (!nomeCademp) return resultado;
+  if (!parametros.identificadorFilial) return resultado;
 
   const linhas = await cliente.executarConsultaDax(
-    gerarConsultaDaxEntradas(nomeCademp, parametros.inicio, parametros.fim)
+    gerarConsultaDaxEntradas(parametros.identificadorFilial, parametros.inicio, parametros.fim)
   );
 
   for (const linha of linhas) {

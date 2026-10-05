@@ -52,15 +52,14 @@ describe("Unidade U0 — Resolução Dinâmica de Tenant e Modo Demonstração",
     expect(tenant.id).toBe("demonstracao");
   });
 
-  it("deve retornar tenant neutro na rota /api/health em modo demonstração", async () => {
+  it("a rota /api/health é pública e não revela o cliente da instalação", async () => {
     delete process.env.TENANT_ATIVO;
     const response = await healthGet();
     const corpo = await response.json();
 
     expect(response.status).toBe(200);
     expect(corpo.status).toBe("ok");
-    expect(corpo.tenant).toBe("demonstracao");
-    expect(corpo.tenant).not.toBe("carreiro");
+    expect(corpo.tenant).toBeUndefined();
   });
 
   it("deve gerar variáveis CSS neutras no modo demonstração", () => {

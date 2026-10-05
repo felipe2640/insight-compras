@@ -5,7 +5,7 @@
  *
  * Env (somente servidor):
  *   SUPABASE_URL=https://<projeto>.supabase.co
- *   SUPABASE_SERVICE_ROLE_KEY=...   (a tabela não é exposta a anon/authenticated)
+ *   SUPABASE_ANON_KEY=...           (a leitura exige JWT de usuário e RLS)
  *
  * Lê as projeções probabilísticas de demanda (p50, p80) geradas pelo
  * modelo campeão (Chronos-Bolt) e publicadas na tabela `demanda_ia_previsao` do Supabase.
@@ -27,6 +27,7 @@
  */
 
 import { VALIDADE_MAXIMA_DIAS } from "./vigencia-previsao";
+import { tokenUsuarioAtual } from "@/lib/aprendizado/supabase";
 
 /** Tamanho da página na leitura do PostgREST. */
 const TAMANHO_PAGINA = 1000;
@@ -101,6 +102,43 @@ export function contarProjecoesIa(mapa: ReadonlyMap<string, PrevisaoDemandaIaIte
   return total;
 }
 
+/**
+ * Rótulo honesto da origem das projeções carregadas.
+ *
+ * O campeão do benchmark pode ser a PRÓPRIA régua heurística — foi o que
+ * aconteceu quando a eleição passou a ser por custo financeiro. Nesse caso o
+ * pipeline republica a heurística recalculada em Python, e chamar isso de
+ * "previsão probabilística" no cockpit seria falso: não há distribuição
+ * nenhuma, é a mesma conta do motor analítico.
+ *
+ * Devolve null quando não há projeção utilizável.
+ */
+export function descreverOrigemPrevisoesIa(
+  mapa: ReadonlyMap<string, PrevisaoDemandaIaItem>
+): { readonly rotulo: string; readonly series: number } | null {
+  const series = contarProjecoesIa(mapa);
+  if (series === 0) return null;
+
+  const contagemPorModelo = new Map<string, number>();
+  for (const [chave, item] of mapa) {
+    if (chave !== `${item.produtoId}:${item.filialId}`) continue;
+    const nome = item.modeloUtilizado || "modelo não identificado";
+    contagemPorModelo.set(nome, (contagemPorModelo.get(nome) ?? 0) + 1);
+  }
+
+  const [modeloDominante] = [...contagemPorModelo.entries()].sort((a, b) => b[1] - a[1])[0] ?? [
+    "modelo não identificado",
+  ];
+
+  // A heurística não é distribuição: o rótulo diz o que ela é.
+  const ehHeuristica = /baseline|heuris/i.test(modeloDominante);
+  const rotulo = ehHeuristica
+    ? `Régua analítica recalculada (${series} séries)`
+    : `Previsão probabilística — ${modeloDominante} (${series} séries)`;
+
+  return { rotulo, series };
+}
+
 /** Data mínima aceita (YYYY-MM-DD) para uma projeção ser considerada vigente. */
 export function dataMinimaPrevisaoVigente(
   validadeDias = VALIDADE_MAXIMA_DIAS,
@@ -114,6 +152,8 @@ export function dataMinimaPrevisaoVigente(
 export interface OpcoesCarregarPrevisoesIa {
   /** Teto de idade das projeções lidas, em dias. Padrão: VALIDADE_MAXIMA_DIAS. */
   readonly validadeDias?: number;
+  /** Injeção explícita somente para jobs/testes; requisições usam o cookie. */
+  readonly tokenAcesso?: string;
 }
 
 /**
@@ -131,21 +171,28 @@ export async function carregarMapaPrevisoesIa(
 ): Promise<Map<string, PrevisaoDemandaIaItem>> {
   const { validadeDias = VALIDADE_MAXIMA_DIAS } = opcoes;
 
+  const mapa = new Map<string, PrevisaoDemandaIaItem>();
+
+  const url = process.env.SUPABASE_URL;
+  const chave = process.env.SUPABASE_ANON_KEY;
+
+  if (!url || !chave) {
+    return mapa;
+  }
+
+  let token: string;
+  try {
+    token = tokenUsuarioAtual(opcoes.tokenAcesso);
+  } catch {
+    return mapa;
+  }
+
+  // A validação do JWT deve preceder o cache: um pedido sem sessão não pode
+  // receber resultados aquecidos por outro usuário do mesmo tenant.
   const chaveCache = `${tenantId}:${filialId ?? "todas"}:${validadeDias}`;
   const emCache = cachePrevisoes.get(chaveCache);
   if (emCache && Date.now() - emCache.carregadoEm < CACHE_TTL_MS) {
     return emCache.mapa;
-  }
-
-  const mapa = new Map<string, PrevisaoDemandaIaItem>();
-
-  const url = process.env.SUPABASE_URL;
-  // Service role apenas, como no resto do projeto: `demanda_ia_previsao` não tem
-  // grant para anon/authenticated, então a chave pública só renderia 401.
-  const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !chave) {
-    return mapa;
   }
 
   try {
@@ -169,7 +216,7 @@ export async function carregarMapaPrevisoesIa(
         method: "GET",
         headers: {
           apikey: chave,
-          Authorization: `Bearer ${chave}`,
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         cache: "no-store",

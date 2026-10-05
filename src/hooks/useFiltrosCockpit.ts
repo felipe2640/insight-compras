@@ -58,20 +58,20 @@ export function filtrarLinhasCockpit(
   itens: readonly LinhaCockpitMatriz[],
   filtros: {
     query: string;
-    fornecedoresPermitidos: ReadonlySet<number> | null;
-    marcasDeselecionadas: ReadonlySet<string>;
-    secoesDeselecionadas: ReadonlySet<number>;
-    curvasDeselecionadas: ReadonlySet<CurvaABC>;
-    statusFiltro: StatusFilterOption;
+    fornecedoresPermitidos?: ReadonlySet<number> | null;
+    marcasDeselecionadas?: ReadonlySet<string>;
+    secoesDeselecionadas?: ReadonlySet<number>;
+    curvasDeselecionadas?: ReadonlySet<CurvaABC>;
+    statusFiltro?: StatusFilterOption;
   }
 ): LinhaCockpitMatriz[] {
   const {
     query,
-    fornecedoresPermitidos,
-    marcasDeselecionadas,
-    secoesDeselecionadas,
-    curvasDeselecionadas,
-    statusFiltro,
+    fornecedoresPermitidos = null,
+    marcasDeselecionadas = new Set(),
+    secoesDeselecionadas = new Set(),
+    curvasDeselecionadas = new Set(),
+    statusFiltro = "ALL",
   } = filtros;
 
   // 1. Normaliza tokens de busca apenas 1 vez para todo o lote
@@ -123,6 +123,13 @@ export function filtrarLinhasCockpit(
         continue;
       }
       if (statusFiltro === "ZUMBI" && !item.isMarcaZumbi) {
+        continue;
+      }
+      if (
+        statusFiltro === "SUGESTAO_ERP" &&
+        (!item.sugestaoQtdErp || item.sugestaoQtdErp <= 0) &&
+        !item.temSugestaoErp
+      ) {
         continue;
       }
     }
@@ -215,6 +222,7 @@ export function useFiltrosCockpit({
     let totalTransferir = 0;
     let totalRuptura = 0;
     let totalZumbi = 0;
+    let totalSugestaoErp = 0;
 
     for (let i = 0; i < itens.length; i++) {
       const item = itens[i];
@@ -243,6 +251,7 @@ export function useFiltrosCockpit({
       if (item.quantidadeTransferenciaSugerida > 0) totalTransferir++;
       if (item.classificacaoRuptura === "Grave" || item.classificacaoRuptura === "Atenção") totalRuptura++;
       if (item.isMarcaZumbi) totalZumbi++;
+      if ((item.sugestaoQtdErp && item.sugestaoQtdErp > 0) || item.temSugestaoErp) totalSugestaoErp++;
     }
 
     return {
@@ -258,6 +267,7 @@ export function useFiltrosCockpit({
         transferir: totalTransferir,
         ruptura: totalRuptura,
         zumbi: totalZumbi,
+        sugestaoErp: totalSugestaoErp,
       },
     };
   }, [itens, contagensCatalogo]);

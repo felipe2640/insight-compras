@@ -15,6 +15,19 @@ import {
 import { DataGridColumnHeader } from "@/components/ui/data-grid";
 import { LinhaCockpitCompras } from "@/tipos/cockpit";
 import { cn } from "@/lib/utils";
+
+/**
+ * Unidades para leitura humana. O banco guarda numeric(12,4) e o tooltip exibia
+ * "12.3723 un" — peça não tem quatro casas decimais.
+ */
+function arredondarUnidades(valor: number | null | undefined): string {
+  if (valor === null || valor === undefined || !Number.isFinite(valor)) return "—";
+  const arredondado = Math.round(valor * 10) / 10;
+  return Number.isInteger(arredondado)
+    ? String(arredondado)
+    : arredondado.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 import {
   TooltipCriterio,
   TooltipFrequencia,
@@ -967,6 +980,8 @@ export function criarColunasCockpit({
             ? "bg-indigo-100 text-indigo-800 border-indigo-300 font-bold"
             : mov === "Marca Zumbi"
             ? "bg-slate-800 text-rose-200 border-slate-700 font-bold"
+            : mov === "Sugestão ERP"
+            ? "bg-amber-100 text-amber-800 border-amber-300 font-bold"
             : "bg-slate-100 text-slate-700 border-slate-200";
 
         const temIa =
@@ -982,6 +997,14 @@ export function criarColunasCockpit({
               <span>
                 P {item.sugestaoCompra} / T {item.sugestaoTransferencia}
               </span>
+              {item.sugestaoQtdErp != null && item.sugestaoQtdErp > 0 && (
+                <span
+                  className="rounded bg-amber-100 px-1 text-[9px] font-semibold text-amber-800 border border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
+                  title={`Sugestão do ERP: ${item.sugestaoQtdErp} un${item.origemSugestaoErp ? ` (${item.origemSugestaoErp})` : ""}`}
+                >
+                  ERP {item.sugestaoQtdErp}
+                </span>
+              )}
               {temIa && (
                 <TooltipProvider delayDuration={150}>
                   <Tooltip>
@@ -999,15 +1022,32 @@ export function criarColunasCockpit({
                         Previsão de demanda
                       </p>
                       <p className="text-[11px] text-slate-300">
-                        Demanda P80 (Conservadora): <strong className="text-white">{item.previsaoIaP80} un</strong>
+                        Faixa conservadora (P80):{" "}
+                        <strong className="text-white">{arredondarUnidades(item.previsaoIaP80)} un</strong>
+                        {item.previsaoIaHorizonteDias ? (
+                          <span className="text-slate-400"> em {item.previsaoIaHorizonteDias} dias</span>
+                        ) : null}
                       </p>
                       {item.previsaoIaP50 !== null && item.previsaoIaP50 !== undefined && (
                         <p className="text-[11px] text-slate-300">
-                          Demanda P50 (Mediana): <strong className="text-white">{item.previsaoIaP50} un</strong>
+                          Mediana (P50):{" "}
+                          <strong className="text-white">{arredondarUnidades(item.previsaoIaP50)} un</strong>
+                          {item.previsaoIaHorizonteDias ? (
+                            <span className="text-slate-400"> em {item.previsaoIaHorizonteDias} dias</span>
+                          ) : null}
                         </p>
                       )}
+                      {/* Sem esta linha o comprador lê a faixa e não entende por que a
+                          sugestão é outra: a projeção é um TOTAL do período do modelo,
+                          reescalado para o horizonte do item, e a régua analítica é piso. */}
                       <p className="text-[10px] text-slate-400 border-t border-slate-700/60 pt-1">
-                        Horizonte: 30 dias • Cálculo probabilístico sobre o histórico de vendas
+                        {item.origemPrevisao === "IA"
+                          ? "Esta projeção definiu a meta de cobertura do item."
+                          : "A régua analítica prevaleceu: ela é o piso e ficou acima desta projeção."}
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        Cálculo probabilístico sobre o histórico de vendas. A faixa é o total do
+                        período, reescalado para o horizonte de cobertura do item.
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -1033,64 +1073,75 @@ export function criarColunasCockpit({
         const item = row.original;
         const exigeMultiplo = item.exigeMultiploEmbalagem;
         const estaRejeitado = !!item.rejeitado;
+        const temSugestaoErp = (item.sugestaoQtdErp ?? 0) > 0;
 
         return (
-          <div className="flex items-center justify-center gap-1.5">
-            <div className="relative inline-flex items-center justify-center">
-              <input
-                // `key` pela SKU e estado de rejeição: força re-render correto no slot virtualizado
-                key={`${item.codigoSku}-${estaRejeitado ? "rej" : "atv"}`}
-                type="number"
-                min="0"
-                disabled={estaRejeitado}
-                defaultValue={estaRejeitado ? 0 : (item.pedidoCustom ?? item.sugestaoCompra)}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (!isNaN(val) && val >= 0) {
-                    onPedirCommit?.(item.codigoSku, val);
-                  }
-                }}
-                className={cn(
-                  "h-7 w-16 rounded border text-center font-mono text-xs font-semibold outline-none transition-colors focus:ring-1 focus:ring-blue-500",
-                  estaRejeitado
-                    ? "bg-slate-100 border-dashed border-rose-300 text-slate-400 line-through dark:bg-slate-800 dark:border-rose-900"
-                    : exigeMultiplo
-                      ? "bg-destaqueMultiplo border-amber-300 text-amber-950 font-bold"
-                      : "bg-white border-slate-300 text-slate-900 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+          <div className="flex flex-col items-center justify-center gap-0.5">
+            <div className="flex items-center justify-center gap-1.5">
+              <div className="relative inline-flex items-center justify-center">
+                <input
+                  // `key` pela SKU e estado de rejeição: força re-render correto no slot virtualizado
+                  key={`${item.codigoSku}-${estaRejeitado ? "rej" : "atv"}`}
+                  type="number"
+                  min="0"
+                  disabled={estaRejeitado}
+                  defaultValue={estaRejeitado ? 0 : (item.pedidoCustom ?? item.sugestaoCompra)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= 0) {
+                      onPedirCommit?.(item.codigoSku, val);
+                    }
+                  }}
+                  className={cn(
+                    "h-7 w-16 rounded border text-center font-mono text-xs font-semibold outline-none transition-colors focus:ring-1 focus:ring-blue-500",
+                    estaRejeitado
+                      ? "bg-slate-100 border-dashed border-rose-300 text-slate-400 line-through dark:bg-slate-800 dark:border-rose-900"
+                      : exigeMultiplo
+                        ? "bg-destaqueMultiplo border-amber-300 text-amber-950 font-bold"
+                        : "bg-white border-slate-300 text-slate-900 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                  )}
+                  aria-label={`Quantidade de pedido para SKU ${item.codigoSku}`}
+                />
+                {exigeMultiplo && !estaRejeitado && (
+                  <span
+                    className="absolute -top-1.5 -right-2 flex h-3.5 items-center justify-center rounded-full bg-amber-200 px-1 text-[8px] font-bold text-amber-900 border border-amber-300 shadow-sm"
+                    title={`Múltiplo de compra: ${item.loteMultiplo} un · Origem: ${
+                      item.origemLoteMultiplo === "CONFIGURACAO"
+                        ? "configuração do SKU"
+                        : item.origemLoteMultiplo === "ERP"
+                          ? "cadastro do ERP"
+                          : item.origemLoteMultiplo === "HISTOGRAMA"
+                            ? "histórico de vendas"
+                            : item.origemLoteMultiplo === "VOCABULARIO"
+                              ? "descrição do produto"
+                              : "padrão"
+                    }`}
+                  >
+                    {item.loteMultiplo}x
+                  </span>
                 )}
-                aria-label={`Quantidade de pedido para SKU ${item.codigoSku}`}
-              />
-              {exigeMultiplo && !estaRejeitado && (
-                <span
-                  className="absolute -top-1.5 -right-2 flex h-3.5 items-center justify-center rounded-full bg-amber-200 px-1 text-[8px] font-bold text-amber-900 border border-amber-300 shadow-sm"
-                  title={`Múltiplo de compra: ${item.loteMultiplo} un · Origem: ${
-                    item.origemLoteMultiplo === "CONFIGURACAO"
-                      ? "configuração do SKU"
-                      : item.origemLoteMultiplo === "ERP"
-                        ? "cadastro do ERP"
-                        : item.origemLoteMultiplo === "HISTOGRAMA"
-                          ? "histórico de vendas"
-                          : item.origemLoteMultiplo === "VOCABULARIO"
-                            ? "descrição do produto"
-                            : "padrão"
-                  }`}
-                >
-                  {item.loteMultiplo}x
-                </span>
-              )}
-            </div>
+              </div>
 
-            <SeletorMotivoRejeicao
-              skuId={item.codigoSku}
-              motivoAtual={item.motivoRejeicao}
-              rotuloAtual={item.rotuloMotivoRejeicao}
-              rejeitado={estaRejeitado}
-              temSimilarComEstoque={item.temSimilarComEstoque}
-              onSelecionarMotivo={(motivoId, rotulo) =>
-                onRejeitarCommit?.(item.codigoSku, motivoId, rotulo)
-              }
-              onDesfazerRejeicao={() => onDesfazerRejeicaoCommit?.(item.codigoSku)}
-            />
+              <SeletorMotivoRejeicao
+                skuId={item.codigoSku}
+                motivoAtual={item.motivoRejeicao}
+                rotuloAtual={item.rotuloMotivoRejeicao}
+                rejeitado={estaRejeitado}
+                temSimilarComEstoque={item.temSimilarComEstoque}
+                onSelecionarMotivo={(motivoId, rotulo) =>
+                  onRejeitarCommit?.(item.codigoSku, motivoId, rotulo)
+                }
+                onDesfazerRejeicao={() => onDesfazerRejeicaoCommit?.(item.codigoSku)}
+              />
+            </div>
+            {temSugestaoErp && (
+              <span
+                className="mt-0.5 inline-flex items-center rounded px-1 text-[9px] font-mono font-semibold bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800"
+                title={`Sugestão hoje do ERP: ${item.sugestaoQtdErp} un${item.origemSugestaoErp ? ` (${item.origemSugestaoErp})` : ""}`}
+              >
+                ERP: {item.sugestaoQtdErp}
+              </span>
+            )}
           </div>
         );
       },

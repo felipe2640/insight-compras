@@ -12,6 +12,8 @@ import {
   carregarSnapshotCarreiroLocal,
 } from "@adapters/carreiro/carregador-snapshot-local";
 import { AdaptadorInventarioCarreiro } from "@adapters/carreiro/adaptador-carreiro";
+import { criarMapaLojasFonte } from "@adapters/comum/mapa-lojas";
+import { FILIAIS_FONTE_REAL } from "../ajuda/clientes-teste";
 
 describe("Carregador de Snapshot Real Carreiro (Adapters / Carreiro)", () => {
   it("deve localizar o diretório padrão de dados da Carreiro quando presente no disco", () => {
@@ -37,7 +39,9 @@ describe("Carregador de Snapshot Real Carreiro (Adapters / Carreiro)", () => {
       return;
     }
 
-    const resultado = await carregarSnapshotCarreiroLocal(dir);
+    const resultado = await carregarSnapshotCarreiroLocal(dir, undefined, {
+      mapaLojas: criarMapaLojasFonte(FILIAIS_FONTE_REAL),
+    });
 
     expect(resultado.produtos.length).toBeGreaterThan(1000);
     expect(resultado.estoques.size).toBeGreaterThan(1000);

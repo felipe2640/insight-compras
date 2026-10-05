@@ -2,12 +2,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   carregarMapaPrevisoesIa,
   contarProjecoesIa,
+  descreverOrigemPrevisoesIa,
+  PrevisaoDemandaIaItem,
   dataMinimaPrevisaoVigente,
   limparCachePrevisoesIa,
 } from "@/lib/previsao-ia/repositorio-previsao-ia";
 import { VALIDADE_MAXIMA_DIAS } from "@/lib/previsao-ia/vigencia-previsao";
 
 const URL_SUPABASE = "https://projeto.supabase.co";
+const carregarComJwt = (tenant: string, filial?: number) =>
+  carregarMapaPrevisoesIa(tenant, filial, { tokenAcesso: "jwt-de-teste" });
 
 /** Linha crua no formato que o PostgREST devolve. */
 function linhaDb(produtoId: number, filialId = 1) {
@@ -33,7 +37,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
 
   beforeEach(() => {
     process.env.SUPABASE_URL = URL_SUPABASE;
-    process.env.SUPABASE_SERVICE_ROLE_KEY = "chave-de-servico";
+    process.env.SUPABASE_ANON_KEY = "chave-publica";
     // O cache de 15 min é de módulo: sem limpar, um teste herda o mapa do outro.
     limparCachePrevisoesIa();
   });
@@ -53,7 +57,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
   });
 
   it("não chama o Supabase quando a env não está configurada", async () => {
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    delete process.env.SUPABASE_ANON_KEY;
     const fetchFalso = vi.fn();
     vi.stubGlobal("fetch", fetchFalso);
 
@@ -63,9 +67,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     expect(fetchFalso).not.toHaveBeenCalled();
   });
 
-  it("não usa a chave anon: a tabela só tem grant para service role", async () => {
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-    process.env.SUPABASE_ANON_KEY = "chave-publica";
+  it("não consulta sem JWT de usuário mesmo com chave pública", async () => {
     const fetchFalso = vi.fn();
     vi.stubGlobal("fetch", fetchFalso);
 
@@ -79,7 +81,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     const fetchFalso = vi.fn().mockResolvedValue(respostaOk([linhaDb(4512)]));
     vi.stubGlobal("fetch", fetchFalso);
 
-    const mapa = await carregarMapaPrevisoesIa("carreiro");
+    const mapa = await carregarComJwt("carreiro");
 
     const urlChamada = String(fetchFalso.mock.calls[0][0]);
     expect(urlChamada).toContain("tenant_id=eq.carreiro");
@@ -88,6 +90,8 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     // Ordem estável é pré-requisito da paginação por offset.
     expect(urlChamada).toContain("order=produto_id.asc,filial_id.asc");
     expect(urlChamada).toContain("horizonte_dias");
+    expect(fetchFalso.mock.calls[0][1].headers.apikey).toBe("chave-publica");
+    expect(fetchFalso.mock.calls[0][1].headers.Authorization).toBe("Bearer jwt-de-teste");
 
     const item = mapa.get("4512:1");
     expect(item?.demandaP80).toBe(18);
@@ -98,7 +102,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
   it("indexa também por SKU, sempre amarrado à filial", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(respostaOk([linhaDb(4512, 3)])));
 
-    const mapa = await carregarMapaPrevisoesIa("carreiro");
+    const mapa = await carregarComJwt("carreiro");
 
     expect(mapa.get("4512:3")).toBeDefined();
     expect(mapa.get("SKU-4512:3")).toBeDefined();
@@ -111,7 +115,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     const fetchFalso = vi.fn().mockResolvedValue(respostaOk([linhaDb(4512, 3)]));
     vi.stubGlobal("fetch", fetchFalso);
 
-    await carregarMapaPrevisoesIa("carreiro", 3);
+    await carregarComJwt("carreiro", 3);
 
     expect(String(fetchFalso.mock.calls[0][0])).toContain("filial_id=eq.3");
   });
@@ -128,7 +132,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
       .mockResolvedValueOnce(respostaOk(paginaFinal));
     vi.stubGlobal("fetch", fetchFalso);
 
-    const mapa = await carregarMapaPrevisoesIa("carreiro");
+    const mapa = await carregarComJwt("carreiro");
 
     expect(contarProjecoesIa(mapa)).toBe(1003);
     expect(fetchFalso).toHaveBeenCalledTimes(2);
@@ -146,7 +150,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
       .mockResolvedValueOnce(respostaOk([]));
     vi.stubGlobal("fetch", fetchFalso);
 
-    const mapa = await carregarMapaPrevisoesIa("carreiro");
+    const mapa = await carregarComJwt("carreiro");
 
     expect(contarProjecoesIa(mapa)).toBe(1000);
     expect(fetchFalso).toHaveBeenCalledTimes(2);
@@ -161,7 +165,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     } as Response);
     vi.stubGlobal("fetch", fetchFalso);
 
-    const mapa = await carregarMapaPrevisoesIa("carreiro");
+    const mapa = await carregarComJwt("carreiro");
 
     expect(mapa.size).toBe(0);
   });
@@ -170,7 +174,7 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ECONNRESET")));
 
-    const mapa = await carregarMapaPrevisoesIa("carreiro");
+    const mapa = await carregarComJwt("carreiro");
 
     expect(mapa.size).toBe(0);
   });
@@ -179,14 +183,70 @@ describe("Repositório de Previsões de Demanda por IA", () => {
     const fetchFalso = vi.fn().mockResolvedValue(respostaOk([linhaDb(4512)]));
     vi.stubGlobal("fetch", fetchFalso);
 
-    await carregarMapaPrevisoesIa("carreiro");
-    await carregarMapaPrevisoesIa("carreiro");
+    await carregarComJwt("carreiro");
+    await carregarComJwt("carreiro");
 
     expect(fetchFalso).toHaveBeenCalledTimes(1);
 
     limparCachePrevisoesIa();
-    await carregarMapaPrevisoesIa("carreiro");
+    await carregarComJwt("carreiro");
     expect(fetchFalso).toHaveBeenCalledTimes(2);
+  });
+
+  describe("descreverOrigemPrevisoesIa", () => {
+    function item(produtoId: number, modelo: string): PrevisaoDemandaIaItem {
+      return {
+        filialId: 1,
+        produtoId,
+        sku: `SKU-${produtoId}`,
+        previsaoCentral: 5,
+        demandaP50: 5,
+        demandaP80: 9,
+        horizonteDias: 30,
+        modeloUtilizado: modelo,
+        dataPrevisao: "2026-09-15",
+      };
+    }
+
+    function mapaCom(...itens: PrevisaoDemandaIaItem[]) {
+      const m = new Map<string, PrevisaoDemandaIaItem>();
+      for (const i of itens) {
+        m.set(`${i.produtoId}:${i.filialId}`, i);
+        m.set(`${i.sku}:${i.filialId}`, i);
+      }
+      return m;
+    }
+
+    it("nomeia o modelo quando a projeção vem de um", () => {
+      const r = descreverOrigemPrevisoesIa(mapaCom(item(1, "Chronos-Bolt (Small)")));
+      expect(r?.series).toBe(1);
+      expect(r?.rotulo).toContain("Previsão probabilística");
+      expect(r?.rotulo).toContain("Chronos-Bolt (Small)");
+    });
+
+    it("NÃO chama de probabilística a heurística recalculada", () => {
+      // Quando o critério financeiro elege a própria régua, o pipeline
+      // republica a heurística: o rótulo tem de dizer isso.
+      const r = descreverOrigemPrevisoesIa(mapaCom(item(1, "Baseline Heuristico (Atual)")));
+      expect(r?.rotulo).toContain("Régua analítica recalculada");
+      expect(r?.rotulo).not.toContain("probabilística");
+    });
+
+    it("usa o modelo dominante quando há mistura", () => {
+      const r = descreverOrigemPrevisoesIa(
+        mapaCom(
+          item(1, "Chronos-Bolt (Small)"),
+          item(2, "Chronos-Bolt (Small)"),
+          item(3, "Baseline Heuristico (Atual)")
+        )
+      );
+      expect(r?.series).toBe(3);
+      expect(r?.rotulo).toContain("Chronos-Bolt (Small)");
+    });
+
+    it("devolve null sem projeção alguma", () => {
+      expect(descreverOrigemPrevisoesIa(new Map())).toBeNull();
+    });
   });
 
   it("usa o teto de idade como filtro no banco", () => {

@@ -53,7 +53,7 @@ export default async function PaginaParametros() {
             Parâmetros de Compra
           </h1>
           <p className="text-xs text-white/70">
-            Em uso: <strong>{publicados ? `calibração ${publicados.versao}` : "arquivo do cliente"}</strong>
+            Em uso: <strong>{publicados ? `calibração ${publicados.versao}` : "configuração atual"}</strong>
           </p>
         </header>
 
@@ -61,10 +61,10 @@ export default async function PaginaParametros() {
           <p className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-600 shadow-sm">
             <FileCode2 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
             <span>
-              A previsão é <code className="rounded bg-slate-100 px-1">consumo diário × horizonte × (1 + margem)</code>,
+              A previsão considera <code className="rounded bg-slate-100 px-1">consumo diário × horizonte × (1 + margem)</code>,
               arredondada para o lote, com piso pela mediana da linha de venda, e depois
-              multiplicada pelo fator de calibração. Estes números vêm do arquivo do cliente
-              e podem ser substituídos por uma calibração publicada.
+              multiplicada pelo fator de calibração. Esses valores podem ser substituídos por
+              uma calibração publicada.
             </span>
           </p>
 
@@ -77,7 +77,7 @@ export default async function PaginaParametros() {
                 <tr>
                   <th className="px-3 py-1.5 text-left">Perfil</th>
                   <th className="px-3 py-1.5 text-right">Horizonte</th>
-                  <th className="px-3 py-1.5 text-right">Margem do arquivo</th>
+                  <th className="px-3 py-1.5 text-right">Margem padrão</th>
                   <th className="px-3 py-1.5 text-right">Margem em uso</th>
                 </tr>
               </thead>

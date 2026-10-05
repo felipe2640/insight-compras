@@ -50,12 +50,12 @@ describe("repositório em memória cumpre a porta (o mesmo contrato do Supabase)
 
 describe("seleção do provedor de aprendizado", () => {
   const envOriginal = { ...process.env };
-  beforeEach(() => { process.env = { ...envOriginal }; delete process.env.APRENDIZADO_PROVIDER; delete process.env.SUPABASE_URL; delete process.env.SUPABASE_SERVICE_ROLE_KEY; reiniciarRepositorioAprendizado(); });
+  beforeEach(() => { process.env = { ...envOriginal }; delete process.env.APRENDIZADO_PROVIDER; delete process.env.SUPABASE_URL; delete process.env.SUPABASE_ANON_KEY; reiniciarRepositorioAprendizado(); });
 
   it("sem env = nenhum (no-op); com chaves = supabase; APRENDIZADO_PROVIDER manda", () => {
     expect(idProvedorAprendizado()).toBe("nenhum");
     process.env.SUPABASE_URL = "https://x.supabase.co";
-    process.env.SUPABASE_SERVICE_ROLE_KEY = "srv";
+    process.env.SUPABASE_ANON_KEY = "anon";
     expect(idProvedorAprendizado()).toBe("supabase");
     process.env.APRENDIZADO_PROVIDER = "memoria";
     expect(idProvedorAprendizado()).toBe("memoria");

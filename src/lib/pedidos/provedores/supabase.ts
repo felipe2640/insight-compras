@@ -4,7 +4,7 @@
  * 100% em Português do Brasil (pt-BR).
  */
 
-import { sbSelecionar } from "@/lib/aprendizado/supabase";
+import { sbAtualizar, sbSelecionar } from "@/lib/aprendizado/supabase";
 import {
   FiltrosListagemPedidos,
   ParametrosTransicaoPedido,
@@ -67,30 +67,6 @@ function converterLinhaParaPedido(linha: LinhaSnapshotDb, tenantId: string): Ped
     recebidoPor: linha.recebido_por ?? null,
     historico: Array.isArray(linha.historico_estados) ? linha.historico_estados : [],
   };
-}
-
-async function patchPostgrest(tabela: string, filtro: string, dados: Record<string, unknown>): Promise<void> {
-  const url = process.env.SUPABASE_URL;
-  const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !chave) {
-    throw new Error("Supabase não configurado.");
-  }
-
-  const res = await fetch(`${url}/rest/v1/${tabela}?${filtro}`, {
-    method: "PATCH",
-    headers: {
-      apikey: chave,
-      Authorization: `Bearer ${chave}`,
-      "Content-Type": "application/json",
-      Prefer: "return=minimal",
-    },
-    body: JSON.stringify(dados),
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    throw new Error(`Falha ao atualizar ${tabela}: ${res.status} ${await res.text()}`);
-  }
 }
 
 export class RepositorioPedidosSupabase implements RepositorioPedidos {
@@ -201,7 +177,7 @@ export class RepositorioPedidosSupabase implements RepositorioPedidos {
       dadosUpdate.recebido_por = params.responsavel;
     }
 
-    await patchPostgrest(
+    await sbAtualizar(
       "aprendizado_snapshot",
       `id=eq.${params.pedidoId}&tenant_id=eq.${encodeURIComponent(params.tenantId)}`,
       dadosUpdate

@@ -9,9 +9,10 @@ import {
   limparNomeColunaDax,
   normalizarLinhaDax,
 } from "@adapters/carreiro/cliente-dax";
+import { criarMapaLojasFonte } from "@adapters/comum/mapa-lojas";
+import { FILIAIS_FONTE_REAL } from "../ajuda/clientes-teste";
 import {
   extrairIdProduto,
-  mapearFilialCarreiro,
   mapearProdutosDax,
   mapearEstoquesDax,
   mapearHistoricoVendasDax,
@@ -19,6 +20,9 @@ import {
   mapearSimilaresDax,
 } from "@adapters/carreiro/mapeador-dax";
 import { formatarListaNumericaDax } from "@adapters/carreiro/consultas-homologadas";
+
+/** Só para deixar as chamadas abaixo legíveis. */
+const criarLinhas = (linhas: Record<string, unknown>[]) => linhas;
 
 describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
   describe("limparNomeColunaDax e normalizarLinhaDax", () => {
@@ -50,39 +54,41 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
   });
 
   describe("mapearFilialCarreiro", () => {
-    it("deve reconhecer os GUIDs oficiais das 5 lojas da Rede Carreiro mapeadas no M0", () => {
-      // 1. Matriz Pedro II
-      const filial1 = mapearFilialCarreiro("1|e2adc241-50f7-4dcd-9527-423080cd8c5c");
-      expect(filial1.filialId).toBe(1);
-      expect(filial1.nomeFilial).toContain("Pedro II");
+    it("reconhece as lojas pelos identificadores EXATOS declarados no cadastro", () => {
+      const mapa = criarMapaLojasFonte(FILIAIS_FONTE_REAL);
 
-      // 2. Melo / Piripiri
-      const filial2 = mapearFilialCarreiro("1|cd87703f-0d8c-447e-9bdf-5c1d790f587b");
-      expect(filial2.filialId).toBe(2);
-      expect(filial2.nomeFilial).toContain("Piripiri");
-
-      // 3. Poranga
-      const filial3 = mapearFilialCarreiro("1|a5172ddc-0dd0-4f8e-bb0d-5018183d4457");
-      expect(filial3.filialId).toBe(3);
-      expect(filial3.nomeFilial).toContain("Poranga");
-
-      // 4. Ceará Auto Peças (Campo Maior)
-      const filial4 = mapearFilialCarreiro("1|c9432abf-af64-40d2-abe3-21124f49b2ae");
-      expect(filial4.filialId).toBe(4);
-      expect(filial4.nomeFilial).toContain("Campo Maior");
-
-      // 5. José de Freitas
-      const filial5 = mapearFilialCarreiro("1|d624d502-59a4-4ab2-910b-99ae9bf7462a");
-      expect(filial5.filialId).toBe(5);
-      expect(filial5.nomeFilial).toContain("José de Freitas");
+      expect(mapa.resolver("1|e2adc241-50f7-4dcd-9527-423080cd8c5c")).toBe(1);
+      expect(mapa.resolver("1|cd87703f-0d8c-447e-9bdf-5c1d790f587b")).toBe(2);
+      expect(mapa.resolver("1|a5172ddc-0dd0-4f8e-bb0d-5018183d4457")).toBe(3);
+      // Caixa e espaço acidental não derrubam a loja.
+      expect(mapa.resolver("  1|C9432ABF-AF64-40D2-ABE3-21124F49B2AE ")).toBe(4);
+      // O nome declarado também resolve, para o payload que traz só o nome.
+      expect(mapa.resolver("LOJA OESTE")).toBe(5);
     });
 
-    it("deve aceitar identificadores numéricos ou nomes parciais", () => {
-      expect(mapearFilialCarreiro(1).filialId).toBe(1);
-      expect(mapearFilialCarreiro(2).filialId).toBe(2);
-      expect(mapearFilialCarreiro("Piripiri").filialId).toBe(2);
-      expect(mapearFilialCarreiro("Poranga").filialId).toBe(3);
-      expect(mapearFilialCarreiro("Ceará Auto Peças").filialId).toBe(4);
+    it("NÃO adivinha: loja desconhecida é descartada, nunca vira a matriz", () => {
+      const mapa = criarMapaLojasFonte(FILIAIS_FONTE_REAL);
+
+      // Uma loja nova no ERP, um GUID truncado e um nome parecido: tudo isto
+      // virava filial 1 em silêncio, somando estoque de lojas diferentes.
+      expect(mapa.resolver("1|99999999-0000-0000-0000-000000000000")).toBeNull();
+      expect(mapa.resolver("e2adc241")).toBeNull();
+      expect(mapa.resolver("Matriz da Loja")).toBeNull();
+      expect(mapa.resolver("")).toBeNull();
+      expect(mapa.resolver(null)).toBeNull();
+
+      mapa.registrarNaoMapeada("1|99999999-0000-0000-0000-000000000000");
+      mapa.registrarNaoMapeada("1|99999999-0000-0000-0000-000000000000");
+      expect(mapa.naoMapeadas()).toEqual([
+        { identificador: "1|99999999-0000-0000-0000-000000000000", linhasDescartadas: 2 },
+      ]);
+    });
+
+    it("aceita o número da filial só quando ela existe no cadastro", () => {
+      const mapa = criarMapaLojasFonte(FILIAIS_FONTE_REAL);
+      expect(mapa.resolver(1)).toBe(1);
+      expect(mapa.resolver("2")).toBe(2);
+      expect(mapa.resolver(42)).toBeNull();
     });
   });
 
@@ -183,7 +189,7 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
         },
       ];
 
-      const estoques = mapearEstoquesDax(linhasEstoque);
+      const estoques = mapearEstoquesDax(linhasEstoque, { mapaLojas: criarMapaLojasFonte(FILIAIS_FONTE_REAL) });
 
       expect(estoques.size).toBe(2);
       expect(estoques.get("1001:1")?.saldoFisico).toBe(35);
@@ -198,6 +204,7 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
           "PRODUTOS[ACODPRODUTO]": 2001,
           "CADEMP[ACODEMP]": 1,
           VendasQtd30d: 15,
+          VendasQtd60d: 30,
           VendasQtd90d: 45,
           VendasQtd180d: 90,
           NotasVenda90d: 18,
@@ -206,11 +213,12 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
         },
       ];
 
-      const historicos = mapearHistoricoVendasDax(linhasVenda);
+      const historicos = mapearHistoricoVendasDax(linhasVenda, criarMapaLojasFonte(FILIAIS_FONTE_REAL));
       const hist = historicos.get("2001:1");
 
       expect(hist).toBeDefined();
       expect(hist?.vendasLiquidas30dias).toBe(15);
+      expect(hist?.vendasLiquidas60dias).toBe(30);
       expect(hist?.vendasLiquidas90dias).toBe(45);
       expect(hist?.vendasLiquidas180dias).toBe(90);
       expect(hist?.notasFiscaisVenda90dias).toBe(18);
@@ -219,7 +227,7 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
     });
 
     it("subtrai as devoluções para obter a saída líquida", () => {
-      const historicos = mapearHistoricoVendasDax([
+      const historicos = mapearHistoricoVendasDax(criarLinhas([
         {
           "PRODUTOS[ACODPRODUTO]": 2002,
           "CADEMP[ACODEMP]": 1,
@@ -229,7 +237,7 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
           Devolucoes90d: 10,
           NotasVenda90d: 12,
         },
-      ]);
+      ]), criarMapaLojasFonte(FILIAIS_FONTE_REAL));
       const hist = historicos.get("2002:1");
       expect(hist?.vendasLiquidas90dias).toBe(40);
       expect(hist?.vendasLiquidas180dias).toBe(90);
@@ -237,9 +245,9 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
     });
 
     it("declara a ruptura como NÃO MEDIDA em vez de devolver zero silencioso", () => {
-      const historicos = mapearHistoricoVendasDax([
+      const historicos = mapearHistoricoVendasDax(criarLinhas([
         { "PRODUTOS[ACODPRODUTO]": 2003, "CADEMP[ACODEMP]": 1, VendasQtd90d: 10 },
-      ]);
+      ]), criarMapaLojasFonte(FILIAIS_FONTE_REAL));
       const hist = historicos.get("2003:1");
       // Zero aqui significaria "nunca faltou", que seria uma afirmação falsa.
       expect(hist?.camposIndisponiveis).toContain("diasRuptura90dias");
@@ -274,7 +282,9 @@ describe("Mapeador DAX e Normalizador do Power BI Fabric (Marco 2)", () => {
       expect(produtos[0].codigoSku).toBe("000001");
       expect(produtos[0].descricao).toBe("RETENTOR POLIA OPALA");
 
-      const estoques = mapearEstoquesDax(linhasCompostas);
+      const estoques = mapearEstoquesDax(linhasCompostas, {
+        mapaLojas: criarMapaLojasFonte(FILIAIS_FONTE_REAL),
+      });
       expect(estoques.get("1:3")).toBeDefined();
       expect(estoques.get("1:3")?.saldoFisico).toBe(5);
     });
@@ -378,5 +388,65 @@ describe("Catálogo: classes do ERP que não são mercadoria comprável", () => 
     });
 
     expect(produtos.map((p) => p.codigoSku)).toEqual(["012345"]);
+  });
+
+  it("deve descartar produtos marcados como inativos via LINATIVO ou Inativo = 'T'", () => {
+    const linhaInativoFlag = {
+      "[Produto]": "029042|guid-1",
+      "[Descricao]": "AMORTECEDOR TRASEIRO SIENA",
+      "[LINATIVO]": "T",
+      "[Secao]": 1_000_000_000_260,
+    };
+    const linhaAtiva = {
+      "[Produto]": "005174|guid-1",
+      "[Descricao]": "ABRACADEIRA ESCAPAMENTO",
+      "[LINATIVO]": "F",
+      "[Secao]": 1_000_000_000_260,
+    };
+
+    const produtos = mapearProdutosDax([linhaInativoFlag, linhaAtiva]);
+    expect(produtos.map((p) => p.codigoSku)).toEqual(["005174"]);
+  });
+
+  it("deve descartar produtos cuja descrição contenha INATIVO em qualquer posição", () => {
+    const linhasInativas = [
+      {
+        "[Produto]": "029001|guid-1",
+        "[Descricao]": "INATIVO",
+        "[Secao]": 1_000_000_000_260,
+      },
+      {
+        "[Produto]": "029002|guid-1",
+        "[Descricao]": "PARACHOQUE DIANT GOL G5 08/12 (CF/PL) INATIVO",
+        "[Secao]": 1_000_000_000_260,
+      },
+      {
+        "[Produto]": "029003|guid-1",
+        "[Descricao]": "INATIVO ATUADOR HIDR EMBR S10/BLAZER 2.8",
+        "[Secao]": 1_000_000_000_260,
+      },
+      {
+        "[Produto]": "005174|guid-1",
+        "[Descricao]": "ABRACADEIRA ESCAPAMENTO",
+        "[Secao]": 1_000_000_000_260,
+      },
+    ];
+
+    const produtos = mapearProdutosDax(linhasInativas);
+    expect(produtos.map((p) => p.codigoSku)).toEqual(["005174"]);
+  });
+
+  it("deve permitir desativar o descarte caso desconsiderarInativos seja false", () => {
+    const linhaInativo = {
+      "[Produto]": "029001|guid-1",
+      "[Descricao]": "INATIVO",
+      "[Secao]": 1_000_000_000_260,
+    };
+
+    const produtos = mapearProdutosDax([linhaInativo], {
+      desconsiderarInativos: false,
+    });
+    expect(produtos).toHaveLength(1);
+    expect(produtos[0].codigoSku).toBe("029001");
   });
 });

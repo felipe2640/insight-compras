@@ -345,6 +345,10 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
           descricaoSimilar: "AMORTECEDOR DIANTEIRO COROLLA COFAP TURBOGAS",
           marcaSimilar: "COFAP",
           saldoFisicoDisponivelRede: 8,
+          saldoFisicoLojaAvaliacao: 3,
+          vendasLojaAvaliacao30dias: 5,
+          vendasLojaAvaliacao60dias: 9,
+          vendasLojaAvaliacao90dias: 14,
         },
         {
           produtoIdOrigem: 1001,
@@ -371,6 +375,16 @@ describe("Cockpit — 5 Tooltips Analíticos Ricos & DialogSimilares", () => {
       expect(screen.getByText("AM-COF-001")).toBeTruthy();
       expect(screen.getByText("AM-NAK-001")).toBeTruthy();
       expect(screen.getByText("12 un")).toBeTruthy(); // 8 + 4
+      expect(screen.getByText("Estoque na loja")).toBeTruthy();
+      expect(screen.getByText("Vendidos (30d)")).toBeTruthy();
+      expect(screen.getByText("3 un")).toBeTruthy();
+      expect(screen.getByText("5 un")).toBeTruthy();
+
+      fireEvent.change(screen.getByLabelText("Período de vendas na loja de avaliação"), {
+        target: { value: "60" },
+      });
+      expect(screen.getByText("Vendidos (60d)")).toBeTruthy();
+      expect(screen.getByText("9 un")).toBeTruthy();
 
       const botaoFechar = screen.getByText("Fechar");
       fireEvent.click(botaoFechar);

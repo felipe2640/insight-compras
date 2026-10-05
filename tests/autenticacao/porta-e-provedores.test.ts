@@ -86,32 +86,32 @@ describe("provedor demo", () => {
   const provedor = new ProvedorAutenticacaoDemo({ senha: "segredo", segredo: "chave-teste" });
 
   it("entra com usuário conhecido e senha certa; token valida de volta", async () => {
-    const sessao = await provedor.entrar({ usuario: "gestor", senha: "segredo", tenantId: "carreiro" });
+    const sessao = await provedor.entrar({ usuario: "gestor", senha: "segredo", tenantId: "demonstracao" });
     expect(sessao.usuario.role).toBe("GESTOR");
-    const validado = await provedor.validar(sessao.token, "carreiro");
+    const validado = await provedor.validar(sessao.token, "demonstracao");
     expect(validado?.id).toBe("demo-gestor");
   });
 
   it("senha errada ou usuário desconhecido = credenciais inválidas", async () => {
-    await expect(provedor.entrar({ usuario: "gestor", senha: "x", tenantId: "carreiro" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
-    await expect(provedor.entrar({ usuario: "ninguem", senha: "segredo", tenantId: "carreiro" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
+    await expect(provedor.entrar({ usuario: "gestor", senha: "x", tenantId: "demonstracao" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
+    await expect(provedor.entrar({ usuario: "ninguem", senha: "segredo", tenantId: "demonstracao" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
   });
 
   it("token adulterado, assinado com outro segredo ou de outro tenant não valida", async () => {
-    const sessao = await provedor.entrar({ usuario: "comprador", senha: "segredo", tenantId: "carreiro" });
+    const sessao = await provedor.entrar({ usuario: "comprador", senha: "segredo", tenantId: "demonstracao" });
     const [carga, assinatura] = sessao.token.split(".");
-    expect(await provedor.validar(`${carga}x.${assinatura}`, "carreiro")).toBeNull();
+    expect(await provedor.validar(`${carga}x.${assinatura}`, "demonstracao")).toBeNull();
     const outro = new ProvedorAutenticacaoDemo({ senha: "segredo", segredo: "outra-chave" });
-    expect(await outro.validar(sessao.token, "carreiro")).toBeNull();
+    expect(await outro.validar(sessao.token, "demonstracao")).toBeNull();
     expect(await provedor.validar(sessao.token, "outro-tenant")).toBeNull();
   });
 
   it("token expirado não valida", async () => {
     let relogio = 1_000_000;
     const p = new ProvedorAutenticacaoDemo({ senha: "s", segredo: "k", agora: () => relogio });
-    const sessao = await p.entrar({ usuario: "gestor", senha: "s", tenantId: "t" });
+    const sessao = await p.entrar({ usuario: "gestor", senha: "s", tenantId: "demonstracao" });
     relogio += 13 * 3600 * 1000;
-    expect(await p.validar(sessao.token, "t")).toBeNull();
+    expect(await p.validar(sessao.token, "demonstracao")).toBeNull();
   });
 
   it("permite alterar senha com a senha atual correta e rejeita senha fraca ou errada", async () => {
@@ -121,29 +121,29 @@ describe("provedor demo", () => {
 
     await p.alterarSenha("demo-gestor", "senhaAntiga123", "novaSenhaForte123");
     // Login com a senha antiga deve falhar
-    await expect(p.entrar({ usuario: "gestor", senha: "senhaAntiga123", tenantId: "t" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
+    await expect(p.entrar({ usuario: "gestor", senha: "senhaAntiga123", tenantId: "demonstracao" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
     // Login com a nova senha deve funcionar
-    const sessao = await p.entrar({ usuario: "gestor", senha: "novaSenhaForte123", tenantId: "t" });
+    const sessao = await p.entrar({ usuario: "gestor", senha: "novaSenhaForte123", tenantId: "demonstracao" });
     expect(sessao.usuario.id).toBe("demo-gestor");
   });
 
   it("desativação de usuário impede login e invalida token existente; reativação restaura acesso", async () => {
     const p = new ProvedorAutenticacaoDemo({ senha: "segredo123", segredo: "k" });
-    const sessaoAtiva = await p.entrar({ usuario: "comprador", senha: "segredo123", tenantId: "carreiro" });
-    expect(await p.validar(sessaoAtiva.token, "carreiro")).not.toBeNull();
+    const sessaoAtiva = await p.entrar({ usuario: "comprador", senha: "segredo123", tenantId: "demonstracao" });
+    expect(await p.validar(sessaoAtiva.token, "demonstracao")).not.toBeNull();
 
     // Desativa a conta
     await p.desativarUsuario("demo-comprador");
 
     // Novo login rejeitado por conta desativada
-    await expect(p.entrar({ usuario: "comprador", senha: "segredo123", tenantId: "carreiro" })).rejects.toBeInstanceOf(ErroUsuarioDesativado);
+    await expect(p.entrar({ usuario: "comprador", senha: "segredo123", tenantId: "demonstracao" })).rejects.toBeInstanceOf(ErroUsuarioDesativado);
 
     // Token existente agora é invalidado (revogação imediata)
-    expect(await p.validar(sessaoAtiva.token, "carreiro")).toBeNull();
+    expect(await p.validar(sessaoAtiva.token, "demonstracao")).toBeNull();
 
     // Reativa a conta
     await p.reativarUsuario("demo-comprador");
-    const novaSessao = await p.entrar({ usuario: "comprador", senha: "segredo123", tenantId: "carreiro" });
+    const novaSessao = await p.entrar({ usuario: "comprador", senha: "segredo123", tenantId: "demonstracao" });
     expect(novaSessao.usuario.id).toBe("demo-comprador");
   });
 
@@ -151,7 +151,7 @@ describe("provedor demo", () => {
     const p = new ProvedorAutenticacaoDemo({ senha: "demo", segredo: "k" });
     const lista = await p.listarUsuarios("carreiro");
     expect(lista.some((u) => u.usuario === "gestor.demo")).toBe(false);
-    await expect(p.entrar({ usuario: "gestor.demo", senha: "demo", tenantId: "carreiro" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
+    await expect(p.entrar({ usuario: "gestor.demo", senha: "demo", tenantId: "demonstracao" })).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
   });
 
   it("listarUsuarios('demonstracao') e listarUsuarios('demo') retornam usuários demo com sucesso", async () => {
@@ -172,7 +172,7 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
   const usuarioGoTrue = {
     id: "uuid-1",
     email: "gestor@empresa.com.br",
-    app_metadata: { nome: "Gestora", papel: "GESTOR", tenant_id: "carreiro", fornecedores: null },
+    app_metadata: { nome: "Gestora", papel: "GESTOR", tenant_id: "demonstracao", fornecedores: null },
   };
 
   function fetchSimulado(respostas: Record<string, { status: number; corpo: unknown }>) {
@@ -191,8 +191,8 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
       "token?grant_type=password": { status: 200, corpo: { access_token: "at", refresh_token: "rt", expires_in: 3600, user: usuarioGoTrue } },
     });
     const p = new ProvedorAutenticacaoSupabase(cfg, fn);
-    const s = await p.entrar({ usuario: "gestor", senha: "x", tenantId: "carreiro" });
-    expect(s.usuario).toMatchObject({ id: "uuid-1", nome: "Gestora", role: "GESTOR", tenantId: "carreiro" });
+    const s = await p.entrar({ usuario: "gestor", senha: "x", tenantId: "demonstracao" });
+    expect(s.usuario).toMatchObject({ id: "uuid-1", nome: "Gestora", role: "GESTOR", tenantId: "demonstracao" });
     expect(s.tokenRenovacao).toBe("rt");
     const h = chamadas[0].init.headers as Record<string, string>;
     expect(h.apikey).toBe("pub");
@@ -201,7 +201,7 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
 
   it("400 do GoTrue vira credenciais inválidas (sem vazar detalhe)", async () => {
     const { fn } = fetchSimulado({ "token?grant_type=password": { status: 400, corpo: { error_description: "Invalid login" } } });
-    await expect(new ProvedorAutenticacaoSupabase(cfg, fn).entrar({ usuario: "abc", senha: "x", tenantId: "carreiro" }))
+    await expect(new ProvedorAutenticacaoSupabase(cfg, fn).entrar({ usuario: "abc", senha: "x", tenantId: "demonstracao" }))
       .rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
   });
 
@@ -210,7 +210,7 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
       "token?grant_type=password": { status: 200, corpo: { access_token: "at", user: { ...usuarioGoTrue, app_metadata: { ...usuarioGoTrue.app_metadata, tenant_id: "outra" } } } },
       logout: { status: 204, corpo: {} },
     });
-    await expect(new ProvedorAutenticacaoSupabase(cfg, fn).entrar({ usuario: "abc", senha: "x", tenantId: "carreiro" }))
+    await expect(new ProvedorAutenticacaoSupabase(cfg, fn).entrar({ usuario: "abc", senha: "x", tenantId: "demonstracao" }))
       .rejects.toBeInstanceOf(ErroAcessoNegado);
     expect(chamadas.some((c) => c.url.endsWith("/auth/v1/logout"))).toBe(true);
   });
@@ -227,12 +227,12 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
       "admin/users": { status: 200, corpo: { ...usuarioGoTrue, created_at: "2026-09-09T00:00:00Z" } },
     });
     const p = new ProvedorAutenticacaoSupabase(cfg, fn);
-    const criado = await p.criarUsuario({ usuario: "gestor", senha: "s", nome: "Gestora", papel: "GESTOR", tenantId: "carreiro", fornecedores: null });
+    const criado = await p.criarUsuario({ usuario: "gestor", senha: "s", nome: "Gestora", papel: "GESTOR", tenantId: "demonstracao", fornecedores: null });
     expect(criado.papel).toBe("GESTOR");
     const h = chamadas[0].init.headers as Record<string, string>;
     expect(h.Authorization).toBe("Bearer srv");
     const corpo = JSON.parse(String(chamadas[0].init.body));
-    expect(corpo.app_metadata).toMatchObject({ papel: "GESTOR", tenant_id: "carreiro" });
+    expect(corpo.app_metadata).toMatchObject({ papel: "GESTOR", tenant_id: "demonstracao" });
     expect(corpo.email_confirm).toBe(true);
   });
 
@@ -286,7 +286,9 @@ describe("provedor supabase (GoTrue via fetch simulado)", () => {
       "admin/users/uuid-orfao": { status: 200, corpo: {} },
     });
     const p = new ProvedorAutenticacaoSupabase(cfg, fn);
-    const lista = await p.listarUsuarios("carreiro");
+    // O usuário válido do fixture pertence à demonstração; a conta órfã é que
+    // aponta para um cliente real.
+    const lista = await p.listarUsuarios("demonstracao");
 
     // gestor.demo não aparece na lista final
     expect(lista.some((u) => u.usuario === "gestor.demo")).toBe(false);
@@ -375,7 +377,7 @@ describe("nome de usuário (a plataforma não pede e-mail)", () => {
   it("nome fora do padrão é credencial inválida, não erro de formato", async () => {
     const provedor = new ProvedorAutenticacaoDemo({ senha: "s", segredo: "k" });
     await expect(
-      provedor.entrar({ usuario: "x", senha: "s", tenantId: "t" })
+      provedor.entrar({ usuario: "x", senha: "s", tenantId: "demonstracao" })
     ).rejects.toBeInstanceOf(ErroCredenciaisInvalidas);
   });
 });

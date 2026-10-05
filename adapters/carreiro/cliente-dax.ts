@@ -74,14 +74,14 @@ export class ClienteDaxPowerBI {
   private expiraEmEpochMs: number = 0;
 
   constructor(configuracao: ConfiguracaoClienteDax = {}) {
-    this.workspaceId =
-      configuracao.workspaceId ||
-      process.env.POWERBI_WORKSPACE_ID ||
-      "6bf4ec9d-2d71-48cf-b742-3460847d8036";
-    this.datasetId =
-      configuracao.datasetId ||
-      process.env.POWERBI_DATASET_ID ||
-      "a1ac5650-ca05-4a08-9593-5550ab67e14b";
+    /**
+     * Sem padrão embutido. Aqui havia o workspace e o dataset REAIS da Rede
+     * Carreiro como fallback: qualquer instalação sem `POWERBI_WORKSPACE_ID`
+     * consultava o modelo semântico dela. O cliente que esquece a variável
+     * precisa ver erro de configuração, não o dado de outro cliente.
+     */
+    this.workspaceId = configuracao.workspaceId || process.env.POWERBI_WORKSPACE_ID || "";
+    this.datasetId = configuracao.datasetId || process.env.POWERBI_DATASET_ID || "";
     this.tenantId = configuracao.tenantId || process.env.POWERBI_TENANT_ID;
     this.clientId = configuracao.clientId || process.env.POWERBI_CLIENT_ID;
     this.clientSecret = configuracao.clientSecret || process.env.POWERBI_CLIENT_SECRET;
@@ -93,17 +93,28 @@ export class ClienteDaxPowerBI {
    * Verifica se as credenciais necessárias para conectar ao Fabric estão presentes.
    */
   public possuiConfiguracaoAtiva(): boolean {
-    if (this.accessTokenFixo && this.accessTokenFixo.trim().length > 0) {
-      return true;
+    return this.configuracoesFaltando().length === 0;
+  }
+
+  /**
+   * O que falta para esta fonte funcionar, em nome de variável.
+   *
+   * A lista existe para a mensagem de erro dizer o que corrigir. Ela é
+   * mostrada só para ADMIN ou fora de produção — nome de variável ausente é
+   * informação de infraestrutura, não recado para o comprador.
+   */
+  public configuracoesFaltando(): readonly string[] {
+    const faltando: string[] = [];
+    if (!this.workspaceId.trim()) faltando.push("POWERBI_WORKSPACE_ID");
+    if (!this.datasetId.trim()) faltando.push("POWERBI_DATASET_ID");
+
+    const temTokenFixo = Boolean(this.accessTokenFixo && this.accessTokenFixo.trim().length > 0);
+    if (!temTokenFixo) {
+      if (!this.tenantId?.trim()) faltando.push("POWERBI_TENANT_ID");
+      if (!this.clientId?.trim()) faltando.push("POWERBI_CLIENT_ID");
+      if (!this.clientSecret?.trim()) faltando.push("POWERBI_CLIENT_SECRET");
     }
-    return Boolean(
-      this.tenantId &&
-        this.clientId &&
-        this.clientSecret &&
-        this.tenantId.trim().length > 0 &&
-        this.clientId.trim().length > 0 &&
-        this.clientSecret.trim().length > 0
-    );
+    return faltando;
   }
 
   /**

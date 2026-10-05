@@ -79,7 +79,7 @@ const GRUPO_CONFIGURACOES: ItemNavegacao[] = [
     somenteAdmin: true,
   },
   {
-    titulo: "Tema & White-Label",
+    titulo: "Tema",
     href: "/configuracoes/tema",
     icone: Palette,
     somenteAdmin: true,

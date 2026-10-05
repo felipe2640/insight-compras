@@ -1,5 +1,6 @@
 -- ============================================================================
 -- Trilha Imutavel de Auditoria de Pedidos - esquema Supabase / Postgres
+-- Bootstrap: aplique depois as migrações versionadas em supabase/migrations.
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS auditoria_pedido (

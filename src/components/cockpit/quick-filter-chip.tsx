@@ -133,9 +133,14 @@ export const QuickFilterChip = memo(function QuickFilterChip({
                 const count = counts?.get(option);
 
                 return (
-                  <label
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={isChecked}
+                    aria-label={`${option}${count !== undefined ? ` (${count})` : ""}`}
                     key={option}
-                    className="flex cursor-pointer items-center justify-between rounded px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    onClick={() => handleToggle(option)}
+                    className="flex w-full cursor-pointer items-center justify-between rounded px-2 py-1 text-left hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:hover:bg-slate-800"
                   >
                     <div className="flex items-center gap-2 truncate">
                       <div
@@ -157,7 +162,7 @@ export const QuickFilterChip = memo(function QuickFilterChip({
                         {count}
                       </span>
                     )}
-                  </label>
+                  </button>
                 );
               })
             )}

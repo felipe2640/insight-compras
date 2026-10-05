@@ -5,64 +5,88 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { classificarDivergencia, StatusConfirmacao } from "@core/aprendizado";
-import { obterUsuarioDaRequisicao, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
 import { listarComparativo, ItemComparativo } from "@/lib/aprendizado/repositorio";
 import { aprendizadoConfigurado } from "@/lib/aprendizado/repositorio";
-import { obterAdaptadorInventario } from "@adapters/index";
-import { obterConfiguracaoTenant } from "@config/tenants";
+import { ErroContexto, contextoDaRequisicao } from "@/lib/contexto/contexto-requisicao";
+import { respostaErroContexto } from "@/lib/contexto/resposta-erro";
+import {
+  indexarSugestoesRegistradas,
+  sugestaoQueAntecedeuACompra,
+} from "@/lib/aprendizado/cruzamento-compras-erp";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const usuario = await obterUsuarioDaRequisicao(request);
-  if (!usuario) return respostaNaoAutenticado();
+  let contexto;
+  try {
+    contexto = await contextoDaRequisicao(request);
+  } catch (erro) {
+    if (erro instanceof ErroContexto) return respostaErroContexto(erro);
+    throw erro;
+  }
+  const { usuario, tenant, fonte: fonteDados } = contexto;
   const { searchParams } = new URL(request.url);
   const dias = Math.min(365, Math.max(1, parseInt(searchParams.get("dias") ?? "30", 10) || 30));
   const filialParam = searchParams.get("filialId");
   const filialId = filialParam ? parseInt(filialParam, 10) || undefined : undefined;
   const fonteParam = searchParams.get("fonte")?.toLowerCase();
 
-  const tenant = obterConfiguracaoTenant(usuario.tenantId);
-  const temProcessoERP = Boolean(tenant.processoCompra?.habilitado);
+  const temProcessoERP = Boolean(fonteDados.pedidosERP);
   const fonte = fonteParam ?? (temProcessoERP ? "erp" : "snapshot");
 
   let itens: ItemComparativo[] = [];
 
   // 1. Carrega Compras Reais emitidas no ERP se fonte for "erp" ou "todos"
   if (fonte === "erp" || fonte === "todos") {
-    const adaptador = obterAdaptadorInventario({ tenant: usuario.tenantId });
-    if (adaptador.listarTodasComprasERPNaJanela) {
-      const comprasErp = await adaptador.listarTodasComprasERPNaJanela(dias, filialId);
+    if (fonteDados.pedidosERP) {
+      const comprasErp = await fonteDados.pedidosERP.listarComprasNaJanela(dias, filialId);
+      const rotuloUsuario = tenant.fonte.nomeERP
+        ? `ERP ${tenant.fonte.nomeERP} (compra real)`
+        : "ERP integrado (compra real)";
+
+      // O lado do modelo vem do que o motor EFETIVAMENTE sugeriu, registrado na
+      // exportação que antecedeu a compra — nunca de um fator fabricado. Sem
+      // sugestão registrada, qtdModelo fica null e a classificação diz
+      // "sem_sugestao". Ver src/lib/aprendizado/cruzamento-compras-erp.ts.
+      const sugestoesRegistradas = aprendizadoConfigurado()
+        ? await listarComparativo({ tenantId: usuario.tenantId, dias, filialId })
+        : [];
+      const indiceSugestoes = indexarSugestoesRegistradas(sugestoesRegistradas);
+
       const itensErp: ItemComparativo[] = comprasErp.map((c) => {
-        const mod = c.produtoId % 5;
-        const fatorModelo = mod === 0 ? 1 : mod === 1 ? 0.6 : mod === 2 ? 1.4 : mod === 3 ? 0 : 0.8;
-        const qtdModelo = Math.max(0, Math.round(c.quantidade * fatorModelo));
-        const perfil = mod === 0 ? "ALTO_GIRO" : mod === 1 ? "BAIXO_GIRO" : "MEDIO_GIRO";
+        const sugestao = sugestaoQueAntecedeuACompra(
+          indiceSugestoes,
+          c.produtoId,
+          // Fonte sem granularidade por loja devolve `null`: a sugestão é
+          // casada por produto E loja, então sem loja não há casamento — o que
+          // é o comportamento certo, e não um casamento por aproximação.
+          c.filialId,
+          c.dataEmissao
+        );
 
         return {
           id: c.id,
           snapshotId: c.pedidoId,
           exportadoEm: c.dataEmissao,
-          usuario: "ERP Connectsoft (Compra Real)",
+          usuario: rotuloUsuario,
           produtoId: c.produtoId,
           sku: c.sku ?? (c.produtoId ? String(c.produtoId).padStart(6, "0") : `PROD-${c.produtoId}`),
           descricao: c.descricao || "Item de Compra ERP",
-          filialId: c.filialId,
+          filialId: c.filialId ?? 0,
           custo: c.valorUnitario,
           qtdComprador: c.quantidade,
-          qtdModelo,
+          qtdModelo: sugestao?.qtdModelo ?? null,
           qtdTransferenciaComprador: 0,
-          qtdTransferenciaModelo: 0,
-          perfil,
-          elegivel: true,
-          motivoInelegibilidade: null,
+          qtdTransferenciaModelo: sugestao?.qtdTransferenciaModelo ?? 0,
+          perfil: sugestao?.perfil ?? null,
+          elegivel: sugestao?.elegivel ?? true,
+          motivoInelegibilidade: sugestao?.motivoInelegibilidade ?? null,
           sinalGovernanca: "COMPRA_ERP",
-          feedback: null,
-          confirmacao: {
-            status: "confirmado" as StatusConfirmacao,
-            qtdEntrada: c.quantidade,
-            qtdTransferida: 0,
-          },
+          feedback: sugestao?.feedback ?? null,
+          // Pedido emitido não é mercadoria recebida: só há confirmação quando a
+          // exportação correspondente foi confirmada. Antes vinha "confirmado"
+          // fixo, com entrada igual à quantidade pedida.
+          confirmacao: sugestao?.confirmacao ?? null,
         };
       });
 

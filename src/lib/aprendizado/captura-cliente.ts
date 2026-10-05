@@ -3,7 +3,8 @@
  * Camada: Aplicação (src/lib/aprendizado) — seguro para o navegador.
  *
  * REGRAS (herdadas do diário):
- * - Fire-and-forget: a captura NUNCA bloqueia nem quebra o download.
+ * - O arquivo já foi baixado antes desta chamada, mas o chamador aguarda a
+ *   confirmação para só então retirar os itens da lista de compra.
  * - Granularidade por loja: quantidade do comprador e do modelo são ambas da
  *   loja em foco, nunca um total combinado.
  * - Lotes de 500: a rota aceita até 2000; nada é descartado em silêncio.
@@ -38,19 +39,18 @@ export function montarItensSnapshot(itens: readonly LinhaCockpitMatriz[]): ItemS
   }));
 }
 
-export function capturarSnapshotAprendizado(parametros: {
+export async function capturarSnapshotAprendizado(parametros: {
   readonly itens: readonly LinhaCockpitMatriz[];
   readonly filialId: number;
   readonly layoutId: string;
   readonly formato: "csv" | "xlsx" | "pdf";
-}): void {
+}): Promise<void> {
   const itens = montarItensSnapshot(parametros.itens);
   if (itens.length === 0) return;
 
-  try {
-    for (let i = 0; i < itens.length; i += TAMANHO_LOTE) {
-      const lote = itens.slice(i, i + TAMANHO_LOTE);
-      void fetch("/api/aprendizado/snapshot", {
+  for (let i = 0; i < itens.length; i += TAMANHO_LOTE) {
+    const lote = itens.slice(i, i + TAMANHO_LOTE);
+    const resposta = await fetch("/api/aprendizado/snapshot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -60,11 +60,17 @@ export function capturarSnapshotAprendizado(parametros: {
           itens: lote,
         }),
         keepalive: lote.length <= 60, // keepalive tem limite de 64KB
-      }).catch((erro) => {
-        console.warn("[aprendizado] snapshot não capturado:", erro);
-      });
+    });
+    const corpo = (await resposta.json().catch(() => null)) as
+      | { gravado?: boolean; motivo?: string; erro?: string }
+      | null;
+    if (!resposta.ok || corpo?.gravado !== true) {
+      throw new Error(
+        corpo?.erro ??
+          (corpo?.motivo === "supabase_nao_configurado"
+            ? "O histórico de pedidos não está configurado."
+            : "O arquivo foi gerado, mas o pedido não pôde ser registrado."),
+      );
     }
-  } catch (erro) {
-    console.warn("[aprendizado] snapshot não capturado:", erro);
   }
 }

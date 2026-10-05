@@ -22,9 +22,17 @@ import { inferirLotePadraoPorCategoria } from "../comum/lote-autopecas";
 import {
   EntradaNFeDoDia,
   ItemSimilarIntercambiavel,
+  SugestaoCompraERPItem,
   RespostaCargaInventario,
 } from "../AdaptadorInventario";
-import { NOMES_FILIAIS_CARREIRO } from "../carreiro/mapeador-dax";
+
+export const NOMES_FILIAIS_SINTETICAS: Readonly<Record<number, string>> = {
+  1: "Loja Matriz",
+  2: "Loja Norte",
+  3: "Loja Sul",
+  4: "Loja Leste",
+  5: "Loja Oeste",
+};
 
 /**
  * Algoritmo Mulberry32: PRNG de alta velocidade e distribuição uniforme.
@@ -97,6 +105,15 @@ const FORNECEDORES_REDE = [
 export interface OpcoesGeradorSintetico {
   readonly totalSkus?: number;
   readonly seed?: number;
+  /**
+   * Lojas do cliente sintético.
+   *
+   * O gerador sempre produziu 5 lojas fixas começando em 1, então nenhum teste
+   * exercitava o que acontece com um cliente de 2 lojas cujos ids não incluem
+   * o 1 — que é o caso onde todo `?? 1` do código aparecia como dado plausível
+   * e errado. São usadas as duas primeiras lojas da lista.
+   */
+  readonly filiais?: readonly { readonly filialId: number; readonly nome: string }[];
 }
 
 /**
@@ -104,12 +121,22 @@ export interface OpcoesGeradorSintetico {
  * Nenhum nome aqui pode remeter a cliente real: este dado é o que aparece na
  * demonstração pública da plataforma.
  */
-export function gerarDatasetSinteticoCarreiro(
+export function gerarDatasetSintetico(
   opcoes: OpcoesGeradorSintetico = {}
 ): RespostaCargaInventario {
   const inicio = Date.now();
   const totalSkus = opcoes.totalSkus ?? 25_000;
   const rand = criarPrng(opcoes.seed ?? 42);
+
+  const filiaisSinteticas =
+    opcoes.filiais && opcoes.filiais.length > 0
+      ? opcoes.filiais
+      : Object.entries(NOMES_FILIAIS_SINTETICAS).map(([id, nome]) => ({
+          filialId: Number(id),
+          nome,
+        }));
+  const lojaA = filiaisSinteticas[0];
+  const lojaB = filiaisSinteticas[1] ?? filiaisSinteticas[0];
 
   const produtos: Produto[] = new Array(totalSkus);
   const estoques = new Map<string, EstoqueFilial>();
@@ -292,7 +319,7 @@ export function gerarDatasetSinteticoCarreiro(
       entradasHoje.push({
         numeroNotaFiscal: `NF-${900000 + i}`,
         produtoId,
-        filialId: 1,
+        filialId: lojaA.filialId,
         fornecedorNome: fornecedor.nome,
         quantidadeEntrada: 12 + (i % 24),
         valorEntrada: (12 + (i % 24)) * custoBase,
@@ -300,11 +327,11 @@ export function gerarDatasetSinteticoCarreiro(
       });
     }
 
-    // Popula Filial 1 (Pedro II / Matriz)
-    const chave1 = `${produtoId}:1`;
+    // Popula Filial 1 (Loja Matriz)
+    const chave1 = `${produtoId}:${lojaA.filialId}`;
     estoques.set(chave1, {
-      filialId: 1,
-      nomeFilial: NOMES_FILIAIS_CARREIRO[1],
+      filialId: lojaA.filialId,
+      nomeFilial: lojaA.nome,
       produtoId,
       saldoFisico: saldo1,
       estoqueMinimoSeguranca: min1,
@@ -321,7 +348,7 @@ export function gerarDatasetSinteticoCarreiro(
 
     historicos.set(chave1, {
       produtoId,
-      filialId: 1,
+      filialId: lojaA.filialId,
       vendasLiquidas30dias: vendas30d1,
       vendasLiquidas90dias: vendas90d1,
       vendasLiquidas180dias: vendas180d1,
@@ -335,11 +362,11 @@ export function gerarDatasetSinteticoCarreiro(
       dataPrimeiraVendaRegistrada: "2024-01-10",
     });
 
-    // Popula Filial 2 (Melo / Piripiri)
-    const chave2 = `${produtoId}:2`;
+    // Popula Filial 2 (Loja Norte)
+    const chave2 = `${produtoId}:${lojaB.filialId}`;
     estoques.set(chave2, {
-      filialId: 2,
-      nomeFilial: NOMES_FILIAIS_CARREIRO[2],
+      filialId: lojaB.filialId,
+      nomeFilial: lojaB.nome,
       produtoId,
       saldoFisico: saldo2,
       estoqueMinimoSeguranca: min2,
@@ -356,7 +383,7 @@ export function gerarDatasetSinteticoCarreiro(
 
     historicos.set(chave2, {
       produtoId,
-      filialId: 2,
+      filialId: lojaB.filialId,
       vendasLiquidas30dias: vendas30d2,
       vendasLiquidas90dias: vendas90d2,
       vendasLiquidas180dias: vendas180d2,
@@ -372,7 +399,7 @@ export function gerarDatasetSinteticoCarreiro(
   }
 
   // Gera relações de similares intercambiáveis para os primeiros 2.000 produtos
-  for (let i = 0; i < 2_000; i++) {
+  for (let i = 0; i < Math.min(2_000, totalSkus); i++) {
     const pOrigem = produtos[i];
     // Encontra um similar (ex: i + 2 com a mesma categoria)
     const pSimilar = produtos[(i + 2) % totalSkus];
@@ -392,6 +419,24 @@ export function gerarDatasetSinteticoCarreiro(
     similares.set(pOrigem.id, [itemSimilar]);
   }
 
+  // Gera sugestões de compra do ERP para os primeiros 500 produtos (operação em paralelo)
+  const sugestoesErp = new Map<string, SugestaoCompraERPItem>();
+  const hojeIso = new Date().toISOString();
+  for (let i = 0; i < Math.min(500, totalSkus); i++) {
+    const p = produtos[i];
+    const filialId = i % 2 === 0 ? lojaA.filialId : lojaB.filialId;
+    const qtdSugerida = (i % 5) + 1;
+    sugestoesErp.set(`${p.id}:${filialId}`, {
+      produtoId: p.id,
+      filialId,
+      quantidadeSugerida: qtdSugerida,
+      dataSugestao: hojeIso,
+      origem: i % 4 === 0 ? "E" : "R",
+      descricao: i % 4 === 0 ? "SOLICITAÇÃO EMERGENCIAL DE BALCÃO" : "SOLICITAÇÃO PARA REPOSIÇÃO DE ESTOQUE",
+      solicitador: "COMPRAS ERP",
+    });
+  }
+
   const latenciaMs = Date.now() - inicio;
 
   return {
@@ -400,6 +445,7 @@ export function gerarDatasetSinteticoCarreiro(
     historicos,
     entradasHoje,
     similares,
+    sugestoesErp,
     metadados: {
       provedor: "MOCK_SINTETICO",
       timestampCarga: new Date().toISOString(),
@@ -409,3 +455,7 @@ export function gerarDatasetSinteticoCarreiro(
     },
   };
 }
+
+/** Alias de compatibilidade regressiva */
+export const gerarDatasetSinteticoCarreiro = gerarDatasetSintetico;
+

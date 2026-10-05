@@ -125,6 +125,8 @@ export interface LinhaCockpitMatriz {
   readonly origemPrevisao?: "IA" | "ANALITICA";
   readonly previsaoIaP50?: number | null;
   readonly previsaoIaP80?: number | null;
+  /** Horizonte, em dias, a que a projeção se refere. A faixa é um TOTAL de período. */
+  readonly previsaoIaHorizonteDias?: number | null;
 
   // Ajuste Humano e Múltiplos
   readonly loteMultiplo: number; // ex: 1 avulso, 2 par, 4 jogo
@@ -182,6 +184,12 @@ export interface LinhaCockpitMatriz {
   readonly rejeitado?: boolean;
   readonly motivoRejeicao?: string | null;
   readonly rotuloMotivoRejeicao?: string | null;
+
+  // Sugestão Hoje do ERP (Operação em paralelo / White-Label)
+  readonly sugestaoQtdErp?: number | null;
+  readonly temSugestaoErp?: boolean;
+  readonly origemSugestaoErp?: string | null;
+  readonly dataSugestaoErp?: string | null;
 
   // Índice de busca pré-computado em memória para busca < 250ms
   _searchIndex?: string;
@@ -321,7 +329,7 @@ export interface DraftSaveError {
 // 5. ESTADO DE FILTROS DO COCKPIT
 // ============================================================================
 
-export type StatusFilterOption = "ALL" | "PEDIR" | "TRANSFERIR" | "RUPTURA" | "ZUMBI";
+export type StatusFilterOption = "ALL" | "PEDIR" | "TRANSFERIR" | "RUPTURA" | "ZUMBI" | "SUGESTAO_ERP";
 
 export interface FiltrosCockpitState {
   readonly queryBusca: string;

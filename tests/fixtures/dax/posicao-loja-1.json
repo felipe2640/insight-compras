@@ -1,0 +1,222 @@
+[
+  {
+    "ACODPRODUTO": "009613|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 1,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 48,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": null,
+    "MargemAlvo": 0.5
+  },
+  {
+    "ACODPRODUTO": "009919|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 1,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 80,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": null,
+    "MargemAlvo": 0.52
+  },
+  {
+    "ACODPRODUTO": "003712|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 1,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 6,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": null,
+    "MargemAlvo": 0.47
+  },
+  {
+    "ACODPRODUTO": "002383|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 2,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 24,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": null,
+    "MargemAlvo": 0.51
+  },
+  {
+    "ACODPRODUTO": "000125|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 2,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 2,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": null,
+    "MargemAlvo": 0.82
+  },
+  {
+    "ACODPRODUTO": "016804|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 1,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 20,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": null,
+    "MargemAlvo": null
+  },
+  {
+    "ACODPRODUTO": "016737|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 3,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 84,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": 0.87,
+    "MargemAlvo": 0.37
+  },
+  {
+    "ACODPRODUTO": "006944|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 1,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 26,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": 0.57,
+    "MargemAlvo": 0.79
+  },
+  {
+    "ACODPRODUTO": "011057|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 2,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 80,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": 0.34,
+    "MargemAlvo": 0.46
+  },
+  {
+    "ACODPRODUTO": "014000|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 1,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 48,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": 0.54,
+    "MargemAlvo": 0.49
+  },
+  {
+    "ACODPRODUTO": "010299|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 2,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 61,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": 1.08,
+    "MargemAlvo": 0.52
+  },
+  {
+    "ACODPRODUTO": "011522|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 1,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 14,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": null,
+    "MargemAlvo": 0.49
+  },
+  {
+    "ACODPRODUTO": "011516|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 1,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 16,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": null,
+    "MargemAlvo": 1.1
+  },
+  {
+    "ACODPRODUTO": "012641|00000000-0000-4000-8000-000000000005",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 1,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 62,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": 0.5,
+    "MargemAlvo": 0.52
+  },
+  {
+    "ACODPRODUTO": "010764|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 2,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 43,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": 0.43,
+    "MargemAlvo": 0.52
+  },
+  {
+    "ACODPRODUTO": "008377|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 1,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 84,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": 0.46,
+    "MargemAlvo": 0.52
+  },
+  {
+    "ACODPRODUTO": "007555|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 6,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 58,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": 1.27,
+    "MargemAlvo": 0.7
+  },
+  {
+    "ACODPRODUTO": "007756|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 2,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 17,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": 0.47,
+    "MargemAlvo": 0.52
+  },
+  {
+    "ACODPRODUTO": "007766|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 1,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 57,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": 0.52,
+    "MargemAlvo": 0.52
+  },
+  {
+    "ACODPRODUTO": "007098|00000000-0000-4000-8000-000000000007",
+    "EstoqueQtd": 0,
+    "EstoqueMinimo": 1,
+    "ConsumoMedioDiario": 0.011111111111111112,
+    "DiasSemVenda": 47,
+    "DecisaoCompra": "MANTER COMPRAS",
+    "UsoLimiteCompra": null,
+    "MargemRealizada": 0.92,
+    "MargemAlvo": 0.85
+  }
+]

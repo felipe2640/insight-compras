@@ -8,6 +8,8 @@
 --
 -- WHITE-LABEL: toda tabela carrega tenant_id. Vários clientes podem compartilhar o
 -- mesmo projeto Supabase sem misturar dados; a aplicação sempre filtra por tenant.
+-- ATENÇÃO: este arquivo é bootstrap. Em seguida aplique as migrações versionadas
+-- em supabase/migrations; elas transformam o filtro em isolamento real por RLS.
 -- ============================================================================
 
 -- O que foi exportado (uma linha por clique em Exportar)

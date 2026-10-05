@@ -32,6 +32,7 @@ import { obterTenantAtivo, montarOpcoesMatriz } from "@/lib/cockpit/opcoes-tenan
 import { validarTenantContexto } from "@/lib/rbac/validador-carteira";
 import { ErroViolacaoTenant, UsuarioAutenticado } from "@/lib/rbac/tipos";
 import { GET as healthGet } from "@/app/api/health/route";
+import { GET as healthFonteGet } from "@/app/api/health/fonte/route";
 import { NextRequest } from "next/server";
 
 describe("Prontidão Multi-Tenant em Produção & Salvaguarda Carreiro", () => {
@@ -55,7 +56,7 @@ describe("Prontidão Multi-Tenant em Produção & Salvaguarda Carreiro", () => {
       const tenant = resolverTenantConfigurado();
       expect(tenant.id).toBe("carreiro");
       expect(tenant.nome).toBe("Rede Carreiro Autopeças");
-      expect(tenant.fonteDados).toBe("powerbi-carreiro");
+      expect(tenant.fonte.adaptador).toBe("powerbi-dax");
       expect(tenant.parametrosMotor.motor.fatorCalibracao).toBe(0.9);
       expect(tenant.parametrosMotor.filialFocoPadraoId).toBe(1);
     });
@@ -68,6 +69,8 @@ describe("Prontidão Multi-Tenant em Produção & Salvaguarda Carreiro", () => {
 
     it("obterAdaptadorInventario deve instanciar AdaptadorInventarioCarreiro com credenciais ativas", () => {
       process.env.TENANT_ATIVO = "carreiro";
+      process.env.POWERBI_WORKSPACE_ID = "workspace-de-teste";
+      process.env.POWERBI_DATASET_ID = "dataset-de-teste";
       process.env.POWERBI_TENANT_ID = "tenant-carreiro-teste";
       process.env.POWERBI_CLIENT_ID = "client-carreiro-teste";
       process.env.POWERBI_CLIENT_SECRET = "segredo-carreiro-teste";
@@ -80,6 +83,8 @@ describe("Prontidão Multi-Tenant em Produção & Salvaguarda Carreiro", () => {
   describe("2. Resolução Dinâmica de Adaptadores por Tenant", () => {
     it("deve instanciar AdaptadorInventarioCarreiro ao passar tenant: 'carreiro' com credenciais ativas sem TENANT_ATIVO", () => {
       delete process.env.TENANT_ATIVO;
+      process.env.POWERBI_WORKSPACE_ID = "workspace-de-teste";
+      process.env.POWERBI_DATASET_ID = "dataset-de-teste";
       process.env.POWERBI_TENANT_ID = "tenant-carreiro-teste";
       process.env.POWERBI_CLIENT_ID = "client-carreiro-teste";
       process.env.POWERBI_CLIENT_SECRET = "segredo-carreiro-teste";
@@ -96,6 +101,8 @@ describe("Prontidão Multi-Tenant em Produção & Salvaguarda Carreiro", () => {
     });
 
     it("deve isolar instâncias de adaptadores em mapa sem interferência de caches", () => {
+      process.env.POWERBI_WORKSPACE_ID = "workspace-de-teste";
+      process.env.POWERBI_DATASET_ID = "dataset-de-teste";
       process.env.POWERBI_TENANT_ID = "tenant-carreiro-teste";
       process.env.POWERBI_CLIENT_ID = "client-carreiro-teste";
       process.env.POWERBI_CLIENT_SECRET = "segredo-carreiro-teste";
@@ -122,7 +129,7 @@ describe("Prontidão Multi-Tenant em Produção & Salvaguarda Carreiro", () => {
         razaoSocial: "Autopeças Nordeste Distribuidora SA",
         subdominioPrincipal: "nordeste.insightd.com.br",
         subdominiosValidos: ["nordeste.insightd.com.br", "nordeste"],
-        fonteDados: "sintetica",
+        fonte: { adaptador: "sintetica" },
       };
 
       registrarTenant(novoTenant);
@@ -170,27 +177,27 @@ describe("Prontidão Multi-Tenant em Produção & Salvaguarda Carreiro", () => {
     });
   });
 
-  describe("5. Healthcheck Multi-Tenant", () => {
-    it("deve responder com o tenant solicitado no cabeçalho x-tenant-id", async () => {
-      const requisicao = new NextRequest("http://localhost/api/health", {
-        headers: { "x-tenant-id": "carreiro" },
-      });
-
-      const res = await healthGet(requisicao);
-      const dados = await res.json();
-
-      expect(res.status).toBe(200);
-      expect(dados.status).toBe("ok");
-      expect(dados.tenant).toBe("carreiro");
-    });
-
-    it("deve manter compatibilidade chamando sem argumentos", async () => {
-      delete process.env.TENANT_ATIVO;
+  describe("5. Healthcheck", () => {
+    it("o health público não revela nem consulta o cliente", async () => {
+      // Esta rota é pública e ficava fora do middleware, aceitando
+      // `x-tenant-id` do próprio chamador e disparando uma consulta à fonte
+      // daquele cliente. Qualquer um na internet fazia a plataforma consultar
+      // o Power BI de um cliente, sem sessão nenhuma.
       const res = await healthGet();
       const dados = await res.json();
 
       expect(res.status).toBe(200);
-      expect(dados.tenant).toBe("demonstracao");
+      expect(dados.status).toBe("ok");
+      expect(dados.tenant).toBeUndefined();
+      expect(dados.conexaoDados).toBeUndefined();
+    });
+
+    it("o health da FONTE exige sessão", async () => {
+      const requisicao = new NextRequest("http://localhost/api/health/fonte", {
+        headers: { "x-tenant-id": "carreiro" },
+      });
+      const res = await healthFonteGet(requisicao);
+      expect(res.status).toBe(401);
     });
   });
 

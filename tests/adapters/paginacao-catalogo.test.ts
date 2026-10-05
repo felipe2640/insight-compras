@@ -57,10 +57,13 @@ describe("paginação do catálogo de produtos", () => {
     const dax = gerarConsultaDaxProdutosEstoque(
       { fornecedoresPermitidos: null, apenasComEstoqueOuVenda: true, filialId: 4 },
       null,
-      "CEARA AUTO PECAS CAMPO MAIOR"
+      "1|c9432abf-af64-40d2-abe3-21124f49b2ae"
     );
 
-    expect(dax).toContain("'CADEMP'[ANOMEFANTASIA] = \"CEARA AUTO PECAS CAMPO MAIOR\"");
+    // Filtro pelo identificador ESTÁVEL da loja, não pelo nome fantasia: o
+    // nome é editável no ERP e uma renomeação fazia o filtro casar com nada,
+    // devolvendo catálogo vazio sem erro nenhum.
+    expect(dax).toContain("'CADEMP'[ACODEMP] = \"1|c9432abf-af64-40d2-abe3-21124f49b2ae\"");
     expect(dax).toContain("DATESINPERIOD('dCalendario'[Data], TODAY(), -180, DAY)");
     expect(dax).toContain("[Quantidade Vendida Produto]");
     expect(dax).toContain(") > 0");
@@ -76,5 +79,12 @@ describe("paginação do catálogo de produtos", () => {
     const dax = gerarConsultaDaxProdutosEstoque();
     expect(dax).toContain("SUBCLASSES[ADESCRICAO]");
     expect(dax).toContain("CLASSES[ADESCRICAO]");
+  });
+
+  it("exclui produtos inativos via LINATIVO e busca de INATIV na descrição", () => {
+    const dax = gerarConsultaDaxProdutosEstoque();
+    expect(dax).toContain("COALESCE('PRODUTOS'[LINATIVO], \"F\") <> \"T\"");
+    expect(dax).toContain("SEARCH(\"INATIV\", UPPER('PRODUTOS'[ADESCRICAO]), 1, 0) = 0");
+    expect(dax).toContain('"Inativo", \'PRODUTOS\'[LINATIVO]');
   });
 });

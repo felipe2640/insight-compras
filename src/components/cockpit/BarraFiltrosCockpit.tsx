@@ -2,6 +2,7 @@
 
 import React from "react";
 import { StatusFilterOption } from "@/tipos/cockpit";
+import { ContagensStatusGrade } from "@/lib/cockpit/escopo-grade";
 import { cn } from "@/lib/utils";
 
 export interface BarraFiltrosCockpitProps {
@@ -11,13 +12,7 @@ export interface BarraFiltrosCockpitProps {
   onStatusChange: (status: StatusFilterOption) => void;
   totalItens: number;
   totalFiltrados: number;
-  contagensStatus?: {
-    total: number;
-    pedir: number;
-    transferir: number;
-    ruptura: number;
-    zumbi: number;
-  };
+  contagensStatus?: ContagensStatusGrade;
   /**
    * Lojas da rede, SEMPRE do cadastro do tenant.
    *
@@ -60,6 +55,12 @@ export function BarraFiltrosCockpit({
       rotulo: "Transferir",
       count: contagensStatus?.transferir,
       badgeCor: "bg-indigo-100 text-indigo-800",
+    },
+    {
+      id: "SUGESTAO_ERP",
+      rotulo: "Sugestão ERP",
+      count: contagensStatus?.sugestaoErp,
+      badgeCor: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
     },
     {
       id: "RUPTURA",

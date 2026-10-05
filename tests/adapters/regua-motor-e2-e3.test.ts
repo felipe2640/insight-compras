@@ -20,6 +20,8 @@ import {
   classificarPerfilGiro,
   verificarElegibilidadeHistorico,
 } from "@core/calculo/demanda-diaria";
+import { criarMapaLojasFonte } from "@adapters/comum/mapa-lojas";
+import { FILIAIS_FONTE_REAL } from "../ajuda/clientes-teste";
 
 describe("Régua do Motor — Unidade U6: Etapa E2 (Lote por Histograma e Precedência)", () => {
   describe("Precedência Estrita: ERP > Histograma > Vocabulário", () => {
@@ -144,7 +146,7 @@ describe("Régua do Motor — Unidade U6: Etapa E2 (Lote por Histograma e Preced
         },
       ];
 
-      const mapaHist = mapearHistoricoVendasDax(linhasHistorico);
+      const mapaHist = mapearHistoricoVendasDax(linhasHistorico, criarMapaLojasFonte(FILIAIS_FONTE_REAL));
       const hist = mapaHist.get("303:1");
       expect(hist).toBeDefined();
       expect(hist?.loteDetectadoHistograma).toBe(4);

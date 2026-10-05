@@ -155,6 +155,6 @@ export class RepositorioAuditoriaSupabase implements RepositorioAuditoria {
     const consulta = tenantId
       ? `tenant_id=eq.${encodeURIComponent(tenantId)}`
       : `id=not.is.null`;
-    await sbExcluir("auditoria_pedido", consulta);
+    await sbExcluir("auditoria_pedido", consulta, { acesso: "privilegiado" });
   }
 }

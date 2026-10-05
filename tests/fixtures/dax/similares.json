@@ -1,0 +1,122 @@
+[
+  {
+    "Id": 1000000000001,
+    "ProdutoOrigem": "007044",
+    "ProdutoSimilar": "002096",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000002,
+    "ProdutoOrigem": "007058",
+    "ProdutoSimilar": "006874",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000004,
+    "ProdutoOrigem": "007067",
+    "ProdutoSimilar": "002467",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000005,
+    "ProdutoOrigem": "007071",
+    "ProdutoSimilar": "002638",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000006,
+    "ProdutoOrigem": "007072",
+    "ProdutoSimilar": "000112",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000007,
+    "ProdutoOrigem": "007072",
+    "ProdutoSimilar": "002015",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000009,
+    "ProdutoOrigem": "007092",
+    "ProdutoSimilar": "007026",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000010,
+    "ProdutoOrigem": "000715",
+    "ProdutoSimilar": "005919",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000011,
+    "ProdutoOrigem": "000711",
+    "ProdutoSimilar": "005884",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000014,
+    "ProdutoOrigem": "000704",
+    "ProdutoSimilar": "005718",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000015,
+    "ProdutoOrigem": "000701",
+    "ProdutoSimilar": "006555",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000016,
+    "ProdutoOrigem": "007095",
+    "ProdutoSimilar": "000429",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000017,
+    "ProdutoOrigem": "007096",
+    "ProdutoSimilar": "003381",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000018,
+    "ProdutoOrigem": "007097",
+    "ProdutoSimilar": "000430",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000019,
+    "ProdutoOrigem": "007098",
+    "ProdutoSimilar": "003385",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000020,
+    "ProdutoOrigem": "007100",
+    "ProdutoSimilar": "000419",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000021,
+    "ProdutoOrigem": "007101",
+    "ProdutoSimilar": "000420",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000022,
+    "ProdutoOrigem": "007102",
+    "ProdutoSimilar": "005426",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000023,
+    "ProdutoOrigem": "007106",
+    "ProdutoSimilar": "000422",
+    "TipoSimilaridade": "B"
+  },
+  {
+    "Id": 1000000000024,
+    "ProdutoOrigem": "000453",
+    "ProdutoSimilar": "004625",
+    "TipoSimilaridade": "B"
+  }
+]

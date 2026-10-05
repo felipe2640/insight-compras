@@ -94,10 +94,10 @@ describe("U4: Identidade e Alçada de Verdade — Cockpit e Falha Fechada", () =
         usuario: "comprador.vazio",
         nome: "Comprador Sem Carteira",
         papel: "COMPRADOR",
-        tenantId: "carreiro",
+        tenantId: "demonstracao",
         fornecedores: null, // sem fornecedores cadastrados
       },
-      "carreiro"
+      "demonstracao"
     )!;
 
     expect(compradorSemCarteira.allowedSupplierIds).toEqual([]);
@@ -121,10 +121,10 @@ describe("U4: Identidade e Alçada de Verdade — Cockpit e Falha Fechada", () =
         usuario: "comprador.freios",
         nome: "Comprador Freios",
         papel: "COMPRADOR",
-        tenantId: "carreiro",
+        tenantId: "demonstracao",
         fornecedores: [500],
       },
-      "carreiro"
+      "demonstracao"
     )!;
 
     expect(compradorRestrito.allowedSupplierIds).toEqual([500]);
@@ -149,10 +149,10 @@ describe("U4: Identidade e Alçada de Verdade — Cockpit e Falha Fechada", () =
         usuario: "gestor",
         nome: "Gestor Geral",
         papel: "GESTOR",
-        tenantId: "carreiro",
+        tenantId: "demonstracao",
         fornecedores: null,
       },
-      "carreiro"
+      "demonstracao"
     )!;
 
     expect(gestor.allowedSupplierIds).toBeNull();
@@ -182,7 +182,7 @@ describe("U4: Restrição no Servidor (/api/compras)", () => {
       nome: "Comprador Vazio",
       role: "COMPRADOR" as const,
       allowedSupplierIds: [] as number[],
-      tenantId: "carreiro",
+      tenantId: "demonstracao",
     };
 
     vi.spyOn(servidorAuth, "obterUsuarioDaRequisicao").mockResolvedValue(usuarioCompradorVazio);
@@ -205,7 +205,7 @@ describe("U4: Restrição no Servidor (/api/compras)", () => {
       nome: "Comprador Vazio",
       role: "COMPRADOR" as const,
       allowedSupplierIds: [] as number[],
-      tenantId: "carreiro",
+      tenantId: "demonstracao",
     };
 
     vi.spyOn(servidorAuth, "obterUsuarioDaRequisicao").mockResolvedValue(usuarioCompradorVazio);
@@ -224,7 +224,7 @@ describe("U4: Restrição no Servidor (/api/compras)", () => {
       nome: "Comprador 500",
       role: "COMPRADOR" as const,
       allowedSupplierIds: [500],
-      tenantId: "carreiro",
+      tenantId: "demonstracao",
     };
 
     vi.spyOn(servidorAuth, "obterUsuarioDaRequisicao").mockResolvedValue(usuarioCompradorRestrito);
@@ -252,7 +252,7 @@ describe("U4: Troca de Senha e Desativação de Usuário", () => {
     await provedor.alterarSenha("demo-gestor", "senhaInicial123", "novaSenhaForte123");
 
     // Login com a nova senha tem sucesso
-    const sessao = await provedor.entrar({ usuario: "gestor", senha: "novaSenhaForte123", tenantId: "carreiro" });
+    const sessao = await provedor.entrar({ usuario: "gestor", senha: "novaSenhaForte123", tenantId: "demonstracao" });
     expect(sessao.usuario.id).toBe("demo-gestor");
   });
 
@@ -272,7 +272,7 @@ describe("U4: Troca de Senha e Desativação de Usuário", () => {
       nome: "Gestor",
       role: "GESTOR" as const,
       allowedSupplierIds: null,
-      tenantId: "carreiro",
+      tenantId: "demonstracao",
     };
     vi.spyOn(servidorAuth, "obterUsuarioDaRequisicao").mockResolvedValue(usuarioMock);
 
@@ -296,7 +296,7 @@ describe("U4: Troca de Senha e Desativação de Usuário", () => {
       nome: "Admin",
       role: "ADMIN" as const,
       allowedSupplierIds: null,
-      tenantId: "carreiro",
+      tenantId: "demonstracao",
     };
     vi.spyOn(servidorAuth, "obterUsuarioDaRequisicao").mockResolvedValue(adminMock);
 
@@ -313,7 +313,7 @@ describe("U4: Troca de Senha e Desativação de Usuário", () => {
 
     // Confirma que a conta não autentica mais
     await expect(
-      provedor.entrar({ usuario: "comprador", senha: "demo", tenantId: "carreiro" })
+      provedor.entrar({ usuario: "comprador", senha: "demo", tenantId: "demonstracao" })
     ).rejects.toBeInstanceOf(ErroUsuarioDesativado);
 
     // Reativação
@@ -325,7 +325,7 @@ describe("U4: Troca de Senha e Desativação de Usuário", () => {
     expect(resReativar.status).toBe(200);
 
     // Confirma que a conta voltou a autenticar
-    const sessao = await provedor.entrar({ usuario: "comprador", senha: "demo", tenantId: "carreiro" });
+    const sessao = await provedor.entrar({ usuario: "comprador", senha: "demo", tenantId: "demonstracao" });
     expect(sessao.usuario.id).toBe("demo-comprador");
   });
 
@@ -336,7 +336,7 @@ describe("U4: Troca de Senha e Desativação de Usuário", () => {
       nome: "Admin",
       role: "ADMIN" as const,
       allowedSupplierIds: null,
-      tenantId: "carreiro",
+      tenantId: "demonstracao",
     };
     vi.spyOn(servidorAuth, "obterUsuarioDaRequisicao").mockResolvedValue(adminMock);
 

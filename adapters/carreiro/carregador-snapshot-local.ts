@@ -21,14 +21,20 @@ import type { ClasseNaoCompravelTenant } from "@config/tenants/tipos";
 import {
   mapearProdutosDax,
   mapearEstoquesDax,
-  mapearFilialCarreiro,
   extrairIdProduto,
 } from "./mapeador-dax";
+import type { MapaLojasFonte } from "../comum/mapa-lojas";
 
 export interface OpcoesCarregadorSnapshot {
   readonly diretorio?: string;
   /** Classes do ERP que não são mercadoria (serviços). Declaradas pelo tenant. */
   readonly classesNaoCompraveis?: readonly ClasseNaoCompravelTenant[];
+  /** Se deve desconsiderar produtos inativos no ERP ou com termos inativos na descrição. */
+  readonly desconsiderarInativos?: boolean;
+  /** Termos na descrição que identificam itens inativos. */
+  readonly termosDescricaoInativos?: readonly string[];
+  /** Mapa de lojas do cadastro; o snapshot é o mesmo payload cru da fonte. */
+  readonly mapaLojas: MapaLojasFonte;
 }
 
 /**
@@ -76,8 +82,8 @@ export function localizarDiretorioSnapshot(diretorioInformado?: string): string 
  */
 export async function carregarSnapshotCarreiroLocal(
   diretorioSnapshot: string,
-  filtro?: FiltroCargaInventario,
-  opcoes?: OpcoesCarregadorSnapshot
+  filtro: FiltroCargaInventario | undefined,
+  opcoes: OpcoesCarregadorSnapshot
 ): Promise<RespostaCargaInventario> {
   const inicioCarga = Date.now();
 
@@ -92,9 +98,11 @@ export async function carregarSnapshotCarreiroLocal(
   // O snapshot é o mesmo payload cru do DAX: a mesma trava de catálogo vale aqui,
   // senão o modo degradado volta a servir serviço como item de compra.
   const produtos = mapearProdutosDax(linhasProdutos, {
-    classesNaoCompraveis: opcoes?.classesNaoCompraveis,
+    classesNaoCompraveis: opcoes.classesNaoCompraveis,
+    desconsiderarInativos: opcoes.desconsiderarInativos,
+    termosDescricaoInativos: opcoes.termosDescricaoInativos,
   });
-  const estoques = mapearEstoquesDax(linhasProdutos);
+  const estoques = mapearEstoquesDax(linhasProdutos, { mapaLojas: opcoes.mapaLojas });
   const mapaProdutos = new Map(produtos.map((p) => [p.id, p]));
 
   // 2. Agregação de Vendas Mensais (Janelas 30d, 90d, 180d)
@@ -118,7 +126,11 @@ export async function carregarSnapshotCarreiroLocal(
       const prodId = extrairIdProduto(linha.ACODPRODUTO);
       if (!prodId) continue;
 
-      const { filialId } = mapearFilialCarreiro(linha.ANOMEFANTASIA);
+      const filialId = opcoes.mapaLojas.resolver(linha.ANOMEFANTASIA);
+      if (filialId === null) {
+        opcoes.mapaLojas.registrarNaoMapeada(linha.ANOMEFANTASIA);
+        continue;
+      }
       const chave = `${prodId}:${filialId}`;
 
       const ano = parseInt(String(linha.Ano ?? 0), 10);
@@ -155,7 +167,11 @@ export async function carregarSnapshotCarreiroLocal(
         const prodId = extrairIdProduto(linha.ACODPRODUTO);
         if (!prodId) continue;
 
-        const { filialId } = mapearFilialCarreiro(linha.ANOMEFANTASIA);
+        const filialId = opcoes.mapaLojas.resolver(linha.ANOMEFANTASIA);
+        if (filialId === null) {
+          opcoes.mapaLojas.registrarNaoMapeada(linha.ANOMEFANTASIA);
+          continue;
+        }
         const chave = `${prodId}:${filialId}`;
         frequenciaVendas90d.set(chave, (frequenciaVendas90d.get(chave) ?? 0) + 1);
       }

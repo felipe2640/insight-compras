@@ -211,9 +211,7 @@ export default function PaginaPedidos() {
           {!configurado && (
             <p className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              Sem banco configurado: este histórico vive só na memória do servidor e
-              se perde no próximo reinício ou deploy. Configure o Supabase para
-              que o ciclo de vida dos pedidos seja preservado.
+              Os pedidos desta sessão podem não aparecer depois. Avise o administrador.
             </p>
           )}
 
@@ -465,7 +463,7 @@ export default function PaginaPedidos() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-slate-700">
-                            {p.fornecedorNome ?? p.usuario ?? "ERP Connectsoft"}
+                            {p.fornecedorNome ?? p.usuario ?? "ERP Integrado"}
                           </td>
                           <td className="px-3 py-2 text-slate-700">
                             {p.filialNome ?? (p.filialId ? nomesFiliais[p.filialId] ?? `Loja ${p.filialId}` : "—")}

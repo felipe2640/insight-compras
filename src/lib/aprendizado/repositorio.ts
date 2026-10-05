@@ -4,7 +4,7 @@
  *
  * Seleção do provedor:
  *   APRENDIZADO_PROVIDER=supabase | memoria | nenhum   (explícito)
- *   ausente -> supabase se SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY existem, senão nenhum.
+ *   ausente -> supabase se SUPABASE_URL + SUPABASE_ANON_KEY existem, senão nenhum.
  *
  * REGRA HERDADA DO DIÁRIO: com "nenhum", tudo vira no-op com aviso — a
  * exportação do cockpit NUNCA falha por causa da captura do aprendizado.

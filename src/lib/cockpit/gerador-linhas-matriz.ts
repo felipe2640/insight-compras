@@ -34,10 +34,11 @@ import {
 import { Produto } from "@core/dominio";
 import { EstoqueFilial } from "@core/dominio/estoque";
 import { calcularConsumoDiario, classificarPerfilGiro } from "@core/calculo/demanda-diaria";
-import { calcularCurvaAbc } from "@core/calculo/curva-abc";
+import { calcularCurvaAbc, converterPerfilGiroParaCurvaAbc } from "@core/calculo/curva-abc";
 import { StatusSugestao, CurvaABC, campoHistoricoDisponivel, campoEstoqueDisponivel } from "@core/dominio";
 import { PrevisaoDemandaIaItem } from "@/lib/previsao-ia/repositorio-previsao-ia";
 import { avaliarVigenciaPrevisao } from "@/lib/previsao-ia/vigencia-previsao";
+import type { ConfiguracaoCurvaAbcTenant } from "@config/tenants/tipos";
 
 export interface OpcoesGeracaoMatriz {
   readonly filialFocoId?: number;
@@ -57,6 +58,11 @@ export interface OpcoesGeracaoMatriz {
    * indexadas por `${produtoId}:${filialId}`.
    */
   readonly mapaPrevisoesIa?: ReadonlyMap<string, PrevisaoDemandaIaItem>;
+  /**
+   * Configuração de classificação da Curva ABC (Giro, Faturamento ou ERP).
+   * Padrão caso omitido: "FATURAMENTO" (Pareto).
+   */
+  readonly configuracaoCurvaAbc?: ConfiguracaoCurvaAbcTenant;
 }
 
 /**
@@ -334,7 +340,17 @@ export function converterParaLinhasCockpit(
           parametrosMotor.elegibilidade
         )
       : "SEM_HISTORICO_SUFICIENTE";
-    const curvaAbc: CurvaABC = mapaCurvaAbc.get(p.id)?.curva ?? "C";
+
+    const metodoCurva = opcoes.configuracaoCurvaAbc?.metodo ?? "FATURAMENTO";
+    let curvaAbc: CurvaABC;
+    if (metodoCurva === "GIRO") {
+      curvaAbc = converterPerfilGiroParaCurvaAbc(perfilGiro);
+    } else if (metodoCurva === "ERP") {
+      // Fallback para GIRO quando os dados do ERP forem mono-classe ou nulos
+      curvaAbc = converterPerfilGiroParaCurvaAbc(perfilGiro);
+    } else {
+      curvaAbc = mapaCurvaAbc.get(p.id)?.curva ?? "C";
+    }
 
     // Trava de Marca Zumbi (saldo > 0 e zero vendas em 180d COMPROVADAS na loja)
     // Sem histórico na loja, não afirmamos que vendeu zero: não é zumbi.
@@ -577,10 +593,68 @@ export function converterParaLinhasCockpit(
     }
 
     const entradasHoje = mapaEntradasHoje.get(p.id) ?? [];
-    const similares =
+    const similaresBase =
       carga.similares instanceof Map || typeof (carga.similares as any)?.get === "function"
         ? (carga.similares.get(p.id) ?? [])
         : [];
+    const similares = similaresBase.map((similar) => {
+      const chaveSimilarFoco = `${similar.produtoIdSimilar}:${filialFocoId}`;
+      const estoqueSimilarFoco = carga.estoques.get(chaveSimilarFoco);
+      const historicoSimilarFoco = carga.historicos.get(chaveSimilarFoco);
+      return {
+        ...similar,
+        saldoFisicoLojaAvaliacao: estoqueSimilarFoco?.saldoFisico ?? null,
+        vendasLojaAvaliacao30dias:
+          historicoSimilarFoco && campoHistoricoDisponivel(historicoSimilarFoco, "vendasLiquidas30dias")
+            ? historicoSimilarFoco.vendasLiquidas30dias
+            : null,
+        vendasLojaAvaliacao60dias:
+          historicoSimilarFoco && campoHistoricoDisponivel(historicoSimilarFoco, "vendasLiquidas60dias")
+            ? historicoSimilarFoco.vendasLiquidas60dias ?? null
+            : null,
+        vendasLojaAvaliacao90dias:
+          historicoSimilarFoco && campoHistoricoDisponivel(historicoSimilarFoco, "vendasLiquidas90dias")
+            ? historicoSimilarFoco.vendasLiquidas90dias
+            : null,
+      };
+    });
+
+    // Sugestão de Compra ativa do ERP para a loja em foco (operação em paralelo)
+    const chaveSugestaoErp = `${p.id}:${filialFocoId}`;
+    const sugestaoErpItem = carga.sugestoesErp?.get(chaveSugestaoErp);
+    let sugestaoQtdErp: number | null = null;
+    let temSugestaoErp = false;
+    const origemSugestaoErp = sugestaoErpItem?.origem ?? null;
+    const dataSugestaoErp = sugestaoErpItem?.dataSugestao ?? null;
+
+    if (sugestaoErpItem && (sugestaoErpItem.quantidadeSugerida ?? 0) > 0) {
+      temSugestaoErp = true;
+      // Regra de negócio informada pelo cliente: a sugestão do ERP deve respeitar
+      // a quantidade mínima registrada do item (estoque mínimo cadastrado na filial,
+      // ou lote múltiplo/mínimo do item), ajustada para o lote de fábrica.
+      const quantidadeMinimaRegistrada = minStockFoco > 0 ? minStockFoco : loteMultiplo;
+      const quantidadeBaseErp = Math.max(
+        sugestaoErpItem.quantidadeSugerida,
+        quantidadeMinimaRegistrada
+      );
+      const ajusteErp = ajustarQuantidadePorLote({
+        quantidadeDesejada: quantidadeBaseErp,
+        multiploLote: loteMultiplo,
+        embalagemMinima,
+      });
+      sugestaoQtdErp = ajusteErp.quantidadeAjustada;
+    }
+
+    // Se houver solicitação ativa do ERP e não houver trava zumbi nem pausa de governança,
+    // preenche a sugestão final de compra e o pedido com a quantidade mínima ajustada.
+    if (temSugestaoErp && sugestaoQtdErp && sugestaoQtdErp > 0) {
+      if (statusSugestao === "ESTOQUE_SUFICIENTE" && !isZumbi && sinalGov !== "PAUSAR") {
+        sugestaoFinalCompra = sugestaoQtdErp;
+        motivoDecisao = `Solicitação ativa do ERP atendida pela quantidade mínima registrada (${sugestaoQtdErp} un)`;
+      } else if (statusSugestao === "APROVADO_COMPRA") {
+        sugestaoFinalCompra = Math.max(sugestaoFinalCompra, sugestaoQtdErp);
+      }
+    }
 
     // Cálculo das métricas das 29 colunas fiéis
     const dtUltVenda = p.dataUltimaVenda ?? null;
@@ -625,6 +699,8 @@ export function converterParaLinhasCockpit(
         ? "Transferir"
         : statusSugestao === "TRAVADO_MARCA_ZUMBI"
         ? "Marca Zumbi"
+        : temSugestaoErp
+        ? "Sugestão ERP"
         : "Estoque OK";
 
     linhas.push({
@@ -694,6 +770,7 @@ export function converterParaLinhasCockpit(
       origemPrevisao: resultadoNecessidade.origemPrevisao,
       previsaoIaP50: itemIaFoco?.demandaP50 ?? null,
       previsaoIaP80: itemIaFoco?.demandaP80 ?? null,
+      previsaoIaHorizonteDias: itemIaFoco?.horizonteDias ?? null,
       motivoInelegibilidade:
         perfilGiro === "SEM_HISTORICO_SUFICIENTE"
           ? temHistoricoFoco
@@ -749,6 +826,10 @@ export function converterParaLinhasCockpit(
       statusMovimentacao,
       sugestaoCompra: sugestaoFinalCompra,
       sugestaoTransferencia: quantidadeTransferenciaSugerida,
+      sugestaoQtdErp,
+      temSugestaoErp,
+      origemSugestaoErp,
+      dataSugestaoErp,
       // COM ESTOQUE, não "existe similar cadastrado". A linha roxa manda o
       // comprador conferir antes de comprar porque há equivalente disponível na
       // rede; se todos estão zerados, não há nada para conferir e o aviso vira

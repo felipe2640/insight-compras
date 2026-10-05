@@ -162,6 +162,39 @@ describe("Interface de Exportação e CRUD de Modelos (DialogExportacao e Botoes
     });
   });
 
+  it("deve exportar seleção manual e catálogo completo sem restringir por status operacional", () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ modelos: [], podeSalvar: true }),
+    });
+    const itemSemCompra = {
+      ...ITENS_MOCK[0],
+      produtoId: 2,
+      codigoSku: "SKU-SEM-COMPRA",
+      sugestaoFinalCompra: 0,
+      quantidadeTransferenciaSugerida: 0,
+    };
+
+    render(
+      <DialogExportacao
+        aberto={true}
+        onFechar={vi.fn()}
+        itensFiltrados={ITENS_MOCK}
+        itensCatalogo={[ITENS_MOCK[0], itemSemCompra]}
+        itensSelecionados={[itemSemCompra]}
+        configuracao={TENANT_DEMONSTRACAO.exportacao}
+        contexto={CONTEXTO}
+      />
+    );
+
+    fireEvent.click(screen.getByLabelText(/Itens marcados para análise/));
+    const resumo = screen.getByText(/análise sem restrição de status/);
+    expect(resumo.textContent).toContain("1 linha(s) no arquivo");
+
+    fireEvent.click(screen.getByLabelText(/Catálogo completo, sem filtros/));
+    expect(resumo.textContent).toContain("2 linha(s) no arquivo");
+  });
+
   it("deve acionar criação de novo modelo via interface", async () => {
     let chamadaPost: unknown = null;
 
@@ -413,5 +446,52 @@ describe("Interface de Exportação e CRUD de Modelos (DialogExportacao e Botoes
       const botao = screen.getByRole("button", { name: /Pedido ao fornecedor/ });
       expect(botao.getAttribute("title")).toContain("Exportar 1 linha(s) selecionada(s)");
     });
+  });
+
+  it("deve registrar seleção manual como pedido e avisar o cockpit após confirmar", async () => {
+    const chamadas: Array<{ url: string; init?: RequestInit }> = [];
+    global.fetch = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      chamadas.push({ url, init });
+      if (url === "/api/exportacao/modelos") {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            modelos: [{
+              id: "pedido_fornecedor",
+              nome: "Pedido ao fornecedor",
+              escopo: "compra",
+              formato: "csv",
+              colunas: ["sku", "qtd_pedido"],
+              nomeArquivo: "pedido",
+              deFabrica: true,
+            }],
+          }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ gravado: true, snapshotId: 10 }),
+      });
+    });
+    Object.defineProperty(URL, "createObjectURL", { value: vi.fn(() => "blob:pedido"), configurable: true });
+    Object.defineProperty(URL, "revokeObjectURL", { value: vi.fn(), configurable: true });
+    const onExportado = vi.fn();
+
+    render(
+      <BotoesExportacao
+        itens={ITENS_MOCK}
+        itensSelecionados={ITENS_MOCK}
+        contexto={CONTEXTO}
+        onAbrirConfiguracao={() => undefined}
+        onExportado={onExportado}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Pedido ao fornecedor/ }));
+
+    await waitFor(() => expect(onExportado).toHaveBeenCalledWith(ITENS_MOCK));
+    const registro = chamadas.find((chamada) => chamada.url === "/api/aprendizado/snapshot");
+    expect(registro?.init?.method).toBe("POST");
+    expect(JSON.parse(String(registro?.init?.body)).itens).toHaveLength(1);
   });
 });

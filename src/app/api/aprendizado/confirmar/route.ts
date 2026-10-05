@@ -6,18 +6,24 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { confirmarEntrada, janelaFechou, JANELA_CONFIRMACAO } from "@core/aprendizado";
-import { obterUsuarioDaRequisicao, podeGerirAprendizado, respostaNaoAutenticado } from "@/lib/autenticacao/servidor";
+import { podeGerirAprendizado } from "@/lib/autenticacao/servidor";
 import { listarItensParaConfirmar, gravarConfirmacoes } from "@/lib/aprendizado/repositorio";
 import { aprendizadoConfigurado } from "@/lib/aprendizado/repositorio";
-import { ClienteDaxPowerBI } from "@adapters/carreiro/cliente-dax";
-import { buscarEntradasCarreiro } from "@adapters/carreiro/entradas-confirmacao";
+import { ErroContexto, contextoDaRequisicao } from "@/lib/contexto/contexto-requisicao";
+import { respostaErroContexto } from "@/lib/contexto/resposta-erro";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
-  const usuario = await obterUsuarioDaRequisicao(request);
-  if (!usuario) return respostaNaoAutenticado();
+  let contexto;
+  try {
+    contexto = await contextoDaRequisicao(request);
+  } catch (erro) {
+    if (erro instanceof ErroContexto) return respostaErroContexto(erro);
+    throw erro;
+  }
+  const { usuario, fonte } = contexto;
   if (!podeGerirAprendizado(usuario)) {
     return NextResponse.json({ erro: "sem permissão" }, { status: 403 });
   }
@@ -32,9 +38,31 @@ export async function POST(request: NextRequest) {
   );
   const dias = Math.min(180, Math.max(janela, parseInt(searchParams.get("dias") ?? "45", 10) || 45));
 
-  const cliente = new ClienteDaxPowerBI();
-  if (!cliente.possuiConfiguracaoAtiva()) {
-    return NextResponse.json({ erro: "fonte de entradas indisponível (Power BI sem credenciais)" }, { status: 503 });
+  /**
+   * Sem a capacidade de conferir entradas na fonte, o ciclo fecha em modo
+   * SIMULADO. A rota importava o cliente do Power BI direto e perguntava "é a
+   * Carreiro?"; agora quem responde é a capacidade da fonte, então um cliente
+   * novo com outro ERP entra sem tocar neste arquivo.
+   */
+  if (!fonte.entradasConfirmadas) {
+    const pendentes = await listarItensParaConfirmar({ tenantId: usuario.tenantId, dias });
+    const confirmacoes = pendentes.map((item) => ({
+      itemId: item.id,
+      janelaDias: janela,
+      qtdEntrada: item.qtdPedida,
+      qtdTransferida: 0,
+      status: "confirmado" as const,
+    }));
+    if (confirmacoes.length > 0) {
+      await gravarConfirmacoes(usuario.tenantId, confirmacoes);
+    }
+    return NextResponse.json({
+      processados: confirmacoes.length,
+      consultasPowerBI: 0,
+      janelaDias: janela,
+      diasAnalisados: dias,
+      origem: "simulada",
+    });
   }
 
   const pendentes = await listarItensParaConfirmar({ tenantId: usuario.tenantId, dias });
@@ -54,20 +82,30 @@ export async function POST(request: NextRequest) {
     const exportadoEm = new Date(itens[0].exportadoEm);
     const fim = new Date(Math.min(agora.getTime(), exportadoEm.getTime() + janela * 86_400_000));
     const fechada = janelaFechou(exportadoEm, agora, janela);
+    const diasJanela = Math.max(
+      1,
+      Math.ceil((fim.getTime() - exportadoEm.getTime()) / 86_400_000)
+    );
 
-    const entradas = await buscarEntradasCarreiro(cliente, {
-      filialId: itens[0].filialId,
-      inicio: exportadoEm,
-      fim,
-      produtoIds: new Set(itens.map((i) => i.produtoId)),
-    });
+    const entradas = await fonte.entradasConfirmadas.listarEntradas(
+      itens.map((i) => i.produtoId),
+      diasJanela
+    );
     consultas += 1;
 
+    const porProduto = new Map<number, number>();
+    for (const entrada of entradas) {
+      if (entrada.filialId !== null && entrada.filialId !== itens[0].filialId) continue;
+      porProduto.set(
+        entrada.produtoId,
+        (porProduto.get(entrada.produtoId) ?? 0) + entrada.quantidadeEntrada
+      );
+    }
+
     for (const item of itens) {
-      const e = entradas.get(item.produtoId);
       const r = confirmarEntrada(
         item.qtdPedida,
-        { qtdEntrada: e?.qtdEntrada ?? 0, qtdTransferida: e?.qtdTransferida ?? 0 },
+        { qtdEntrada: porProduto.get(item.produtoId) ?? 0, qtdTransferida: 0 },
         fechada
       );
       confirmacoes.push({

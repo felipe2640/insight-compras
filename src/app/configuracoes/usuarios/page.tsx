@@ -420,7 +420,7 @@ export default function PaginaUsuarios() {
               </p>
             ) : usuarios.length === 0 ? (
               <p className="px-3 py-6 text-center text-slate-400">
-                Nenhum usuário cadastrado neste tenant.
+                Nenhum usuário cadastrado nesta organização.
               </p>
             ) : (
               <table className="w-full">

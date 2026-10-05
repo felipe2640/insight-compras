@@ -5,7 +5,7 @@
  */
 
 import { supabaseConfigurado } from "@/lib/aprendizado/supabase";
-import { resolverTenantConfigurado } from "@config/tenants";
+import { resolverTenantConfigurado , naturezaTenant } from "@config/tenants";
 import {
   FiltrosListagemPedidos,
   IdProvedorPedidos,
@@ -55,11 +55,21 @@ export function idProvedorPedidos(): IdProvedorPedidos {
  * 02" — pessoas e lojas que não existem na rede — com justificativas escritas
  * e valores em reais, e os indicadores do topo calculados em cima disso.
  *
- * A regra é a mesma da fonte de dados: quem declara `fonteDados: "sintetica"`
- * recebe conteúdo sintético; cliente real começa vazio, que é a verdade.
+ * A regra é a mesma da fonte de dados: cliente de natureza sintética recebe
+ * conteúdo sintético; cliente real começa vazio, que é a verdade.
+ *
+ * Lê o tenant do AMBIENTE de propósito: isto roda na inicialização do módulo,
+ * fora de qualquer requisição. Numa instalação dedicada (TENANT_ATIVO
+ * obrigatório em produção, ADR-0001) ambiente e requisição são o mesmo cliente.
  */
 function deveSemearDemonstracao(): boolean {
-  return resolverTenantConfigurado().fonteDados === "sintetica";
+  try {
+    return naturezaTenant(resolverTenantConfigurado()) === "sintetica";
+  } catch {
+    // Sem TENANT_ATIVO em produção o erro aparece no contexto da requisição,
+    // com mensagem útil. Aqui, na dúvida, NÃO semeia dado sintético.
+    return false;
+  }
 }
 
 let repositorioPersonalizado: RepositorioPedidos | null = null;

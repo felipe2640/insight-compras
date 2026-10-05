@@ -238,22 +238,15 @@ class ExtratorFabric(ExtratorDadosBase):
             )
             df_vendas = pd.DataFrame(rows_vendas)
 
-            dax_produtos = """
-            EVALUATE
-            SELECTCOLUMNS(
-                'PRODUTOS',
-                "SKU", 'PRODUTOS'[ACODPRODUTO],
-                "Descricao", 'PRODUTOS'[ADESCRICAO]
-            )
-            """
-            rows_produtos = self._executar_dax_fabric(token, workspace_id, dataset_id, dax_produtos)
-            if len(rows_produtos) >= LIMITE_LINHAS_EXECUTEQUERIES:
-                raise RuntimeError(
-                    f'[{self.nome_fonte}] Cadastro de produtos retornou {len(rows_produtos):,} linhas, '
-                    f'no limite da API: o resultado está truncado.'
-                )
-            print(f'[{self.nome_fonte}] Produtos extraídos: {len(rows_produtos):,} itens.')
-            df_produtos = pd.DataFrame(rows_produtos)
+            # O cadastro de produtos NÃO é mais extraído.
+            #
+            # Ele servia só para preencher `descricao` em demanda_ia_previsao — e
+            # nenhuma parte do app lê essa coluna (o repositório do cockpit não a
+            # seleciona; a descrição exibida vem da carga do Power BI). Enquanto
+            # isso, a consulta puxava 100 mil linhas por dia, batia no teto da API
+            # mesmo agrupada por código, e foi ela que derrubou a execução de
+            # 16/09. Custo diário e risco de queda por uma coluna que ninguém lê.
+            df_produtos = pd.DataFrame()
 
         if df_vendas.empty:
             raise RuntimeError(f'[{self.nome_fonte}] Nenhuma linha de venda extraída.')

@@ -36,6 +36,7 @@ export interface BotoesExportacaoProps {
   /** Só este layout de fábrica vira atalho; os demais continuam no diálogo. */
   readonly modeloPadraoId?: string;
   readonly onAbrirConfiguracao: () => void;
+  readonly onExportado?: (itens: readonly LinhaCockpitMatriz[]) => void;
   /** Muda quando um modelo é salvo, para a lista recarregar. */
   readonly versao?: number;
   readonly className?: string;
@@ -48,6 +49,7 @@ export function BotoesExportacao({
   csvPadrao,
   modeloPadraoId,
   onAbrirConfiguracao,
+  onExportado,
   versao = 0,
   className,
 }: BotoesExportacaoProps) {
@@ -55,6 +57,8 @@ export function BotoesExportacao({
   const [gerando, setGerando] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const itensBase = itensSelecionados.length > 0 ? itensSelecionados : itens;
+  const escopoEfetivo = (escopo: ModeloExportacao["escopo"]) =>
+    itensSelecionados.length > 0 ? "todos" : escopo;
   const modelosVisiveis = useMemo(
     () => (modeloPadraoId ? modelos.filter((m) => !m.deFabrica || m.id === modeloPadraoId) : modelos),
     [modelos, modeloPadraoId]
@@ -75,14 +79,14 @@ export function BotoesExportacao({
 
   const contagemPorModelo = useMemo(() => {
     const mapa = new Map<string, number>();
-    for (const m of modelosVisiveis) mapa.set(m.id, filtrarPorEscopo(itensBase, m.escopo).length);
+    for (const m of modelosVisiveis) mapa.set(m.id, filtrarPorEscopo(itensBase, escopoEfetivo(m.escopo)).length);
     return mapa;
   }, [modelosVisiveis, itensBase]);
 
   const exportar = useCallback(
     async (modelo: ModeloExportacao) => {
       setErro(null);
-      const linhas = filtrarPorEscopo(itensBase, modelo.escopo);
+      const linhas = filtrarPorEscopo(itensBase, escopoEfetivo(modelo.escopo));
       if (linhas.length === 0) {
         setErro(`"${modelo.nome}" não tem nenhuma linha para exportar agora.`);
         return;
@@ -91,20 +95,24 @@ export function BotoesExportacao({
       try {
         const arquivo = await gerarArquivoExportacao({
           itens: itensBase,
-          layout: layoutDoModelo(modelo),
+          layout: itensSelecionados.length > 0
+            ? { ...layoutDoModelo(modelo), escopo: "todos" }
+            : layoutDoModelo(modelo),
           formato: modelo.formato,
           contexto: { ...contexto, dataReferencia: new Date() },
           csvPadrao,
         });
         baixarArquivoNoNavegador(arquivo);
-        // "todos" é análise, não decisão de compra, e por isso não vira snapshot.
+        // Uma seleção manual continua sendo um pedido quando parte de um modelo
+        // operacional. Antes ela baixava o arquivo, mas pulava este registro.
         if (modelo.escopo !== "todos") {
-          capturarSnapshotAprendizado({
+          await capturarSnapshotAprendizado({
             itens: linhas,
             filialId: contexto.filialId,
             layoutId: modelo.id,
             formato: modelo.formato,
           });
+          onExportado?.(linhas);
         }
       } catch (e) {
         setErro(e instanceof Error ? e.message : "Falha ao gerar o arquivo.");
@@ -112,7 +120,7 @@ export function BotoesExportacao({
         setGerando(null);
       }
     },
-    [itensBase, contexto, csvPadrao]
+    [itensBase, itensSelecionados.length, contexto, csvPadrao, onExportado]
   );
 
   return (
