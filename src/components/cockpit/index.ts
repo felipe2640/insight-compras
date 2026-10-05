@@ -18,3 +18,9 @@ export type { BarraFiltrosCockpitProps } from "./BarraFiltrosCockpit";
 
 export { VirtualRow, areVirtualRowPropsEqual } from "./VirtualRow";
 export type { VirtualRowProps } from "./VirtualRow";
+
+export { SeletorMotivoRejeicao } from "./SeletorMotivoRejeicao";
+export type { SeletorMotivoRejeicaoProps } from "./SeletorMotivoRejeicao";
+
+export { BarraAcoesSelecao } from "./BarraAcoesSelecao";
+export type { BarraAcoesSelecaoProps } from "./BarraAcoesSelecao";
