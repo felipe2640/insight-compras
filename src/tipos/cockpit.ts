@@ -7,8 +7,15 @@
 import React from "react";
 import { CurvaABC, PerfilRotatividade, StatusSugestao } from "@core/dominio";
 import { EntradaNFeDoDia, ItemSimilarIntercambiavel } from "@adapters/AdaptadorInventario";
+import {
+  MOTIVOS_REJEICAO_COMPRA,
+  MotivoRejeicaoItemDef,
+  IdMotivoRejeicaoCompra,
+  obterMotivoRejeicao,
+} from "@core/aprendizado";
 
-export type { EntradaNFeDoDia, ItemSimilarIntercambiavel };
+export type { EntradaNFeDoDia, ItemSimilarIntercambiavel, MotivoRejeicaoItemDef, IdMotivoRejeicaoCompra };
+export { MOTIVOS_REJEICAO_COMPRA, obterMotivoRejeicao };
 
 // ============================================================================
 // 1. CLASSIFICAÇÕES E ENUMS DO NOVO MODELO DE COMPRA
@@ -173,6 +180,11 @@ export interface LinhaCockpitMatriz {
   readonly temSimilarComEstoque?: boolean;
   readonly exigeMultiploEmbalagem?: boolean;
 
+  // Decisão e Rejeição durante a seleção de itens
+  readonly rejeitado?: boolean;
+  readonly motivoRejeicao?: string | null;
+  readonly rotuloMotivoRejeicao?: string | null;
+
   // Sugestão Hoje do ERP (Operação em paralelo / White-Label)
   readonly sugestaoQtdErp?: number | null;
   readonly temSugestaoErp?: boolean;
@@ -281,6 +293,8 @@ export interface ItemDeltaRascunho {
   readonly tipo?: "pedir" | "transferir";
   readonly ajustadoPorMultiplo?: boolean;
   readonly motivoAjuste?: string | null;
+  readonly motivoRejeicao?: string | null;
+  readonly rotuloMotivoRejeicao?: string | null;
 }
 
 export interface EstadoFiltrosRascunho {

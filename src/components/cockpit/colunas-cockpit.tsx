@@ -36,6 +36,7 @@ import {
   TooltipCobertura,
   TooltipNfeDoDia,
 } from "@/components/tooltips";
+import { SeletorMotivoRejeicao } from "./SeletorMotivoRejeicao";
 
 export interface OpcoesColunasCockpit {
   nomeLojaFoco?: string;
@@ -43,6 +44,8 @@ export interface OpcoesColunasCockpit {
   onAbrirSimilares?: (linha: LinhaCockpitCompras) => void;
   onPedirCommit?: (skuId: string, valor: number) => void;
   onTransferirCommit?: (skuId: string, valor: number) => void;
+  onRejeitarCommit?: (skuId: string, motivoId: string, rotuloMotivo: string) => void;
+  onDesfazerRejeicaoCommit?: (skuId: string) => void;
 }
 
 function formatarDataPtBr(dataStr: string | null | undefined): string {
@@ -99,6 +102,8 @@ export function criarColunasCockpit({
   onAbrirSimilares,
   onPedirCommit,
   onTransferirCommit,
+  onRejeitarCommit,
+  onDesfazerRejeicaoCommit,
 }: OpcoesColunasCockpit = {}): ColumnDef<LinhaCockpitCompras, unknown>[] {
   const rotuloEstoqueFoco = `Est ${nomeLojaFoco}`;
   const rotuloEstoqueOutra = `Disp ${nomeOutrasLojas}`;
@@ -1056,63 +1061,78 @@ export function criarColunasCockpit({
       enableSorting: true,
     },
 
-    // 28. Pedido (Editável com Múltiplo)
+    // 28. Pedido (Editável com Múltiplo e Seletor de Motivo de Rejeição)
     {
       id: "pedido",
-      accessorFn: (row) => row.sugestaoCompra,
-      size: 95,
+      accessorFn: (row) => (row.rejeitado ? 0 : row.sugestaoCompra),
+      size: 135,
       header: ({ header }) => (
         <DataGridColumnHeader header={header} align="center" label="Pedido" />
       ),
       cell: ({ row }) => {
         const item = row.original;
         const exigeMultiplo = item.exigeMultiploEmbalagem;
+        const estaRejeitado = !!item.rejeitado;
         const temSugestaoErp = (item.sugestaoQtdErp ?? 0) > 0;
 
         return (
-          <div className="flex flex-col items-center justify-center">
-            <div className="relative inline-flex items-center justify-center">
-              <input
-                // `key` pela SKU: a grade é virtualizada e o React reaproveita o
-                // <input> do slot quando a linha muda. Como o valor é `defaultValue`
-                // (não controlado), sem a key o input mostrava a quantidade da
-                // linha ANTERIOR naquele slot ao trocar de aba ou rolar.
-                key={item.codigoSku}
-                type="number"
-                min="0"
-                defaultValue={item.pedidoCustom ?? item.sugestaoCompra}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (!isNaN(val) && val >= 0) {
-                    onPedirCommit?.(item.codigoSku, val);
-                  }
-                }}
-                className={cn(
-                  "h-7 w-16 rounded border text-center font-mono text-xs font-semibold outline-none transition-colors focus:ring-1 focus:ring-blue-500",
-                  exigeMultiplo
-                    ? "bg-destaqueMultiplo border-amber-300 text-amber-950 font-bold"
-                    : "bg-white border-slate-300 text-slate-900 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+          <div className="flex flex-col items-center justify-center gap-0.5">
+            <div className="flex items-center justify-center gap-1.5">
+              <div className="relative inline-flex items-center justify-center">
+                <input
+                  // `key` pela SKU e estado de rejeição: força re-render correto no slot virtualizado
+                  key={`${item.codigoSku}-${estaRejeitado ? "rej" : "atv"}`}
+                  type="number"
+                  min="0"
+                  disabled={estaRejeitado}
+                  defaultValue={estaRejeitado ? 0 : (item.pedidoCustom ?? item.sugestaoCompra)}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= 0) {
+                      onPedirCommit?.(item.codigoSku, val);
+                    }
+                  }}
+                  className={cn(
+                    "h-7 w-16 rounded border text-center font-mono text-xs font-semibold outline-none transition-colors focus:ring-1 focus:ring-blue-500",
+                    estaRejeitado
+                      ? "bg-slate-100 border-dashed border-rose-300 text-slate-400 line-through dark:bg-slate-800 dark:border-rose-900"
+                      : exigeMultiplo
+                        ? "bg-destaqueMultiplo border-amber-300 text-amber-950 font-bold"
+                        : "bg-white border-slate-300 text-slate-900 dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                  )}
+                  aria-label={`Quantidade de pedido para SKU ${item.codigoSku}`}
+                />
+                {exigeMultiplo && !estaRejeitado && (
+                  <span
+                    className="absolute -top-1.5 -right-2 flex h-3.5 items-center justify-center rounded-full bg-amber-200 px-1 text-[8px] font-bold text-amber-900 border border-amber-300 shadow-sm"
+                    title={`Múltiplo de compra: ${item.loteMultiplo} un · Origem: ${
+                      item.origemLoteMultiplo === "CONFIGURACAO"
+                        ? "configuração do SKU"
+                        : item.origemLoteMultiplo === "ERP"
+                          ? "cadastro do ERP"
+                          : item.origemLoteMultiplo === "HISTOGRAMA"
+                            ? "histórico de vendas"
+                            : item.origemLoteMultiplo === "VOCABULARIO"
+                              ? "descrição do produto"
+                              : "padrão"
+                    }`}
+                  >
+                    {item.loteMultiplo}x
+                  </span>
                 )}
-                aria-label={`Quantidade de pedido para SKU ${item.codigoSku}`}
+              </div>
+
+              <SeletorMotivoRejeicao
+                skuId={item.codigoSku}
+                motivoAtual={item.motivoRejeicao}
+                rotuloAtual={item.rotuloMotivoRejeicao}
+                rejeitado={estaRejeitado}
+                temSimilarComEstoque={item.temSimilarComEstoque}
+                onSelecionarMotivo={(motivoId, rotulo) =>
+                  onRejeitarCommit?.(item.codigoSku, motivoId, rotulo)
+                }
+                onDesfazerRejeicao={() => onDesfazerRejeicaoCommit?.(item.codigoSku)}
               />
-              {exigeMultiplo && (
-                <span
-                  className="absolute -top-1.5 -right-2 flex h-3.5 items-center justify-center rounded-full bg-amber-200 px-1 text-[8px] font-bold text-amber-900 border border-amber-300 shadow-sm"
-                  title={`Múltiplo de compra: ${item.loteMultiplo} un · Origem: ${
-                    item.origemLoteMultiplo === "CONFIGURACAO"
-                      ? "configuração do SKU"
-                      : item.origemLoteMultiplo === "ERP"
-                        ? "cadastro do ERP"
-                        : item.origemLoteMultiplo === "HISTOGRAMA"
-                          ? "histórico de vendas"
-                          : item.origemLoteMultiplo === "VOCABULARIO"
-                            ? "descrição do produto"
-                            : "padrão"
-                  }`}
-                >
-                  {item.loteMultiplo}x
-                </span>
-              )}
             </div>
             {temSugestaoErp && (
               <span

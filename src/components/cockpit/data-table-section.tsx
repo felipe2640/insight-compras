@@ -44,10 +44,14 @@ export function DataTableSection({
         emptyMessage={emptyMessage ?? "Nenhum produto corresponde aos filtros selecionados."}
         rowClassName={(row) => {
           const item = row.original;
+          const estaRejeitado = item.rejeitado;
           const temSimilarComSaldo = item.temSimilarComEstoque;
           const exigeMultiplo = item.exigeMultiploEmbalagem;
           const isMarcaZumbi = item.isMarcaZumbi;
 
+          if (estaRejeitado) {
+            return "bg-rose-50/50 border-l-4 border-rose-400 opacity-85 hover:bg-rose-50/80";
+          }
           if (isMarcaZumbi) {
             return "bg-slate-50/70 border-l-4 border-slate-400 opacity-90";
           }

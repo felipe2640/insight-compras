@@ -12,6 +12,7 @@ import { ColunaExportavel } from "./tipos";
 
 /** Quantidade de pedido que vale: o ajuste do comprador, senão a sugestão do motor. */
 export function quantidadePedidoEfetiva(item: LinhaCockpitMatriz): number {
+  if (item.rejeitado) return 0;
   return item.pedidoCustom > 0 ? item.pedidoCustom : item.sugestaoFinalCompra;
 }
 
@@ -93,6 +94,7 @@ const colunas: readonly ColunaExportavel[] = [
   // ---- Diagnóstico ----
   { id: "status", rotulo: "Status", tipo: "texto", grupo: "Diagnóstico", extrair: (i) => STATUS_LEGIVEL[i.statusSugestao] ?? i.statusSugestao },
   { id: "motivo", rotulo: "Motivo", tipo: "texto", grupo: "Diagnóstico", extrair: (i) => i.motivoDecisao },
+  { id: "motivo_rejeicao", rotulo: "Motivo Rejeição", tipo: "texto", grupo: "Diagnóstico", extrair: (i) => i.rotuloMotivoRejeicao ?? "" },
   { id: "marca_zumbi", rotulo: "Marca zumbi", tipo: "texto", grupo: "Diagnóstico", extrair: (i) => (i.isMarcaZumbi ? "Sim" : "Não") },
   { id: "ruptura", rotulo: "Ruptura", tipo: "texto", grupo: "Diagnóstico", extrair: (i) => i.classificacaoRuptura },
 ];

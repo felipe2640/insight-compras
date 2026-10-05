@@ -31,6 +31,7 @@ import {
   ArrowLeftRight,
   ShieldCheck,
   RotateCcw,
+  Ban,
 } from "lucide-react";
 
 import {
@@ -67,6 +68,7 @@ import {
 import { DialogSimilares } from "@/components/tooltips/DialogSimilares";
 import { BannerRascunho } from "./BannerRascunho";
 import { DialogExportacao } from "./DialogExportacao";
+import { BarraAcoesSelecao } from "./BarraAcoesSelecao";
 import { useTenantAtivo, useNomesFiliais } from "@/lib/cockpit/contexto-tenant";
 import type { ContextoExportacao } from "@/lib/exportacao/tipos";
 import { CurvaABC } from "@core/dominio";
@@ -300,8 +302,11 @@ export function CockpitPrincipal({
       return {
         ...item,
         pedidoCustom: delta.quantidade,
+        rejeitado: !!delta.motivoRejeicao,
+        motivoRejeicao: delta.motivoRejeicao,
+        rotuloMotivoRejeicao: delta.rotuloMotivoRejeicao,
         motivoDecisao: delta.motivoAjuste
-          ? `[Ajuste Humano Pedido] ${delta.motivoAjuste}`
+          ? delta.motivoAjuste
           : item.motivoDecisao,
       };
     });
@@ -361,6 +366,33 @@ export function CockpitPrincipal({
     },
     [],
   );
+
+  const handleRejeitarItem = useCallback(
+    (skuId: string | number, motivoId: string, rotuloMotivo: string) => {
+      setDeltas((prev) => ({
+        ...prev,
+        [String(skuId)]: {
+          quantidade: 0,
+          modificadoEm: Date.now(),
+          tipo: "pedir",
+          motivoAjuste: `[Rejeitado pelo Comprador] ${rotuloMotivo}`,
+          motivoRejeicao: motivoId,
+          rotuloMotivoRejeicao: rotuloMotivo,
+        },
+      }));
+    },
+    []
+  );
+
+  const handleDesfazerRejeicao = useCallback((skuId: string | number) => {
+    setDeltas((prev) => {
+      const chave = String(skuId);
+      if (!(chave in prev)) return prev;
+      const copia = { ...prev };
+      delete copia[chave];
+      return copia;
+    });
+  }, []);
 
   // 7. KPIs Consolidados do Cabeçalho
   const kpis = useMemo(() => {
@@ -606,12 +638,16 @@ export function CockpitPrincipal({
         handleCommitPedido(skuId, valor, "Ajuste manual na grade"),
       onTransferirCommit: (skuId, valor) =>
         handleCommitTransferencia(skuId, valor, "Ajuste manual na grade"),
+      onRejeitarCommit: handleRejeitarItem,
+      onDesfazerRejeicaoCommit: handleDesfazerRejeicao,
     });
   }, [
     nomeLojaFoco,
     handleAbrirSimilares,
     handleCommitPedido,
     handleCommitTransferencia,
+    handleRejeitarItem,
+    handleDesfazerRejeicao,
   ]);
 
   // Instância TanStack Table v8
@@ -647,6 +683,51 @@ export function CockpitPrincipal({
     getFacetedUniqueValues: getFacetedUniqueValues(),
     getSortedRowModel: getSortedRowModel(),
   });
+
+  // Callbacks de ações em lote para itens selecionados
+  const handleRejeitarSelecionadosEmLote = useCallback(
+    (motivoId: string, rotuloMotivo: string) => {
+      const linhas = table.getSelectedRowModel().rows.map((r) => r.original as LinhaCockpitCompras);
+      if (linhas.length === 0) return;
+      const agora = Date.now();
+      setDeltas((prev) => {
+        const novo = { ...prev };
+        for (const linha of linhas) {
+          const chave = linha.codigoSku || String(linha.produtoId);
+          novo[chave] = {
+            quantidade: 0,
+            modificadoEm: agora,
+            tipo: "pedir",
+            motivoAjuste: `[Rejeitado pelo Comprador] ${rotuloMotivo}`,
+            motivoRejeicao: motivoId,
+            rotuloMotivoRejeicao: rotuloMotivo,
+          };
+        }
+        return novo;
+      });
+      setRowSelection({});
+    },
+    [table]
+  );
+
+  const handleRestaurarSelecionadosEmLote = useCallback(() => {
+    const linhas = table.getSelectedRowModel().rows.map((r) => r.original as LinhaCockpitCompras);
+    if (linhas.length === 0) return;
+    setDeltas((prev) => {
+      const copia = { ...prev };
+      for (const linha of linhas) {
+        const chave = linha.codigoSku || String(linha.produtoId);
+        delete copia[chave];
+      }
+      return copia;
+    });
+    setRowSelection({});
+  }, [table]);
+
+  const totalItensRejeitados = useMemo(
+    () => Object.values(deltas).filter((d) => !!d.motivoRejeicao).length,
+    [deltas]
+  );
 
   // 11. Opções para QuickFilterChips
   const opcoesCurva = useMemo(() => ["A", "B", "C"], []);
@@ -1011,8 +1092,27 @@ export function CockpitPrincipal({
         <main className="max-w-[1920px] mx-auto px-4 pb-6 w-full flex-1 flex flex-col">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <ChipsFiltroColuna table={table} />
+            {totalItensRejeitados > 0 && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-rose-300 bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300"
+                title={`${totalItensRejeitados} produto(s) com motivo de rejeição selecionado nesta sessão`}
+              >
+                <Ban className="h-3 w-3 text-rose-600" />
+                <span>{totalItensRejeitados} rejeitado{totalItensRejeitados > 1 ? "s" : ""}</span>
+              </span>
+            )}
             <LegendaGrade className="ml-auto" />
           </div>
+
+          {/* Barra Contextual de Ações em Lote durante seleção de itens */}
+          <BarraAcoesSelecao
+            totalSelecionados={table.getSelectedRowModel().rows.length}
+            onRejeitarSelecionados={handleRejeitarSelecionadosEmLote}
+            onRestaurarSelecionados={handleRestaurarSelecionadosEmLote}
+            onLimparSelecao={() => setRowSelection({})}
+            className="mb-2"
+          />
+
           <DataTableSection
             table={table}
             filteredCount={itensFiltrados.length}

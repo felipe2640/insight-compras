@@ -56,3 +56,81 @@ export function classificarDivergencia(
   if (qtdComprador === 0 && qtdModelo > 0) return "so_modelo";
   return qtdComprador > qtdModelo ? "comprador_maior" : "comprador_menor";
 }
+
+// ============================================================================
+// TAXONOMIA DE MOTIVOS DE REJEIÇÃO DURANTE A SELEÇÃO DE ITENS NO COCKPIT
+// ============================================================================
+
+export interface MotivoRejeicaoItemDef {
+  readonly id: MotivoDivergencia;
+  readonly rotulo: string;
+  readonly descricao: string;
+  readonly grupo: "estoque" | "demanda" | "comercial" | "outro";
+}
+
+export const MOTIVOS_REJEICAO_COMPRA: readonly MotivoRejeicaoItemDef[] = [
+  {
+    id: "ja_tem_similar",
+    rotulo: "Item similar tem estoque",
+    descricao: "Já existe peça similar ou intercambiável com saldo na rede",
+    grupo: "estoque",
+  },
+  {
+    id: "item_obsoleto",
+    rotulo: "Item obsoleto",
+    descricao: "Peça obsoleta, sem giro recente ou fora de linha",
+    grupo: "demanda",
+  },
+  {
+    id: "modelo_superestimou",
+    rotulo: "Modelo superestimado",
+    descricao: "Sugestão do sistema acima da necessidade ou consumo real",
+    grupo: "demanda",
+  },
+  {
+    id: "sem_verba",
+    rotulo: "Sem verba no momento",
+    descricao: "Restrição orçamentária ou corte financeiro de compras",
+    grupo: "comercial",
+  },
+  {
+    id: "fornecedor_indisponivel",
+    rotulo: "Fornecedor sem estoque",
+    descricao: "Item indisponível no parceiro de fornecimento ou fábrica",
+    grupo: "comercial",
+  },
+  {
+    id: "lote_minimo_fornecedor",
+    rotulo: "Lote mínimo inviável",
+    descricao: "Embalagem mínima do fabricante inviabiliza o pedido",
+    grupo: "comercial",
+  },
+  {
+    id: "item_errado",
+    rotulo: "Item não deveria ser sugerido",
+    descricao: "Cadastro inconsistente ou peça não comprável",
+    grupo: "outro",
+  },
+  {
+    id: "decisao_interna",
+    rotulo: "Decisão estratégica interna",
+    descricao: "Diretriz comercial interna da gerência",
+    grupo: "comercial",
+  },
+  {
+    id: "outro",
+    rotulo: "Outro motivo",
+    descricao: "Outra justificativa de negócio do comprador",
+    grupo: "outro",
+  },
+] as const;
+
+export type IdMotivoRejeicaoCompra = (typeof MOTIVOS_REJEICAO_COMPRA)[number]["id"];
+
+export function obterMotivoRejeicao(id: string): MotivoRejeicaoItemDef | undefined {
+  return MOTIVOS_REJEICAO_COMPRA.find((m) => m.id === id);
+}
+
+export function ehMotivoRejeicaoValido(id: string): id is IdMotivoRejeicaoCompra {
+  return MOTIVOS_REJEICAO_COMPRA.some((m) => m.id === id);
+}
