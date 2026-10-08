@@ -54,6 +54,7 @@ import { ContagensStatusGrade } from "@/lib/cockpit/escopo-grade";
 import { useGradeProgressiva } from "@/hooks/useGradeProgressiva";
 import { AvisoCatalogo } from "@/components/cockpit/AvisoCatalogo";
 import { BotoesExportacao } from "@/components/cockpit/BotoesExportacao";
+import { EnviarCotacaoHub } from "@/components/cockpit/EnviarCotacaoHub";
 import { DataTableSection } from "@/components/cockpit/data-table-section";
 import { criarColunasCockpit } from "@/components/cockpit/colunas-cockpit";
 import { QuickFilterChip } from "@/components/cockpit/quick-filter-chip";
@@ -757,6 +758,7 @@ export function CockpitPrincipal({
               </div>
 
               {/* Um botão por modelo: o comprador exporta o de sempre num clique. */}
+              <EnviarCotacaoHub itens={itensSelecionadosParaExportacao} filialId={lojaFocoId} />
               <BotoesExportacao
                 itens={itensFiltrados as LinhaCockpitMatriz[]}
                 itensSelecionados={itensSelecionadosParaExportacao}
