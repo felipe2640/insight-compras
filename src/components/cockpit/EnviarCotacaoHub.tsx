@@ -17,22 +17,6 @@ interface ItemEdicaoState {
   observacao?: string;
 }
 
-const MARCAS_POPULARES = [
-  "Gates",
-  "Dayco",
-  "Contitech",
-  "Bosch",
-  "Cofap",
-  "Nakata",
-  "Monroe",
-  "TRW",
-  "SABÓ",
-  "Fremax",
-  "Varga",
-  "Magneti Marelli",
-  "SKF",
-  "NGK",
-];
 
 interface Status {
   portalOrigin: string;
@@ -140,6 +124,20 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
       })
       .filter(x => x.quantidadeOriginal > 0);
   }, [itens]);
+
+  // Marcas dinâmicas extraídas do catálogo do tenant e dos itens (White-Label: sem marcas fixas)
+  const marcasCatalogo = useMemo(() => {
+    const set = new Set<string>();
+    if (status?.catalogProducts) {
+      for (const p of status.catalogProducts) {
+        if (p.marca && p.marca.trim()) set.add(p.marca.trim());
+      }
+    }
+    for (const { item } of valid) {
+      if (item.marca && item.marca.trim()) set.add(item.marca.trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [status?.catalogProducts, valid]);
 
   // Sincroniza edições com os dados reais dos itens quando a lista mudar
   useEffect(() => {
@@ -625,8 +623,9 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
                                 <label className="block text-[11px] font-semibold text-slate-700">
                                   Marcas Alternativas Aceitas (clique para marcar ou desmarcar):
                                 </label>
+                              {marcasCatalogo.length > 0 && (
                                 <div className="flex flex-wrap gap-1.5">
-                                  {MARCAS_POPULARES.map(marca => {
+                                  {marcasCatalogo.slice(0, 20).map(marca => {
                                     const list = ed.accepted_brands
                                       ? ed.accepted_brands.split(",").map(s => s.trim().toLowerCase())
                                       : [];
@@ -647,6 +646,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
                                     );
                                   })}
                                 </div>
+                              )}
                                 <input
                                   type="text"
                                   placeholder="Outras marcas alternativas (separadas por vírgula)..."

@@ -745,11 +745,9 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
       return this.cacheFornecedoresComEmail.dados;
     }
     const consultas = [
-      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ACODFORN], "NomeFornecedor", 'FORNECEDOR'[ANOMEFANTASIA], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
-      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ACODFORN], "NomeFornecedor", 'FORNECEDOR'[ARAZAOSOCIAL], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
-      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ACODFORN], "NomeFornecedor", 'FORNECEDOR'[ANOME], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
-      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ACODFORN], "NomeFornecedor", 'FORNECEDOR'[Nome Fornecedor], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
       CONSULTA_DAX_FORNECEDORES_EMAIL,
+      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ACODFORNECEDOR], "NomeFantasia", 'FORNECEDOR'[AFANTASIA], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
+      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ACODFORNECEDOR], "RazaoSocial", 'FORNECEDOR'[ARAZAOSOCIAL], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
     ];
     for (const dax of consultas) {
       try {
@@ -757,9 +755,11 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
         if (linhas && linhas.length > 0) {
           const resultado = linhas
             .map((l: any) => {
-              const id = String(l.FornecedorId ?? l.ACODFORN ?? l.ICODFORN ?? "").trim();
+              const id = String(l.FornecedorId ?? l.ACODFORNECEDOR ?? l.ICODFORN ?? "").trim();
               const email = String(l.Email ?? l.AEMAIL ?? "").trim();
-              let name = String(l.NomeFornecedor ?? l.ANOMEFORN ?? l.ANOMEFANTASIA ?? l.ARAZAOSOCIAL ?? l.ANOME ?? "").trim();
+              const fantasia = String(l.NomeFantasia ?? l.AFANTASIA ?? "").trim();
+              const razao = String(l.RazaoSocial ?? l.ARAZAOSOCIAL ?? "").trim();
+              let name = fantasia || razao || String(l.NomeFornecedor ?? "").trim();
               if (!name && email) {
                 const domain = email.split("@")[1]?.toLowerCase();
                 const prefix = domain ? domain.split(".")[0] : "";

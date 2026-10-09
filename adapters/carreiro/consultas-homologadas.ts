@@ -952,7 +952,9 @@ EVALUATE
 FILTER(
     SELECTCOLUMNS(
         FORNECEDOR,
-        "FornecedorId", 'FORNECEDOR'[ACODFORN],
+        "FornecedorId", 'FORNECEDOR'[ACODFORNECEDOR],
+        "NomeFantasia", 'FORNECEDOR'[AFANTASIA],
+        "RazaoSocial", 'FORNECEDOR'[ARAZAOSOCIAL],
         "Email", 'FORNECEDOR'[AEMAIL]
     ),
     NOT ISBLANK([Email]) && [Email] <> ""

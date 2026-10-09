@@ -27,24 +27,7 @@ interface SupplierInfo {
   email?: string;
 }
 
-const MARCAS_POPULARES = [
-  "Gates",
-  "Dayco",
-  "Contitech",
-  "Bosch",
-  "Cofap",
-  "Nakata",
-  "Monroe",
-  "TRW",
-  "SABÓ",
-  "Fremax",
-  "Varga",
-  "Magneti Marelli",
-  "SKF",
-  "NGK",
-  "Valeo",
-  "Fras-le",
-] as const;
+
 
 interface CatalogProductInfo {
   id: number;
@@ -315,6 +298,22 @@ export function ModalCotacaoCompiladaHub({
     },
     [edicoesLinhas, atualizarAtributosPorSku]
   );
+
+  // Marcas dinâmicas extraídas do catálogo do tenant e dos itens (White-Label: sem marcas fixas)
+  const marcasCatalogo = useMemo(() => {
+    const set = new Set<string>();
+    if (hubStatus?.catalogProducts) {
+      for (const p of hubStatus.catalogProducts) {
+        if (p.marca && p.marca.trim()) set.add(p.marca.trim());
+      }
+    }
+    for (const it of itensCompilados) {
+      const prod = obterProdutoResolvido(it);
+      const m = prod?.marca || it.marca;
+      if (m && m.trim()) set.add(m.trim());
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [hubStatus?.catalogProducts, itensCompilados, obterProdutoResolvido]);
 
   // Verificação de segurança: itens que não puderam ser homologados no catálogo
   const itensNaoResolvidos = useMemo(() => {
@@ -960,28 +959,30 @@ export function ModalCotacaoCompiladaHub({
                               <label className="block text-[11px] font-semibold text-slate-700">
                                 Marcas Alternativas Aceitas (clique para marcar ou desmarcar):
                               </label>
-                              <div className="flex flex-wrap gap-1.5">
-                                {MARCAS_POPULARES.map((marca) => {
-                                  const list = edPrincipal.accepted_brands
-                                    ? edPrincipal.accepted_brands.split(",").map((s) => s.trim().toLowerCase())
-                                    : [];
-                                  const selecionada = list.includes(marca.toLowerCase());
-                                  return (
-                                    <button
-                                      key={marca}
-                                      type="button"
-                                      onClick={() => toggleMarcaAlternativa(item.sku, marca, item.porLoja)}
-                                      className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
-                                        selecionada
-                                          ? "bg-blue-600 text-white border-blue-600 shadow-xs"
-                                          : "bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100"
-                                      }`}
-                                    >
-                                      {selecionada ? `✓ ${marca}` : `+ ${marca}`}
-                                    </button>
-                                  );
-                                })}
-                              </div>
+                              {marcasCatalogo.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {marcasCatalogo.slice(0, 20).map((marca) => {
+                                    const list = edPrincipal.accepted_brands
+                                      ? edPrincipal.accepted_brands.split(",").map((s) => s.trim().toLowerCase())
+                                      : [];
+                                    const selecionada = list.includes(marca.toLowerCase());
+                                    return (
+                                      <button
+                                        key={marca}
+                                        type="button"
+                                        onClick={() => toggleMarcaAlternativa(item.sku, marca, item.porLoja)}
+                                        className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
+                                          selecionada
+                                            ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                            : "bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100"
+                                        }`}
+                                      >
+                                        {selecionada ? `✓ ${marca}` : `+ ${marca}`}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
                               <input
                                 type="text"
                                 placeholder="Outras marcas alternativas (separadas por vírgula)..."
