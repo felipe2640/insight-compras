@@ -142,6 +142,8 @@ Pré-provisionamento necessário no Hub (fora do Insight): provider `jwt_jwks` c
 
 ## 9. Limitações e pendências para o fluxo operar
 
+O plano de ativação concreto — instalação identificada, status da migração do ledger, nomes de configuração, provisionamento exato no Hub e jornada de verificação — está em `docs/integracoes/ativacao-cotacao-hub.md`. Resumo:
+
 - Provisionamento real no Hub (tenant, aplicação M2M com os scopes, assinatura de webhook, SMTP, provider/bindings SSO, `portal-config.json`) e aplicação da migração do ledger no Supabase de produção.
 - Configuração real na Vercel (`INSIGHT_HUB_CONFIG_JSON` com credenciais privadas) e registro do webhook apontando para o domínio de produção.
 - Conciliar a carteira/filial do comprador com os grants provisionados no Hub (a intersection é quem manda).
