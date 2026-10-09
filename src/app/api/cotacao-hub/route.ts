@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("[cotacao-hub] Erro no POST:", err);
-    return connectorFailure();
+    return connectorFailure(err instanceof Error ? err.message : undefined);
   }
 }
 export async function GET(request: NextRequest) {
@@ -86,6 +86,6 @@ export async function GET(request: NextRequest) {
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("[cotacao-hub] Erro no GET:", err);
-    return connectorFailure();
+    return connectorFailure(err instanceof Error ? err.message : undefined);
   }
 }

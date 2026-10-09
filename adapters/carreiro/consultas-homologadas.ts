@@ -953,7 +953,6 @@ FILTER(
     SELECTCOLUMNS(
         FORNECEDOR,
         "FornecedorId", 'FORNECEDOR'[ACODFORN],
-        "NomeFornecedor", 'FORNECEDOR'[ANOMEFORN],
         "Email", 'FORNECEDOR'[AEMAIL]
     ),
     NOT ISBLANK([Email]) && [Email] <> ""

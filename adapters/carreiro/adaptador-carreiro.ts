@@ -746,9 +746,8 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
     }
     const consultas = [
       CONSULTA_DAX_FORNECEDORES_EMAIL,
-      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ICODFORN], "NomeFornecedor", 'FORNECEDOR'[ANOMEFORN], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
-      `EVALUATE FILTER(SELECTCOLUMNS(CADFORN, "FornecedorId", 'CADFORN'[ACODFORN], "NomeFornecedor", 'CADFORN'[ANOMEFORN], "Email", 'CADFORN'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
-      `EVALUATE FILTER(SELECTCOLUMNS(CADFORN, "FornecedorId", 'CADFORN'[ICODFORN], "NomeFornecedor", 'CADFORN'[ANOMEFORN], "Email", 'CADFORN'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
+      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ICODFORN], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
+      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ACODFORNECEDOR], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
     ];
     for (const dax of consultas) {
       try {
