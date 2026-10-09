@@ -1,4 +1,4 @@
-import { sbSelecionar, sbUpsert, supabaseConfigurado, type OpcoesAcessoSupabase } from "@/lib/aprendizado/supabase";
+import { sbSelecionar, sbUpsert, type OpcoesAcessoSupabase } from "@/lib/aprendizado/supabase";
 import type { ConnectorConfig, Draft, InboxEntry, Ledger, LedgerStore, Submission } from "./types";
 
 interface LinhaSubmissionDb {
