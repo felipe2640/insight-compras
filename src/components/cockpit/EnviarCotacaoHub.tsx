@@ -456,6 +456,26 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
                 </div>
               </div>
 
+              {/* Aviso claro sobre e-mails pendentes */}
+              {fornecedoresFaltandoEmail.length > 0 && (
+                <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900 flex items-center justify-between gap-2 shadow-xs">
+                  <div>
+                    <strong>Atenção:</strong> {fornecedoresFaltandoEmail.length} fornecedor(es) selecionado(s) não possui(em) e-mail informado:{" "}
+                    <span className="font-semibold">{fornecedoresFaltandoEmail.map(f => f.name).join(", ")}</span>.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const idsFaltando = new Set(fornecedoresFaltandoEmail.map(f => f.id));
+                      setSelectedSuppliers(prev => prev.filter(id => !idsFaltando.has(id)));
+                    }}
+                    className="shrink-0 rounded bg-amber-200 px-2 py-1 text-[11px] font-bold text-amber-950 hover:bg-amber-300 transition-colors"
+                  >
+                    ⚡ Desmarcar sem e-mail
+                  </button>
+                </div>
+              )}
+
               {/* Ações */}
               <div className="flex items-center justify-between gap-2 pt-3 border-t">
                 <div className="flex items-center gap-2">
@@ -463,6 +483,15 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
                     type="button"
                     disabled={busy || !valid.length || !selectedSuppliers.length || fornecedoresFaltandoEmail.length > 0}
                     onClick={send}
+                    title={
+                      fornecedoresFaltandoEmail.length > 0
+                        ? `Preencha o e-mail de: ${fornecedoresFaltandoEmail.map(f => f.name).join(", ")}`
+                        : !selectedSuppliers.length
+                        ? "Selecione ao menos um fornecedor"
+                        : !valid.length
+                        ? "Nenhum item com quantidade selecionado"
+                        : "Confirmar envio da cotação"
+                    }
                     className="rounded bg-blue-600 px-4 py-2 font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm flex items-center gap-2"
                   >
                     {busy ? (

@@ -8,7 +8,7 @@
  * há lista de exemplo aqui: sem histórico gravado, a tela diz isso.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   PackageCheck,
   Loader2,
@@ -22,12 +22,14 @@ import {
   ArrowRight,
   Truck,
   Check,
+  Layers,
 } from "lucide-react";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { cn } from "@/lib/utils";
 import { Pedido, ItemPedido, StatusPedido } from "@/lib/pedidos/tipos";
 import { ROTULOS_STATUS, obterProximoStatus } from "@/lib/pedidos/ciclo-vida";
 import { useNomesFiliais } from "@/lib/cockpit/contexto-tenant";
+import { ModalCotacaoCompiladaHub } from "@/components/pedidos/ModalCotacaoCompiladaHub";
 
 const dinheiro = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -81,6 +83,10 @@ export default function PaginaPedidos() {
   const [transitandoId, setTransitandoId] = useState<number | null>(null);
   const [observacaoTransicao, setObservacaoTransicao] = useState<Record<number, string>>({});
   const [feedbackSucesso, setFeedbackSucesso] = useState<string | null>(null);
+
+  // Seleção múltipla para cotação unificada (Cotação Hub)
+  const [pedidosSelecionadosIds, setPedidosSelecionadosIds] = useState<Set<number>>(new Set());
+  const [modalCotacaoAberto, setModalCotacaoAberto] = useState(false);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -193,6 +199,40 @@ export default function PaginaPedidos() {
   const contagemRecebidos = pedidos.filter((p) => p.status === "recebido").length;
   const totalItens = pedidos.reduce((s, p) => s + p.totalItens, 0);
 
+  // Pedidos selecionados para ação de cotação compilada
+  const pedidosSelecionados = useMemo(
+    () => pedidos.filter((p) => pedidosSelecionadosIds.has(p.id)),
+    [pedidos, pedidosSelecionadosIds]
+  );
+
+  const alternarSelecao = (id: number) => {
+    setPedidosSelecionadosIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const todosVisiveisSelecionados =
+    pedidos.length > 0 && pedidos.every((p) => pedidosSelecionadosIds.has(p.id));
+
+  const alternarTodos = () => {
+    if (todosVisiveisSelecionados) {
+      setPedidosSelecionadosIds(new Set());
+    } else {
+      setPedidosSelecionadosIds(new Set(pedidos.map((p) => p.id)));
+    }
+  };
+
+  const lojasSelecionadasDistintas = useMemo(() => {
+    return new Set(pedidosSelecionados.map((p) => p.filialId ?? 1)).size;
+  }, [pedidosSelecionados]);
+
+  const itensTotaisSelecionados = useMemo(() => {
+    return pedidosSelecionados.reduce((s, p) => s + p.totalItens, 0);
+  }, [pedidosSelecionados]);
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-100">
       <AppSidebar />
@@ -208,6 +248,42 @@ export default function PaginaPedidos() {
         </header>
 
         <div className="mx-auto w-full max-w-[1280px] space-y-3 p-4 text-xs">
+          {/* Barra flutuante de pedidos selecionados para cotação unificada */}
+          {pedidosSelecionadosIds.size > 0 && (
+            <div className="sticky top-12 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-300 bg-blue-50/95 p-3 shadow-md backdrop-blur-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white shadow-xs">
+                  <Layers className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="font-bold text-blue-950 text-xs">
+                    {pedidosSelecionadosIds.size} pedido(s) selecionado(s) de {lojasSelecionadasDistintas} loja(s)
+                  </span>
+                  <span className="text-[11px] text-blue-700 block">
+                    {itensTotaisSelecionados.toLocaleString("pt-BR")} itens no total consolidado para cotação única
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPedidosSelecionadosIds(new Set())}
+                  className="rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Limpar seleção
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalCotacaoAberto(true)}
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition-colors"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  <span>Compilar e Cotar no Hub ({pedidosSelecionadosIds.size})</span>
+                </button>
+              </div>
+            </div>
+          )}
           {!configurado && (
             <p className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900">
               <AlertTriangle className="h-4 w-4 shrink-0" />
@@ -407,6 +483,15 @@ export default function PaginaPedidos() {
               <table className="w-full">
                 <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                   <tr>
+                    <th className="w-10 px-2 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={todosVisiveisSelecionados}
+                        onChange={alternarTodos}
+                        title="Selecionar todos os pedidos visíveis"
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                    </th>
                     <th className="w-8 px-2 py-2" />
                     <th className="px-3 py-2 text-left">Pedido / Quando</th>
                     <th className="px-3 py-2 text-left">Comprador</th>
@@ -425,16 +510,30 @@ export default function PaginaPedidos() {
                     const badge = badgeStatus(p.status);
                     const IconeStatus = badge.icone;
                     const estaTransitando = transitandoId === p.id;
+                    const estaSelecionado = pedidosSelecionadosIds.has(p.id);
 
                     return (
                       <React.Fragment key={p.id}>
                         <tr
                           className={cn(
                             "cursor-pointer border-t border-slate-100 transition-colors hover:bg-slate-50",
-                            expandido && "bg-slate-50/90"
+                            expandido && "bg-slate-50/90",
+                            estaSelecionado && "bg-blue-50/40"
                           )}
                           onClick={() => abrir(p)}
                         >
+                          <td
+                            className="w-10 px-2 py-2 text-center"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={estaSelecionado}
+                              onChange={() => alternarSelecao(p.id)}
+                              className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                              title={`Selecionar pedido #${p.id}`}
+                            />
+                          </td>
                           <td className="px-2 py-2 text-slate-400">
                             {expandido ? (
                               <ChevronDown className="h-4 w-4" />
@@ -543,7 +642,7 @@ export default function PaginaPedidos() {
 
                         {expandido && (
                           <tr className="border-t border-slate-100 bg-slate-50/60">
-                            <td colSpan={8} className="p-4 space-y-4">
+                            <td colSpan={9} className="p-4 space-y-4">
                               {/* Stepper Visual de Ciclo de Vida */}
                               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                                 <div className="mb-3 flex items-center justify-between">
@@ -843,6 +942,21 @@ export default function PaginaPedidos() {
             )}
           </div>
         </div>
+
+        {/* Modal de Cotação Compilada Multi-Loja (Cotação Hub) */}
+        {modalCotacaoAberto && pedidosSelecionados.length > 0 && (
+          <ModalCotacaoCompiladaHub
+            pedidos={pedidosSelecionados}
+            nomesFiliais={nomesFiliais}
+            onClose={() => setModalCotacaoAberto(false)}
+            onSucesso={(msg) => {
+              setFeedbackSucesso(msg);
+              setModalCotacaoAberto(false);
+              setPedidosSelecionadosIds(new Set());
+              void carregar();
+            }}
+          />
+        )}
       </main>
     </div>
   );

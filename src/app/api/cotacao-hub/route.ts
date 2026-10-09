@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aplicarGuardrailInventarioServerSide } from "@/lib/rbac/validador-carteira";
 import { listarIdsProdutosEmPedidosAtivos } from "@/lib/pedidos/produtos-pendentes";
+import { atualizarStatusPedido } from "@/lib/pedidos";
 import { createConnector } from "@/lib/cotacao-hub/connector";
 import { createSnapshot, selectionSchema } from "@/lib/cotacao-hub/selection";
 import { connectorContext, connectorFailure } from "@/lib/cotacao-hub/server-context";
@@ -32,12 +33,40 @@ export async function POST(request: NextRequest) {
       };
     }
 
-    const filter = aplicarGuardrailInventarioServerSide(context.usuario, { filialId: input.filialId });
-    const [inventory, pending] = await Promise.all([
-      context.carregarInventario(filter), listarIdsProdutosEmPedidosAtivos(context.tenant.id, input.filialId),
+    const filter = aplicarGuardrailInventarioServerSide(
+      context.usuario,
+      input.filialId ? { filialId: input.filialId } : {}
+    );
+    const [inventory, pendingRaw] = await Promise.all([
+      context.carregarInventario(filter),
+      listarIdsProdutosEmPedidosAtivos(context.tenant.id, input.filialId ?? 1),
     ]);
+
+    // Se a cotação for compilada a partir de pedidos existentes, esses produtos não devem ser bloqueados por si mesmos
+    const pending = (input.pedidoIds && input.pedidoIds.length > 0)
+      ? new Set<number>()
+      : pendingRaw;
+
     const snapshot = createSnapshot(effectiveConfig, context.usuario, context.tenant, inventory.produtos, pending, input);
     const result = await createConnector(effectiveConfig).submit(snapshot);
+
+    // Avançar automaticamente o status dos pedidos compilados para "enviado"
+    if (input.pedidoIds && input.pedidoIds.length > 0) {
+      for (const pedidoId of input.pedidoIds) {
+        try {
+          await atualizarStatusPedido({
+            tenantId: context.tenant.id,
+            pedidoId,
+            novoStatus: "enviado",
+            responsavel: context.usuario.nome || context.usuario.email || "Cotação Hub",
+            observacao: `Cotação compilada #${result.quotationId || input.externalId} disparada no Cotação Hub`,
+          });
+        } catch (errAtualizar) {
+          console.warn(`[cotacao-hub] Falha ao avançar status do pedido #${pedidoId}:`, errAtualizar);
+        }
+      }
+    }
+
     return NextResponse.json(result, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     console.error("[cotacao-hub] Erro no POST:", err);
