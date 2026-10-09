@@ -1,7 +1,13 @@
 export interface Destination { external_id: string; name: string; address: string }
 export interface Supplier { external_id: string; legal_name: string; contacts: { name: string; email: string }[] }
 export interface ConnectorConfig {
-  mode: "synthetic-local" | "test-carreiro" | "test-preview"; tenantId: string; hubTenantId: string; sourceSystem: string;
+  /**
+   * "production": conexão real e explícita (HTTPS, credenciais privadas via
+   * INSIGHT_HUB_CONFIG_JSON) — opera inclusive na Vercel.
+   * "synthetic-local": laboratório sintético localhost, recusado em
+   * produção/Vercel e sem qualquer cadastro padrão embutido.
+   */
+  mode: "synthetic-local" | "production"; tenantId: string; hubTenantId: string; sourceSystem: string;
   apiBaseUrl: string; portalOrigin: string; applicationId: string; clientId: string; clientSecret: string;
   webhookKeyId: string; webhookSecret: string; storageFile: string; buyerName: string;
   destinations: Destination[]; suppliers: Supplier[]; units: Record<string, string>;
@@ -11,6 +17,12 @@ export interface QuoteItem {
   external_id: string; description: string; requested_quantity: string; requested_unit: string;
   destination_external_id: string; requested_brand?: string; requested_reference?: string;
   accepted_brands?: string[];
+  /**
+   * Metadados sanitizados do item (contrato QuotationItemInput do Hub).
+   * `observacao` é a observação comercial do comprador — vai AQUI, nunca
+   * concatenada na descrição (decisão vigente 09/10/2026).
+   */
+  source_snapshot?: { observacao?: string; produtoId?: number; sku?: string };
 }
 export interface Snapshot {
   externalId: string; actorId: string; deadline: string; items: QuoteItem[];

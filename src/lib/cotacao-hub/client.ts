@@ -1,48 +1,41 @@
 import type { ConnectorConfig, Receipt } from "./types";
 
+/**
+ * Cliente HTTP da API pública do Cotação Hub.
+ *
+ * Falha real é falha: 401, 5xx, timeout e erro de rede NUNCA viram resposta
+ * simulada nem "Enviada" (decisão vigente 09/10/2026 — não fabricar IDs ou
+ * recibos no fluxo do cliente). O ledger do conector preserva o estado
+ * parcial, e a retomada usa as MESMAS chaves de idempotência: um timeout
+ * depois do commit remoto é reconciliado pelo próprio Hub ao repetir a
+ * chamada com a mesma chave.
+ */
 export class HubClient {
   private token?: string;
   private tokenExpires = 0;
-  private isSimulated = false;
   constructor(private readonly cfg: ConnectorConfig) {}
   private async authorize(): Promise<string> {
     if (this.token && Date.now() < this.tokenExpires) return this.token;
-    try {
-      const result = await fetch(`${this.cfg.apiBaseUrl}/api/v1/oauth/token`, { method: "POST",
-        headers: { Authorization: `Basic ${Buffer.from(`${this.cfg.clientId}:${this.cfg.clientSecret}`).toString("base64")}`,
-          "Content-Type": "application/x-www-form-urlencoded" }, body: "grant_type=client_credentials",
-        signal: AbortSignal.timeout(10_000), redirect: "error" });
-      if (result.ok) {
-        const body = await result.json();
-        if (typeof body.access_token === "string" && typeof body.expires_in === "number") {
-          this.token = body.access_token; this.tokenExpires = Date.now() + Math.max(0, body.expires_in - 30) * 1000;
-          this.isSimulated = false;
-          return this.token!;
-        }
-      }
-      if (this.cfg.mode === "test-carreiro" || this.cfg.mode === "test-preview") {
-        console.warn(`[HubClient] Autorização remota retornou status ${result.status}. Ativando modo resiliente de teste.`);
-        this.token = "simulated-preview-token"; this.tokenExpires = Date.now() + 3600_000;
-        this.isSimulated = true;
-        return this.token;
-      }
-      throw new Error(`Autenticação da conexão indisponível (${result.status}).`);
-    } catch (err) {
-      if (this.cfg.mode === "test-carreiro" || this.cfg.mode === "test-preview") {
-        console.warn("[HubClient] Falha de conexão na autorização. Ativando modo resiliente de teste:", err);
-        this.token = "simulated-preview-token"; this.tokenExpires = Date.now() + 3600_000;
-        this.isSimulated = true;
-        return this.token;
-      }
-      throw err;
+    const result = await fetch(`${this.cfg.apiBaseUrl}/api/v1/oauth/token`, { method: "POST",
+      headers: { Authorization: `Basic ${Buffer.from(`${this.cfg.clientId}:${this.cfg.clientSecret}`).toString("base64")}`,
+        "Content-Type": "application/x-www-form-urlencoded" }, body: "grant_type=client_credentials",
+      signal: AbortSignal.timeout(10_000), redirect: "error" });
+    if (!result.ok) {
+      throw new Error(`Autenticação da conexão com o Hub falhou (${result.status}); recibo local preservado para retomada.`);
     }
+    const bruto: unknown = await result.json().catch(() => null);
+    const dados = bruto as { access_token?: unknown; expires_in?: unknown } | null;
+    if (!dados || typeof dados.access_token !== "string" || typeof dados.expires_in !== "number") {
+      throw new Error("Resposta de autenticação do Hub inválida; recibo local preservado para retomada.");
+    }
+    const token = dados.access_token;
+    this.token = token;
+    this.tokenExpires = Date.now() + Math.max(0, dados.expires_in - 30) * 1000;
+    return token;
   }
   async request(method: string, path: string, body?: unknown, key?: string, etag?: string): Promise<{ body: any; etag: string | null }> {
     if (!path.startsWith("/api/v1/") || path.includes("..")) throw new Error("Rota Hub inválida.");
     const token = await this.authorize();
-    if (this.isSimulated) {
-      return this.handleSimulatedRequest(method, path, body, key);
-    }
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (key) headers["Idempotency-Key"] = key;
@@ -51,31 +44,9 @@ export class HubClient {
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15_000), redirect: "error" });
     if (!response.ok) {
       if (response.status === 401) { this.token = undefined; this.tokenExpires = 0; }
-      if (this.cfg.mode === "test-carreiro" || this.cfg.mode === "test-preview") {
-        return this.handleSimulatedRequest(method, path, body, key);
-      }
-      throw new Error(`Operação Hub ${method} falhou (${response.status}); recibo preservado para retomada.`);
+      throw new Error(`Operação Hub ${method} ${path} falhou (${response.status}); recibo preservado para retomada.`);
     }
     return { body: response.status === 204 ? {} : await response.json(), etag: response.headers.get("etag") };
-  }
-  private handleSimulatedRequest(method: string, path: string, _body?: any, key?: string): { body: any; etag: string } {
-    const idSuffix = key ? key.slice(0, 10) : Math.random().toString(36).slice(2, 8);
-    if (path.startsWith("/api/v1/suppliers") && method === "GET") {
-      return { body: { data: [] }, etag: "sim-1" };
-    }
-    if (path.startsWith("/api/v1/suppliers") && method === "POST") {
-      return { body: { id: `supp-${idSuffix}`, status: "active", version: 1 }, etag: "sim-1" };
-    }
-    if (path === "/api/v1/quotations" && method === "POST") {
-      return { body: { id: `quot-${idSuffix}`, status: "created", version: 1 }, etag: "sim-1" };
-    }
-    if (path.includes(":open") && method === "POST") {
-      return { body: { id: `quot-${idSuffix}`, status: "open", version: 2 }, etag: "sim-2" };
-    }
-    if (path.includes("/invitations") && method === "POST") {
-      return { body: { id: `inv-${idSuffix}`, status: "sent", version: 1 }, etag: "sim-3" };
-    }
-    return { body: { id: `res-${idSuffix}`, status: "ok" }, etag: "sim-1" };
   }
 }
 // Receipts omit invitation capabilities, launch URLs and authorization material.

@@ -54,10 +54,15 @@ export function createSnapshot(
     }
   }
 
+  // Carteira aplica-se ao comprador em QUALQUER modo: grants nunca dão
+  // acesso além da carteira individual (plano I1 do Hub).
   const allowed = user.allowedSupplierIds ? new Set(user.allowedSupplierIds) : new Set<number>();
-  const restricted = user.role === "COMPRADOR" && cfg.mode === "synthetic-local";
+  const restricted = user.role === "COMPRADOR";
   for (const id of selection.supplierIds) {
-    const isKnown = cfg.suppliers.some(s => s.external_id === id) || (cfg.mode !== "synthetic-local" && selection.suppliersData?.some(s => s.id === id));
+    // O navegador NÃO é autoridade de cadastro: só fornecedores presentes na
+    // conexão validada no servidor (config + fonte autorizada) passam. Os
+    // suppliersData do payload são conferidos pela rota antes daqui.
+    const isKnown = cfg.suppliers.some(s => s.external_id === id);
     if (!isKnown || (restricted && !allowed.has(Number(id)))) throw new Error("Fornecedor fora da carteira/conexão.");
   }
   const categories = user.allowedCategoryIds ? new Set(user.allowedCategoryIds) : null;
@@ -67,7 +72,7 @@ export function createSnapshot(
   for (const d of cfg.destinations) {
     destinationMap.set(d.external_id, d);
   }
-  if (cfg.mode !== "synthetic-local") {
+  if (cfg.mode === "production") {
     if (selection.destinations) {
       for (const d of selection.destinations) {
         if (!destinationMap.has(d.external_id)) destinationMap.set(d.external_id, d);
@@ -79,7 +84,7 @@ export function createSnapshot(
         destinationMap.set(fidStr, {
           external_id: fidStr,
           name: f.nome,
-          address: f.cidade ? `${f.cidade} - ${f.uf}` : "Rede Carreiro",
+          address: f.cidade ? `${f.cidade} - ${f.uf}` : tenant.nome,
         });
       }
     }

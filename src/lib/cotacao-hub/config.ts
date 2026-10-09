@@ -5,113 +5,69 @@ import type { ConnectorConfig } from "./types";
 
 const supplier = z.object({ external_id: z.string().min(1), legal_name: z.string().min(1),
   contacts: z.array(z.object({ name: z.string().min(1), email: z.string().email() }).strict()).min(1) }).strict();
-const schema = z.object({ mode: z.enum(["synthetic-local", "test-carreiro", "test-preview"]),
+const schema = z.object({ mode: z.enum(["synthetic-local", "production"]),
   tenantId: z.string().min(1),
   hubTenantId: z.string().uuid(), sourceSystem: z.literal("insight-compras"),
   apiBaseUrl: z.string().url(), portalOrigin: z.string().url(), applicationId: z.string().uuid(),
   clientId: z.string().min(1), clientSecret: z.string().min(32), webhookKeyId: z.string().min(1),
-  webhookSecret: z.string().min(32), storageFile: z.string().min(1), buyerName: z.string().min(1),
+  webhookSecret: z.string().min(32), storageFile: z.string().min(1).optional(), buyerName: z.string().min(1),
   destinations: z.array(z.object({ external_id: z.string().min(1), name: z.string().min(1), address: z.string().min(1) }).strict()).min(1),
   suppliers: z.array(supplier).min(1), units: z.record(z.string().min(1).max(40)),
   allowedActorIds: z.array(z.string().min(1)),
 }).strict();
+
+const HOSTS_LOCAIS = ["localhost", "127.0.0.1", "[::1]"];
+
+/** Origem exata (scheme://host[:port]/) sem credenciais, query ou fragmento. */
+function origemExata(valor: string, rotulo: string): URL {
+  const url = new URL(valor);
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== "/") {
+    throw new Error(`${rotulo} precisa ser uma origem exata, sem credenciais, caminho, query ou fragmento.`);
+  }
+  return url;
+}
+
 export function validateConfig(input: unknown): ConnectorConfig {
   const cfg = schema.parse(input);
-  const api = new URL(cfg.apiBaseUrl);
-  if (cfg.mode === "synthetic-local") {
-    if (!["localhost", "127.0.0.1", "[::1]"].includes(api.hostname) ||
-        !["http:", "https:"].includes(api.protocol) || api.username || api.password || api.search || api.hash || api.pathname !== "/") {
-      throw new Error("O laboratório aceita somente API local com origem exata.");
-    }
-    const portal = new URL(cfg.portalOrigin);
-    if (!['localhost', '127.0.0.1', '[::1]'].includes(portal.hostname) ||
-        !['http:', 'https:'].includes(portal.protocol) || portal.username || portal.password || portal.search || portal.hash || portal.pathname !== '/') {
-      throw new Error("O laboratório aceita somente portal local com origem exata.");
-    }
+  const api = origemExata(cfg.apiBaseUrl, "API do Hub");
+  origemExata(cfg.portalOrigin, "Portal do Hub");
+  if (cfg.mode === "production") {
+    // Conexão real: TLS obrigatório nos dois lados (o webhook do Hub só
+    // assina entrega https:// e o portal do comprador é https://).
+    if (api.protocol !== "https:") throw new Error("Conexão de produção exige API em https://.");
+    if (new URL(cfg.portalOrigin).protocol !== "https:") throw new Error("Conexão de produção exige portal em https://.");
   } else {
-    if (!["http:", "https:"].includes(api.protocol) || api.username || api.password || api.search || api.hash) {
-      throw new Error("API remota inválida.");
-    }
-    const portal = new URL(cfg.portalOrigin);
-    if (!['http:', 'https:'].includes(portal.protocol) || portal.username || portal.password || portal.search || portal.hash) {
-      throw new Error("Portal remoto inválido.");
-    }
+    // Laboratório sintético: API obrigatoriamente local; o portal pode ser a
+    // constante sintética remota usada pela jornada connections-run do Hub.
+    if (!HOSTS_LOCAIS.includes(api.hostname)) throw new Error("O laboratório aceita somente API local com origem exata.");
   }
-  if (!isAbsolute(cfg.storageFile)) throw new Error("O ledger precisa de caminho absoluto próprio.");
+  if (cfg.mode === "synthetic-local") {
+    if (!cfg.storageFile || !isAbsolute(cfg.storageFile)) throw new Error("O ledger do laboratório exige caminho absoluto próprio.");
+  }
   for (const list of [cfg.suppliers.map(s => s.external_id), cfg.destinations.map(d => d.external_id)]) {
     if (new Set(list).size !== list.length) throw new Error("Cadastro de integração contém IDs duplicados.");
   }
-  return cfg;
+  return cfg as ConnectorConfig;
 }
-export function getDefaultCarreiroConfig(): ConnectorConfig {
-  return {
-    mode: "test-carreiro",
-    tenantId: "carreiro",
-    hubTenantId: "10000000-0000-4000-8000-000000000001",
-    sourceSystem: "insight-compras",
-    apiBaseUrl: "https://api.insightdireto.com.br",
-    portalOrigin: "https://cotacao.insightdireto.com.br",
-    applicationId: "20000000-0000-4000-8000-000000000001",
-    clientId: "carreiro-preview-client",
-    clientSecret: "carreiro-preview-secret-at-least-32-chars",
-    webhookKeyId: "key-carreiro-preview",
-    webhookSecret: "carreiro-webhook-secret-at-least-32-chars",
-    storageFile: "/tmp/carreiro-cotacao-ledger.json",
-    buyerName: "Comprador Rede Carreiro",
-    destinations: [
-      { external_id: "1", name: "Carreiro Pedro II (Matriz)", address: "Pedro II - PI" },
-      { external_id: "2", name: "Melo / Piripiri", address: "Piripiri - PI" },
-      { external_id: "3", name: "Carreiro Esperantina", address: "Esperantina - PI" },
-      { external_id: "4", name: "Carreiro Barras", address: "Barras - PI" },
-      { external_id: "5", name: "Carreiro Campo Maior", address: "Campo Maior - PI" },
-      { external_id: "6", name: "Carreiro Parnaíba", address: "Parnaíba - PI" },
-      { external_id: "7", name: "Carreiro Teresina", address: "Teresina - PI" },
-      { external_id: "8", name: "Melo / Pedro II", address: "Pedro II - PI" },
-    ],
-    suppliers: [
-      {
-        external_id: "1",
-        legal_name: "Distribuidora Peças Brasil (Piloto)",
-        contacts: [{ name: "Contato Fornecedor 1", email: "felipe@insightdireto.com.br" }]
-      },
-      {
-        external_id: "2",
-        legal_name: "Auto Peças Nacional (Piloto)",
-        contacts: [{ name: "Contato Fornecedor 2", email: "compras@carreiro.com.br" }]
-      },
-      {
-        external_id: "3",
-        legal_name: "Melo Distribuidora (Piloto)",
-        contacts: [{ name: "Contato Fornecedor 3", email: "cotacao@insightdireto.com.br" }]
-      }
-    ],
-    units: {
-      default: "UN"
-    },
-    allowedActorIds: []
-  };
-}
-export async function loadConfig(tenantId?: string): Promise<ConnectorConfig> {
-  if (process.env.INSIGHT_HUB_CONFIG_JSON) {
-    return validateConfig(JSON.parse(process.env.INSIGHT_HUB_CONFIG_JSON));
+
+/**
+ * A conexão é SEMPRE explícita e privada: JSON de ambiente (produção/Vercel)
+ * ou arquivo privado com caminho absoluto (laboratório). Não existe cadastro
+ * nem credencial padrão embutida — valores fictícios nunca alimentam uma
+ * conexão operacional (ADR-0002: cliente real não vê resposta fabricada).
+ */
+export async function loadConfig(): Promise<ConnectorConfig> {
+  const json = process.env.INSIGHT_HUB_CONFIG_JSON;
+  if (json) {
+    return validateConfig(JSON.parse(json));
   }
   const file = process.env.INSIGHT_HUB_TEST_CONFIG;
   if (file && isAbsolute(file)) {
     return validateConfig(JSON.parse(await readFile(file, "utf8")));
   }
-  const mode = process.env.INSIGHT_HUB_TEST_MODE;
-  if (mode === "test-carreiro" || mode === "test-preview" || tenantId === "carreiro") {
-    return getDefaultCarreiroConfig();
-  }
-  if (!mode) {
-    throw new Error("Conector disponível somente no laboratório de testes desta branch.");
-  }
-  if (process.env.VERCEL && mode === "synthetic-local") {
-    throw new Error("Laboratório sintético local não é executado no Vercel.");
-  }
-  if (process.env.NODE_ENV === "production" && mode !== "test-carreiro" && mode !== "test-preview") {
-    throw new Error("Conector disponível somente no laboratório desta branch.");
-  }
-  if (!file || !isAbsolute(file)) throw new Error("Configure INSIGHT_HUB_TEST_CONFIG com um arquivo privado absoluto.");
-  return validateConfig(JSON.parse(await readFile(file, "utf8")));
+  throw new Error(
+    "Conexão com o Cotação Hub não configurada. Defina INSIGHT_HUB_CONFIG_JSON (produção/Vercel) " +
+    "ou INSIGHT_HUB_TEST_CONFIG (laboratório local, arquivo privado com caminho absoluto). " +
+    "Não existe configuração padrão.",
+  );
 }
