@@ -1,11 +1,11 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { HubClient } from "./client";
-import type { FileLedger } from "./ledger";
+import type { LedgerStore } from "./types";
 import type { ConnectorConfig, Draft } from "./types";
 
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const decimal = /^(0|[1-9][0-9]{0,13})(\.[0-9]{1,6})?$/;
-export async function receiveEvent(cfg: ConnectorConfig, store: FileLedger, client: HubClient, raw: Buffer, headers: Record<string, string>) {
+export async function receiveEvent(cfg: ConnectorConfig, store: LedgerStore, client: HubClient, raw: Buffer, headers: Record<string, string>) {
   const timestamp = headers["x-hub-timestamp"], eventId = headers["x-hub-event-id"];
   if (raw.length > 1_048_576 || !timestamp || !uuid.test(eventId ?? "") || headers["x-hub-key-id"] !== cfg.webhookKeyId) throw new Error("Webhook inválido.");
   const at = /^[0-9]{10,13}$/.test(timestamp) ? Number(timestamp) * 1000 : NaN;
@@ -22,7 +22,7 @@ export async function receiveEvent(cfg: ConnectorConfig, store: FileLedger, clie
   return processVerifiedEvent(cfg, store, client, event, eventId, hash);
 }
 // Only previously verified entries from the private ledger may be retried.
-export async function processVerifiedEvent(cfg: ConnectorConfig, store: FileLedger, client: HubClient, event: Record<string, any>, eventId: string, hash: string) {
+export async function processVerifiedEvent(cfg: ConnectorConfig, store: LedgerStore, client: HubClient, event: Record<string, any>, eventId: string, hash: string) {
   const payload = event.payload;
   return store.withLock(async (ledger, save) => {
     const previous = ledger.inbox[eventId];

@@ -46,3 +46,7 @@ export interface Ledger {
   tenantId: string; hubTenantId: string; sourceSystem: string; applicationId: string;
   submissions: Record<string, Submission>; inbox: Record<string, InboxEntry>; drafts: Draft[];
 }
+/** Contrato de persistência do conector: arquivo local (lab) ou Supabase (produção). */
+export interface LedgerStore {
+  withLock<T>(fn: (ledger: Ledger, save: () => Promise<void>) => Promise<T>): Promise<T>;
+}

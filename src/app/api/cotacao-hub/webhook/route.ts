@@ -24,7 +24,9 @@ export async function POST(request: NextRequest) {
     const config = await loadConfig();
     if (Number(request.headers.get("content-length") ?? 0) > 1_048_576) return new Response(null, { status: 413 });
     const raw = Buffer.from(await request.arrayBuffer());
-    await createConnector(config).receive(raw, Object.fromEntries(request.headers.entries()));
+    // O webhook chega sem sessão humana: ledger durável via service_role
+    // explícito (ADR-0005); rotas de comprador usam o JWT (padrão "usuario").
+    await createConnector(config, { acessoLedger: "privilegiado" }).receive(raw, Object.fromEntries(request.headers.entries()));
     return new Response(null, { status: 204, headers: { "Cache-Control": "no-store" } });
   } catch {
     return Response.json({ erro: "Evento não aceito; nenhuma compra emitida." }, { status: 400, headers: { "Cache-Control": "no-store" } });

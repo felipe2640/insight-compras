@@ -4,13 +4,18 @@ import { FileLedger } from "./ledger";
 import { receiveEvent, processVerifiedEvent } from "./return";
 import { validateConfig } from "./config";
 import { canonicalJson, destinosEquivalentes } from "./payload";
-import type { ConnectorConfig, Snapshot } from "./types";
+import type { ConnectorConfig, LedgerStore, Snapshot } from "./types";
 
 export const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 
 /** Opções do conector; a jornada connections-run do Hub injeta um env de teste. */
 export interface OpcoesConector {
   readonly env?: Record<string, string | undefined>;
+  /**
+   * Acesso do ledger durável (produção): "usuario" usa o JWT do comprador
+   * (RLS, ADR-0005); "privilegiado" é o service_role explícito do webhook.
+   */
+  readonly acessoLedger?: "usuario" | "privilegiado";
 }
 
 export function createConnector(config: ConnectorConfig, opcoes: OpcoesConector = {}) {
@@ -21,7 +26,15 @@ export function createConnector(config: ConnectorConfig, opcoes: OpcoesConector 
   if (cfg.mode === "synthetic-local" && (env.NODE_ENV === "production" || env.VERCEL)) {
     throw new Error("Laboratório sintético é recusado em produção/Vercel; configure uma conexão real (INSIGHT_HUB_CONFIG_JSON).");
   }
-  const store = new FileLedger(cfg), client = new HubClient(cfg);
+  const client = new HubClient(cfg);
+  // Produção persiste em Supabase (durável na Vercel — /tmp é efêmero);
+  // laboratório usa o arquivo local com lock. O import é tardio para não
+  // arrastar next/headers para quem usa o conector fora do Next (e2e/testes).
+  const resolverStore = async (): Promise<LedgerStore> => {
+    if (cfg.mode !== "production") return new FileLedger(cfg);
+    const { SupabaseLedger } = await import("./ledger-supabase");
+    return new SupabaseLedger(cfg, opcoes.acessoLedger ?? "usuario");
+  };
   return {
     async submit(snapshot: Snapshot) {
       if (!snapshot.externalId || snapshot.externalId.length > 255 || (cfg.allowedActorIds.length > 0 && !cfg.allowedActorIds.includes(snapshot.actorId))) throw new Error("Envio/ator não autorizado.");
@@ -41,7 +54,7 @@ export function createConnector(config: ConnectorConfig, opcoes: OpcoesConector 
           if (!known || !destinosEquivalentes(known, d)) throw new Error("Destino não homologado.");
         }
       }
-      return store.withLock(async (ledger, save) => {
+      return (await resolverStore()).withLock(async (ledger, save) => {
         // Fingerprint canônico: a mesma seleção produz o mesmo hash em
         // qualquer ordem de montagem; edição gera hash diferente e NÃO
         // reutiliza silenciosamente a chave anterior.
@@ -99,12 +112,19 @@ export function createConnector(config: ConnectorConfig, opcoes: OpcoesConector 
         return { quotationId: quote.id, state: send.state, externalId: snapshot.externalId };
       });
     },
-    receive(raw: Buffer, headers: Record<string, string>) { return receiveEvent(cfg, store, client, raw, headers); },
+    async receive(raw: Buffer, headers: Record<string, string>) {
+      const store = await resolverStore();
+      return receiveEvent(cfg, store, client, raw, headers);
+    },
     async retryInbox() {
+      const store = await resolverStore();
       const pending = await store.withLock(async data => Object.entries(data.inbox).filter(([, e]) => !e.processed));
       for (const [eventId, entry] of pending) await processVerifiedEvent(cfg, store, client, entry.event, eventId, entry.hash);
       return { retried: pending.length };
     },
-    status() { return store.withLock(async data => data); },
+    async status() {
+      const store = await resolverStore();
+      return store.withLock(async data => data);
+    },
   };
 }
