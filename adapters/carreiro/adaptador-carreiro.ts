@@ -745,20 +745,33 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
       return this.cacheFornecedoresComEmail.dados;
     }
     const consultas = [
+      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ACODFORN], "NomeFornecedor", 'FORNECEDOR'[ANOMEFANTASIA], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
+      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ACODFORN], "NomeFornecedor", 'FORNECEDOR'[ARAZAOSOCIAL], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
+      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ACODFORN], "NomeFornecedor", 'FORNECEDOR'[ANOME], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
+      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ACODFORN], "NomeFornecedor", 'FORNECEDOR'[Nome Fornecedor], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
       CONSULTA_DAX_FORNECEDORES_EMAIL,
-      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ICODFORN], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
-      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ACODFORNECEDOR], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
     ];
     for (const dax of consultas) {
       try {
         const linhas = await this.clienteDax.executarConsultaDax(dax);
         if (linhas && linhas.length > 0) {
           const resultado = linhas
-            .map((l: any) => ({
-              id: String(l.FornecedorId ?? l.ACODFORN ?? l.ICODFORN ?? "").trim(),
-              name: String(l.NomeFornecedor ?? l.ANOMEFORN ?? l.ANOMEFANTASIA ?? "").trim(),
-              email: String(l.Email ?? l.AEMAIL ?? "").trim(),
-            }))
+            .map((l: any) => {
+              const id = String(l.FornecedorId ?? l.ACODFORN ?? l.ICODFORN ?? "").trim();
+              const email = String(l.Email ?? l.AEMAIL ?? "").trim();
+              let name = String(l.NomeFornecedor ?? l.ANOMEFORN ?? l.ANOMEFANTASIA ?? l.ARAZAOSOCIAL ?? l.ANOME ?? "").trim();
+              if (!name && email) {
+                const domain = email.split("@")[1]?.toLowerCase();
+                const prefix = domain ? domain.split(".")[0] : "";
+                if (prefix && !["gmail", "hotmail", "outlook", "yahoo", "bol", "uol", "terra"].includes(prefix)) {
+                  name = prefix.charAt(0).toUpperCase() + prefix.slice(1);
+                } else {
+                  const idCurto = id.replace(/^20+/, "");
+                  name = `Fornecedor ${idCurto || id}`;
+                }
+              }
+              return { id, name, email };
+            })
             .filter((f) => f.id && f.email);
           if (resultado.length > 0) {
             this.cacheFornecedoresComEmail = { dados: resultado, timestamp: Date.now() };

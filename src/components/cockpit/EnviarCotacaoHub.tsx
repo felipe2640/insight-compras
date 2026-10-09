@@ -16,11 +16,34 @@ interface Status {
   drafts: { id: string; supplierExternalId: string; destinationId: string; state: string; items: Record<string, string>[] }[];
 }
 
+/**
+ * Converte IDs genéricos em nomes amigáveis baseados no cadastro ou no domínio do e-mail.
+ */
+function resolverNomeExibicao(f: { id: string; name: string; email?: string }): string {
+  // Se o nome não for genérico (não iniciar com "Fornecedor 2000..."), usa o próprio nome
+  if (f.name && !f.name.startsWith("Fornecedor 2000") && f.name !== `Fornecedor ${f.id}`) {
+    return f.name;
+  }
+  // Se possuir e-mail com domínio corporativo, formata o nome da empresa
+  if (f.email) {
+    const domain = f.email.split("@")[1]?.toLowerCase();
+    if (domain) {
+      const parts = domain.split(".")[0];
+      if (parts && !["gmail", "hotmail", "outlook", "yahoo", "bol", "uol", "terra", "live"].includes(parts)) {
+        return parts.charAt(0).toUpperCase() + parts.slice(1);
+      }
+    }
+  }
+  const idLimpo = f.id.replace(/^20+/, "");
+  return f.name || `Fornecedor ${idLimpo || f.id}`;
+}
+
 export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCockpitMatriz[]; filialId: number }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [open, setOpen] = useState(false);
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
   const [supplierEmails, setSupplierEmails] = useState<Record<string, string>>({});
+  const [searchFilter, setSearchFilter] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const attempt = useRef<{ fingerprint: string; externalId: string; deadline: string }>();
@@ -60,13 +83,13 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
       .filter(x => x.quantidade > 0);
   }, [itens]);
 
-  // Fornecedores vinculados aos itens selecionados
+  // Fornecedores vinculados diretamente aos itens selecionados
   const fornecedoresDosItens = useMemo(() => {
     const map = new Map<string, { id: string; name: string }>();
     for (const { item } of valid) {
-      if (item.fornecedorId) {
-        const id = String(item.fornecedorId);
-        map.set(id, { id, name: item.nomeFornecedor || `Fornecedor ${id}` });
+      if (item.nomeFornecedor && !item.nomeFornecedor.includes("Sem Fornecedor Registrado")) {
+        const id = String(item.fornecedorId ?? `item-${item.produtoId}`);
+        map.set(id, { id, name: item.nomeFornecedor });
       }
     }
     return Array.from(map.values());
@@ -75,19 +98,45 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
   // Lista unificada de fornecedores
   const todosFornecedores = useMemo(() => {
     const map = new Map<string, { id: string; name: string; emailOrigem?: string; doItem?: boolean }>();
+
+    // Primeiro insere os fornecedores dos itens com prioridade máxima de nome
+    for (const f of fornecedoresDosItens) {
+      // Tenta achar match de e-mail na lista do Power BI
+      let emailOrigem: string | undefined;
+      let matchedId = f.id;
+      if (status?.suppliers) {
+        const match = status.suppliers.find(s => {
+          if (s.id === f.id || Number(s.id) === Number(f.id)) return true;
+          if (s.name && f.name && (s.name.toLowerCase().includes(f.name.toLowerCase()) || f.name.toLowerCase().includes(s.name.toLowerCase()))) return true;
+          return false;
+        });
+        if (match) {
+          emailOrigem = match.email;
+          matchedId = match.id;
+        }
+      }
+      map.set(matchedId, {
+        id: matchedId,
+        name: f.name,
+        emailOrigem,
+        doItem: true,
+      });
+    }
+
+    // Depois adiciona os demais fornecedores do Power BI / config
     if (status?.suppliers) {
       for (const s of status.suppliers) {
-        map.set(s.id, { id: s.id, name: s.name, emailOrigem: s.email });
+        if (!map.has(s.id)) {
+          map.set(s.id, {
+            id: s.id,
+            name: resolverNomeExibicao(s),
+            emailOrigem: s.email,
+            doItem: false,
+          });
+        }
       }
     }
-    for (const f of fornecedoresDosItens) {
-      const existing = map.get(f.id);
-      if (existing) {
-        map.set(f.id, { ...existing, doItem: true });
-      } else {
-        map.set(f.id, { id: f.id, name: f.name, doItem: true });
-      }
-    }
+
     return Array.from(map.values());
   }, [status, fornecedoresDosItens]);
 
@@ -105,16 +154,27 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
       });
 
       if (selectedSuppliers.length === 0) {
-        // Se houver fornecedores associados aos itens, pré-seleciona eles; senão todos
+        // Pré-seleciona APENAS os fornecedores vinculados aos itens selecionados!
         const dosItens = todosFornecedores.filter(f => f.doItem).map(f => f.id);
         if (dosItens.length > 0) {
           setSelectedSuppliers(dosItens);
         } else {
-          setSelectedSuppliers(todosFornecedores.map(f => f.id));
+          // Se nenhum item tiver fornecedor específico, seleciona apenas o primeiro disponível
+          const primeiro = todosFornecedores[0]?.id;
+          if (primeiro) setSelectedSuppliers([primeiro]);
         }
       }
     }
   }, [todosFornecedores, selectedSuppliers.length]);
+
+  // Fornecedores dos itens selecionados vs outros fornecedores
+  const fornecedoresItens = useMemo(() => todosFornecedores.filter(f => f.doItem), [todosFornecedores]);
+  const outrosFornecedores = useMemo(() => {
+    const list = todosFornecedores.filter(f => !f.doItem);
+    if (!searchFilter.trim()) return list;
+    const term = searchFilter.toLowerCase().trim();
+    return list.filter(f => f.name.toLowerCase().includes(term) || (supplierEmails[f.id] ?? "").toLowerCase().includes(term));
+  }, [todosFornecedores, searchFilter, supplierEmails]);
 
   // Checagem de validação de e-mails para os fornecedores selecionados
   const fornecedoresFaltandoEmail = useMemo(() => {
@@ -187,6 +247,80 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
     }
   };
 
+  const renderCardFornecedor = (f: { id: string; name: string; emailOrigem?: string; doItem?: boolean }) => {
+    const isSelected = selectedSuppliers.includes(f.id);
+    const email = supplierEmails[f.id] ?? "";
+    const emailPreenchido = email.trim().length > 0 && email.includes("@");
+
+    return (
+      <div
+        key={f.id}
+        className={`p-3 rounded-lg border transition-colors ${
+          isSelected ? "border-blue-400 bg-blue-50/40 shadow-xs" : "border-slate-200 bg-slate-50/50 opacity-75"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={e =>
+                setSelectedSuppliers(curr =>
+                  e.target.checked ? [...curr, f.id] : curr.filter(id => id !== f.id)
+                )
+              }
+              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <span className="font-semibold text-sm text-slate-900">
+              {f.name}
+            </span>
+            {f.doItem && (
+              <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">
+                ⭐ Fornecedor do Item
+              </span>
+            )}
+          </label>
+
+          {f.emailOrigem && (
+            <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded font-medium">
+              ✓ Power BI (AEMAIL)
+            </span>
+          )}
+        </div>
+
+        {isSelected && (
+          <div className="mt-2.5 pl-6.5">
+            <div className="flex items-center gap-2">
+              <label htmlFor={`email-${f.id}`} className="text-xs text-slate-600 font-medium whitespace-nowrap">
+                E-mail para cotação:
+              </label>
+              <input
+                id={`email-${f.id}`}
+                type="email"
+                value={email}
+                onChange={e => {
+                  const val = e.target.value;
+                  setSupplierEmails(prev => ({ ...prev, [f.id]: val }));
+                }}
+                placeholder="exemplo@fornecedor.com.br"
+                className={`text-xs w-full px-2.5 py-1.5 rounded border ${
+                  !emailPreenchido
+                    ? "border-rose-300 bg-rose-50/30 text-rose-900 placeholder:text-rose-400"
+                    : "border-slate-300 bg-white text-slate-900"
+                } focus:outline-none focus:ring-1 focus:ring-blue-500`}
+              />
+            </div>
+            {!emailPreenchido && (
+              <p className="text-[11px] text-rose-600 mt-1">
+                ⚠️ Preencha o e-mail deste fornecedor para enviar o convite.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="text-slate-800">
       <button
@@ -204,7 +338,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
 
       {open && (
         <section
-          className="fixed inset-x-4 top-14 z-50 mx-auto max-w-3xl max-h-[88vh] overflow-auto rounded-xl bg-white p-5 shadow-2xl border border-slate-200"
+          className="fixed inset-x-4 top-12 z-50 mx-auto max-w-3xl max-h-[90vh] overflow-auto rounded-xl bg-white p-5 shadow-2xl border border-slate-200"
           aria-label="Prévia da cotação"
         >
           <div className="flex justify-between items-center mb-4 border-b pb-3">
@@ -224,7 +358,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
           {!status ? (
             <div className="py-8 text-center">
               <div className="inline-block animate-spin text-2xl mb-2">🔄</div>
-              <p className="text-slate-600 mb-3 font-medium">Conectando ao Cotação Hub e consultando cadastro...</p>
+              <p className="text-slate-600 mb-3 font-medium">Carregando fornecedores e dados da Rede Carreiro...</p>
               <button
                 type="button"
                 onClick={() => load().catch(e => setMessage(e instanceof Error ? e.message : "Falha ao conectar"))}
@@ -235,7 +369,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
             </div>
           ) : (
             <>
-              {/* Resumo dos Itens */}
+              {/* Resumo dos Itens Selecionados */}
               <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 mb-4">
                 <div className="flex justify-between items-center mb-1">
                   <span className="font-semibold text-sm text-slate-800">
@@ -250,12 +384,12 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
                     Nenhum item com quantidade de compra selecionado na tabela. Selecione itens ou ajuste as quantidades na grade do Cockpit.
                   </p>
                 ) : (
-                  <div className="mt-2 max-h-36 overflow-y-auto rounded border bg-white p-2 text-xs divide-y divide-slate-100">
+                  <div className="mt-2 max-h-32 overflow-y-auto rounded border bg-white p-2 text-xs divide-y divide-slate-100">
                     {valid.map(({ item, quantidade }) => (
                       <div key={item.produtoId} className="py-1 flex justify-between items-center">
                         <span className="truncate pr-2">
                           <strong className="text-slate-900">{item.codigoSku}</strong> — {item.descricao}
-                          {item.nomeFornecedor && <span className="text-slate-400 text-[11px] ml-1">({item.nomeFornecedor})</span>}
+                          {item.nomeFornecedor && <span className="text-blue-700 font-medium ml-1">({item.nomeFornecedor})</span>}
                         </span>
                         <span className="font-bold text-blue-700 whitespace-nowrap">{quantidade} un</span>
                       </div>
@@ -264,111 +398,63 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
                 )}
               </div>
 
-              {/* Lista de Fornecedores e E-mails */}
-              <fieldset className="my-4 rounded-lg border border-slate-200 p-3 bg-white">
+              {/* Seção 1: Fornecedores dos Itens */}
+              {fornecedoresItens.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                      Fornecedor(es) dos Produtos Selecionados
+                    </h3>
+                    <span className="text-xs text-slate-500">
+                      {fornecedoresItens.filter(f => selectedSuppliers.includes(f.id)).length} de {fornecedoresItens.length} marcado(s)
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {fornecedoresItens.map(f => renderCardFornecedor(f))}
+                  </div>
+                </div>
+              )}
+
+              {/* Seção 2: Outros Fornecedores Cadastrados na Carreiro */}
+              <div className="mb-4 rounded-lg border border-slate-200 p-3 bg-white">
                 <div className="flex justify-between items-center mb-2">
-                  <legend className="px-1 text-xs font-bold text-slate-700 uppercase tracking-wide">
-                    Fornecedores e E-mails para Envio ({selectedSuppliers.length} selecionados)
-                  </legend>
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                      Outros Fornecedores Cadastrados ({selectedSuppliers.length} marcados no total)
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Adicione outras distribuidoras para disputar a cotação e buscar menores preços.
+                    </p>
+                  </div>
                   <div className="text-xs space-x-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSuppliers(todosFornecedores.map(f => f.id))}
-                      className="text-blue-600 hover:underline"
-                    >
-                      Marcar todos
-                    </button>
-                    <span className="text-slate-300">|</span>
                     <button
                       type="button"
                       onClick={() => setSelectedSuppliers([])}
                       className="text-slate-500 hover:underline"
                     >
-                      Desmarcar todos
+                      Limpar seleção
                     </button>
                   </div>
                 </div>
 
-                <p className="text-xs text-slate-500 mb-3">
-                  Os convites de cotação com links seguros serão disparados para os endereços abaixo. Você pode editar ou preencher o e-mail caso necessário.
-                </p>
-
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {todosFornecedores.map(f => {
-                    const isSelected = selectedSuppliers.includes(f.id);
-                    const email = supplierEmails[f.id] ?? "";
-                    const emailPreenchido = email.trim().length > 0 && email.includes("@");
-
-                    return (
-                      <div
-                        key={f.id}
-                        className={`p-2.5 rounded border transition-colors ${
-                          isSelected ? "border-blue-300 bg-blue-50/30" : "border-slate-200 bg-slate-50/50 opacity-70"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <label className="flex items-center gap-2 cursor-pointer select-none">
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={e =>
-                                setSelectedSuppliers(curr =>
-                                  e.target.checked ? [...curr, f.id] : curr.filter(id => id !== f.id)
-                                )
-                              }
-                              className="rounded text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="font-medium text-sm text-slate-800">
-                              {f.name}
-                            </span>
-                            {f.doItem && (
-                              <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-medium">
-                                Do item
-                              </span>
-                            )}
-                          </label>
-
-                          {f.emailOrigem && (
-                            <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded font-medium">
-                              ✓ Power BI (AEMAIL)
-                            </span>
-                          )}
-                        </div>
-
-                        {isSelected && (
-                          <div className="mt-2 pl-6">
-                            <div className="flex items-center gap-2">
-                              <label htmlFor={`email-${f.id}`} className="text-xs text-slate-600 font-medium whitespace-nowrap">
-                                E-mail:
-                              </label>
-                              <input
-                                id={`email-${f.id}`}
-                                type="email"
-                                value={email}
-                                onChange={e => {
-                                  const val = e.target.value;
-                                  setSupplierEmails(prev => ({ ...prev, [f.id]: val }));
-                                }}
-                                placeholder="exemplo@fornecedor.com.br"
-                                className={`text-xs w-full px-2.5 py-1.5 rounded border ${
-                                  !emailPreenchido
-                                    ? "border-rose-300 bg-rose-50/30 text-rose-900 placeholder:text-rose-400"
-                                    : "border-slate-300 bg-white text-slate-900"
-                                } focus:outline-none focus:ring-1 focus:ring-blue-500`}
-                              />
-                            </div>
-                            {!emailPreenchido && (
-                              <p className="text-[11px] text-rose-600 mt-1">
-                                ⚠️ E-mail obrigatório para o envio do convite.
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                <div className="mb-2">
+                  <input
+                    type="text"
+                    value={searchFilter}
+                    onChange={e => setSearchFilter(e.target.value)}
+                    placeholder="🔍 Buscar fornecedor por nome ou e-mail..."
+                    className="w-full text-xs px-2.5 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
                 </div>
-              </fieldset>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {outrosFornecedores.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-2 text-center">Nenhum fornecedor encontrado no filtro.</p>
+                  ) : (
+                    outrosFornecedores.map(f => renderCardFornecedor(f))
+                  )}
+                </div>
+              </div>
 
               {/* Ações */}
               <div className="flex items-center justify-between gap-2 pt-3 border-t">
@@ -387,7 +473,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
                     ) : (
                       <>
                         <span>✉️</span>
-                        <span>Confirmar e enviar cotação</span>
+                        <span>Confirmar e enviar cotação ({selectedSuppliers.length})</span>
                       </>
                     )}
                   </button>
