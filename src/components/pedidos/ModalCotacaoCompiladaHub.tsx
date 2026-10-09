@@ -688,7 +688,7 @@ export function ModalCotacaoCompiladaHub({
                 Carregando itens dos {pedidos.length} pedidos e fornecedores com e-mails...
               </p>
               <p className="text-xs text-slate-400">
-                Consultando dados no Power BI e base de homologação da Rede Carreiro.
+                Consultando dados na fonte autorizada e na base de homologação de {nomeCliente}.
               </p>
             </div>
           ) : erroCarregamento ? (
