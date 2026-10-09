@@ -20,12 +20,12 @@ import {
 } from "lucide-react";
 import { Pedido, ItemPedido } from "@/lib/pedidos/tipos";
 import { cn } from "@/lib/utils";
-
-interface SupplierInfo {
-  id: string;
-  name: string;
-  email?: string;
-}
+import {
+  fingerprintSelecao,
+  nomeExibicaoFornecedor,
+  parseMarcasAceitas,
+  type SupplierInfo,
+} from "@/lib/cotacao-hub/payload";
 
 
 
@@ -70,23 +70,6 @@ interface ModalCotacaoCompiladaHubProps {
   nomeCliente: string;
   onClose: () => void;
   onSucesso: (mensagem: string) => void;
-}
-
-function resolverNomeExibicao(f: { id: string; name: string; email?: string }): string {
-  if (f.name && !f.name.startsWith("Fornecedor 2000") && f.name !== `Fornecedor ${f.id}`) {
-    return f.name;
-  }
-  if (f.email) {
-    const domain = f.email.split("@")[1]?.toLowerCase();
-    if (domain) {
-      const parts = domain.split(".")[0];
-      if (parts && !["gmail", "hotmail", "outlook", "yahoo", "bol", "uol", "terra", "live"].includes(parts)) {
-        return parts.charAt(0).toUpperCase() + parts.slice(1);
-      }
-    }
-  }
-  const idLimpo = f.id.replace(/^20+/, "");
-  return f.name || `Fornecedor ${idLimpo || f.id}`;
 }
 
 function extrairQuantidadeItem(it: ItemPedido): number {
@@ -291,9 +274,7 @@ export function ModalCotacaoCompiladaHub({
     (sku: string, marca: string, itensDoSku: { key: string }[]) => {
       const primeiraKey = itensDoSku[0]?.key;
       const edAtual = primeiraKey ? edicoesLinhas[primeiraKey] : undefined;
-      const listaAtual = edAtual?.accepted_brands
-        ? edAtual.accepted_brands.split(",").map((b) => b.trim()).filter(Boolean)
-        : [];
+      const listaAtual = parseMarcasAceitas(edAtual?.accepted_brands);
 
       const jaTem = listaAtual.some((m) => m.toLowerCase() === marca.toLowerCase());
       const novaLista = jaTem
@@ -387,7 +368,7 @@ export function ModalCotacaoCompiladaHub({
         if (!mapa.has(s.id)) {
           mapa.set(s.id, {
             id: s.id,
-            name: resolverNomeExibicao(s),
+            name: nomeExibicaoFornecedor(s),
             emailOrigem: s.email,
             doPedido: false,
           });
@@ -593,39 +574,41 @@ export function ModalCotacaoCompiladaHub({
           accepted_brands: "",
         };
 
-        const acceptedList = ed.accepted_brands
-          ? ed.accepted_brands.split(",").map(b => b.trim()).filter(Boolean)
-          : [];
+        const acceptedList = parseMarcasAceitas(ed.accepted_brands);
 
         const qtd = Math.max(1, Number(ed.quantidade) || extrairQuantidadeItem(it) || 1);
 
-        let descFinal = (ed.description && ed.description.trim()) ? ed.description.trim() : (it.descricao || prod.descricao);
-        if (ed.observacao && ed.observacao.trim()) {
-          descFinal = `${descFinal} | Obs: ${ed.observacao.trim()}`;
-        }
-        if (observacoesGerais.trim()) {
-          descFinal = `${descFinal} [Obs Geral: ${observacoesGerais.trim()}]`;
-        }
-        if (descFinal.length > 500) {
-          descFinal = descFinal.slice(0, 500);
-        }
+        // Descrição permanece a descrição; observação (item + condições
+        // gerais) viaja em source_snapshot.observacao — nunca concatenada.
+        const descFinal = ((ed.description && ed.description.trim()) ? ed.description.trim() : (it.descricao || prod.descricao)).slice(0, 500);
+        const observacao = [
+          observacoesGerais.trim() ? `Condições gerais: ${observacoesGerais.trim()}` : null,
+          ed.observacao?.trim() || null,
+        ]
+          .filter(Boolean)
+          .join(" | ")
+          .slice(0, 2000);
 
         return {
           produtoId: prod.produtoId,
           quantity: String(qtd),
           filialId: it.filialId,
-          description: descFinal,
+          ...(descFinal ? { description: descFinal } : {}),
           ...(ed.requested_reference.trim() ? { requested_reference: ed.requested_reference.trim() } : {}),
           ...(ed.requested_brand.trim() ? { requested_brand: ed.requested_brand.trim() } : {}),
           ...(acceptedList.length > 0 ? { accepted_brands: acceptedList } : {}),
+          ...(observacao ? { observacao } : {}),
         };
       });
 
-      // Impede envios duplicados com fingerprint e preserva externalId em retentativas
-      const fingerprint = JSON.stringify({
-        pedidoIds: pedidos.map(p => p.id).sort(),
-        supplierIds: [...selectedSuppliers].sort(),
-        items: itemsPayload.map(i => ({ p: i.produtoId, q: i.quantity, f: i.filialId, r: i.requested_reference, b: i.requested_brand, ab: i.accepted_brands })),
+      // Impede envios duplicados com fingerprint canônico e preserva
+      // externalId em retentativas; qualquer edição gera nova tentativa.
+      const fingerprint = fingerprintSelecao({
+        pedidoIds: pedidos.map(p => p.id),
+        supplierIds: [...selectedSuppliers],
+        suppliersData,
+        destinations: Array.from(destinationsMap.values()),
+        items: itemsPayload,
       });
 
       if (attemptRef.current?.fingerprint !== fingerprint) {
@@ -1006,9 +989,7 @@ export function ModalCotacaoCompiladaHub({
                               {marcasCatalogo.length > 0 && (
                                 <div className="flex flex-wrap gap-1.5">
                                   {marcasCatalogo.slice(0, 20).map((marca) => {
-                                    const list = edPrincipal.accepted_brands
-                                      ? edPrincipal.accepted_brands.split(",").map((s) => s.trim().toLowerCase())
-                                      : [];
+                                    const list = parseMarcasAceitas(edPrincipal.accepted_brands).map((s) => s.toLowerCase());
                                     const selecionada = list.includes(marca.toLowerCase());
                                     return (
                                       <button

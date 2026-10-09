@@ -90,6 +90,13 @@ export function fingerprintSelecao(selecao: SelecaoNormalizada): string {
   });
 }
 
+/** Contato de fornecedor conforme viaja entre API e telas (evita data clump). */
+export interface SupplierInfo {
+  id: string;
+  name: string;
+  email?: string;
+}
+
 /** Divide um texto de marcas separadas por vírgula em lista normalizada. */
 export function parseMarcasAceitas(texto: string | undefined | null): string[] {
   if (!texto) return [];

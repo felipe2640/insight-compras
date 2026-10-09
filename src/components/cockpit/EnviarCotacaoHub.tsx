@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LinhaCockpitMatriz } from "@/tipos/cockpit";
-
-interface SupplierInfo {
-  id: string;
-  name: string;
-  email?: string;
-}
+import {
+  fingerprintSelecao,
+  nomeExibicaoFornecedor,
+  parseMarcasAceitas,
+  type SupplierInfo,
+} from "@/lib/cotacao-hub/payload";
 
 interface ItemEdicaoState {
   quantidade: number;
@@ -28,27 +28,6 @@ interface Status {
   drafts: { id: string; supplierExternalId: string; destinationId: string; state: string; items: Record<string, string>[] }[];
 }
 
-/**
- * Converte IDs genéricos em nomes amigáveis baseados no cadastro ou no domínio do e-mail.
- */
-function resolverNomeExibicao(f: { id: string; name: string; email?: string }): string {
-  // Se o nome não for genérico (não iniciar com "Fornecedor 2000..."), usa o próprio nome
-  if (f.name && !f.name.startsWith("Fornecedor 2000") && f.name !== `Fornecedor ${f.id}`) {
-    return f.name;
-  }
-  // Se possuir e-mail com domínio corporativo, formata o nome da empresa
-  if (f.email) {
-    const domain = f.email.split("@")[1]?.toLowerCase();
-    if (domain) {
-      const parts = domain.split(".")[0];
-      if (parts && !["gmail", "hotmail", "outlook", "yahoo", "bol", "uol", "terra", "live"].includes(parts)) {
-        return parts.charAt(0).toUpperCase() + parts.slice(1);
-      }
-    }
-  }
-  const idLimpo = f.id.replace(/^20+/, "");
-  return f.name || `Fornecedor ${idLimpo || f.id}`;
-}
 
 export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCockpitMatriz[]; filialId: number }) {
   const [status, setStatus] = useState<Status | null>(null);
@@ -66,8 +45,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
   const toggleMarcaAlternativa = (produtoId: number, marca: string) => {
     setEdicoes(prev => {
       const ed = prev[produtoId];
-      const atual = ed?.accepted_brands || "";
-      const list = atual ? atual.split(",").map(b => b.trim()).filter(Boolean) : [];
+      const list = parseMarcasAceitas(ed?.accepted_brands);
       const jaTem = list.some(m => m.toLowerCase() === marca.toLowerCase());
       const novaLista = jaTem
         ? list.filter(m => m.toLowerCase() !== marca.toLowerCase())
@@ -158,8 +136,8 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
     });
   }, [valid]);
 
-  // Fornecedores vinculados diretamente aos itens selecionados
-  const fornecedoresDosItens = useMemo(() => {
+  // Fornecedores vinculados diretamente aos itens selecionados (mapa por item)
+  const fornecedoresPorItem = useMemo(() => {
     const map = new Map<string, { id: string; name: string }>();
     for (const { item } of valid) {
       if (item.nomeFornecedor && !item.nomeFornecedor.includes("Sem Fornecedor Registrado")) {
@@ -175,7 +153,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
     const map = new Map<string, { id: string; name: string; emailOrigem?: string; doItem?: boolean }>();
 
     // Primeiro insere os fornecedores dos itens com prioridade máxima de nome
-    for (const f of fornecedoresDosItens) {
+    for (const f of fornecedoresPorItem) {
       // Tenta achar match de e-mail na lista do Power BI
       let emailOrigem: string | undefined;
       let matchedId = f.id;
@@ -204,7 +182,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
         if (!map.has(s.id)) {
           map.set(s.id, {
             id: s.id,
-            name: resolverNomeExibicao(s),
+            name: nomeExibicaoFornecedor(s),
             emailOrigem: s.email,
             doItem: false,
           });
@@ -213,7 +191,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
     }
 
     return Array.from(map.values());
-  }, [status, fornecedoresDosItens]);
+  }, [status, fornecedoresPorItem]);
 
   // Atualiza os e-mails e seleção inicial quando novos fornecedores são carregados
   useEffect(() => {
@@ -243,7 +221,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
   }, [todosFornecedores, selectedSuppliers.length]);
 
   // Fornecedores dos itens selecionados vs outros fornecedores
-  const fornecedoresItens = useMemo(() => todosFornecedores.filter(f => f.doItem), [todosFornecedores]);
+  const fornecedoresDosItens = useMemo(() => todosFornecedores.filter(f => f.doItem), [todosFornecedores]);
   const outrosFornecedores = useMemo(() => {
     const list = todosFornecedores.filter(f => !f.doItem);
     if (!searchFilter.trim()) return list;
@@ -289,21 +267,20 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
           accepted_brands: "",
         };
 
-        const acceptedList = ed.accepted_brands
-          ? ed.accepted_brands.split(",").map(b => b.trim()).filter(Boolean)
-          : [];
+        const acceptedList = parseMarcasAceitas(ed.accepted_brands);
 
         const qtdEfetiva = Math.max(1, Number(ed.quantidade) || x.quantidadeOriginal);
 
-        const descOriginal = ed.description || x.item.descricao || "";
-        const descFinal = [
-          descOriginal.trim(),
-          ed.observacao?.trim() ? `Obs: ${ed.observacao.trim()}` : null,
-          observacoesGerais.trim() ? `Condições: ${observacoesGerais.trim()}` : null,
+        // Descrição permanece a descrição: a observação (item + condições
+        // gerais) viaja no campo próprio source_snapshot.observacao.
+        const descFinal = (ed.description || x.item.descricao || "").trim().slice(0, 500);
+        const observacao = [
+          observacoesGerais.trim() ? `Condições gerais: ${observacoesGerais.trim()}` : null,
+          ed.observacao?.trim() || null,
         ]
           .filter(Boolean)
           .join(" | ")
-          .slice(0, 500);
+          .slice(0, 2000);
 
         return {
           produtoId: x.item.produtoId,
@@ -312,6 +289,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
           ...(ed.requested_reference.trim() ? { requested_reference: ed.requested_reference.trim() } : {}),
           ...(ed.requested_brand.trim() ? { requested_brand: ed.requested_brand.trim() } : {}),
           ...(acceptedList.length > 0 ? { accepted_brands: acceptedList } : {}),
+          ...(observacao ? { observacao } : {}),
         };
       }).sort((a, b) => a.produtoId - b.produtoId);
 
@@ -322,7 +300,10 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
         items: itemsPayload,
       };
 
-      const fingerprint = JSON.stringify(selection);
+      // Mesma tentativa mantém ID/prazo/corpo; qualquer edição muda o
+      // fingerprint canônico e gera um novo externalId — a chave anterior
+      // nunca é reutilizada silenciosamente com outro payload.
+      const fingerprint = fingerprintSelecao(selection);
       if (attempt.current?.fingerprint !== fingerprint) {
         attempt.current = {
           fingerprint,
@@ -466,7 +447,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
           {!status ? (
             <div className="py-8 text-center">
               <div className="inline-block animate-spin text-2xl mb-2">🔄</div>
-              <p className="text-slate-600 mb-3 font-medium">Carregando fornecedores e dados da Rede Carreiro...</p>
+              <p className="text-slate-600 mb-3 font-medium">Carregando fornecedores e dados da conexão...</p>
               <button
                 type="button"
                 onClick={() => load().catch(e => setMessage(e instanceof Error ? e.message : "Falha ao conectar"))}
@@ -626,9 +607,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
                               {marcasCatalogo.length > 0 && (
                                 <div className="flex flex-wrap gap-1.5">
                                   {marcasCatalogo.slice(0, 20).map(marca => {
-                                    const list = ed.accepted_brands
-                                      ? ed.accepted_brands.split(",").map(s => s.trim().toLowerCase())
-                                      : [];
+                                    const list = parseMarcasAceitas(ed.accepted_brands).map(s => s.toLowerCase());
                                     const selecionada = list.includes(marca.toLowerCase());
                                     return (
                                       <button
@@ -744,18 +723,18 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
               </div>
 
               {/* Seção 1: Fornecedores dos Itens */}
-              {fornecedoresItens.length > 0 && (
+              {fornecedoresDosItens.length > 0 && (
                 <div className="mb-4">
                   <div className="flex justify-between items-center mb-1.5">
                     <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
                       Fornecedor(es) dos Produtos Selecionados
                     </h3>
                     <span className="text-xs text-slate-500">
-                      {fornecedoresItens.filter(f => selectedSuppliers.includes(f.id)).length} de {fornecedoresItens.length} marcado(s)
+                      {fornecedoresDosItens.filter(f => selectedSuppliers.includes(f.id)).length} de {fornecedoresDosItens.length} marcado(s)
                     </span>
                   </div>
                   <div className="space-y-2">
-                    {fornecedoresItens.map(f => renderCardFornecedor(f))}
+                    {fornecedoresDosItens.map(f => renderCardFornecedor(f))}
                   </div>
                 </div>
               )}

@@ -74,6 +74,15 @@ export function createConnector(config: ConnectorConfig, opcoes: OpcoesConector 
         for (const external of [...new Set(snapshot.supplierIds)]) {
           const supplier = cfg.suppliers.find(s => s.external_id === external);
           if (!supplier) throw new Error("Fornecedor não homologado.");
+          // Vínculo já persistido numa tentativa anterior é reutilizado: é a
+          // retomada de resultado incerto sem nova consulta. O lookup remoto
+          // paginado permanece para quem ainda não tem vínculo (ou para
+          // recuperar operação cujo recibo local se perdeu).
+          const vinculado = send.suppliers[external];
+          if (vinculado) {
+            await save();
+            continue;
+          }
           let existing: string | undefined;
           let cursor: string | null = null;
           const cursors = new Set<string>();

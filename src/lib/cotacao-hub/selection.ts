@@ -18,6 +18,8 @@ export const selectionSchema = z.object({
     requested_reference: z.string().max(100).optional(),
     requested_brand: z.string().max(100).optional(),
     accepted_brands: z.array(z.string().min(1).max(100)).max(20).optional(),
+    /** Observação comercial do comprador — vai em source_snapshot, nunca na descrição. */
+    observacao: z.string().max(2000).optional(),
   }).strict()).min(1).max(500),
   destinations: z.array(z.object({
     external_id: z.string().min(1),
@@ -106,6 +108,7 @@ export function createSnapshot(
     requested_reference: customRef,
     requested_brand: customBrand,
     accepted_brands: customAcceptedBrands,
+    observacao: customObservacao,
   }) => {
     const effectiveFilialId = itemFilialId ?? selection.filialId;
     if (!effectiveFilialId) throw new Error("Item sem loja de destino definida.");
@@ -148,6 +151,11 @@ export function createSnapshot(
       ? customAcceptedBrands.map(b => b.trim()).filter(Boolean)
       : undefined;
 
+    // Observação comercial do comprador: campo próprio do contrato
+    // (source_snapshot.observacao). A descrição permanece intacta — nunca
+    // concatenar "Obs:" como substituto (decisão vigente 09/10/2026).
+    const observacao = customObservacao?.trim() || undefined;
+
     return {
       external_id: JSON.stringify([String(product.id), destination.external_id]),
       description: (customDesc && customDesc.trim()) ? customDesc.trim() : product.descricao,
@@ -157,6 +165,7 @@ export function createSnapshot(
       ...(brand ? { requested_brand: brand } : {}),
       ...(reference ? { requested_reference: reference } : {}),
       ...(acceptedBrands && acceptedBrands.length > 0 ? { accepted_brands: acceptedBrands } : {}),
+      ...(observacao ? { source_snapshot: { observacao } } : {}),
     };
   });
 
