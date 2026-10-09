@@ -5,6 +5,13 @@ import type { ConnectorConfig } from "./types";
 
 const supplier = z.object({ external_id: z.string().min(1), legal_name: z.string().min(1),
   contacts: z.array(z.object({ name: z.string().min(1), email: z.string().email() }).strict()).min(1) }).strict();
+const ssoSchema = z.object({
+  issuer: z.string().url(),
+  audience: z.string().min(1),
+  keyId: z.string().min(1),
+  privateKeyPem: z.string().min(1),
+  subjectPrefix: z.string().min(1).optional(),
+}).strict();
 const schema = z.object({ mode: z.enum(["synthetic-local", "production"]),
   tenantId: z.string().min(1),
   hubTenantId: z.string().uuid(), sourceSystem: z.literal("insight-compras"),
@@ -14,6 +21,7 @@ const schema = z.object({ mode: z.enum(["synthetic-local", "production"]),
   destinations: z.array(z.object({ external_id: z.string().min(1), name: z.string().min(1), address: z.string().min(1) }).strict()).min(1),
   suppliers: z.array(supplier).min(1), units: z.record(z.string().min(1).max(40)),
   allowedActorIds: z.array(z.string().min(1)),
+  sso: ssoSchema.optional(),
 }).strict();
 
 const HOSTS_LOCAIS = ["localhost", "127.0.0.1", "[::1]"];

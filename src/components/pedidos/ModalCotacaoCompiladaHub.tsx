@@ -26,6 +26,7 @@ import {
   parseMarcasAceitas,
   type SupplierInfo,
 } from "@/lib/cotacao-hub/payload";
+import { AbrirNoHub } from "@/components/cotacao-hub/AbrirNoHub";
 
 
 
@@ -732,7 +733,14 @@ export function ModalCotacaoCompiladaHub({
                 </div>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-2 flex flex-col items-center gap-2">
+                {hubStatus && cotacaoEnviadaId && (
+                  <AbrirNoHub
+                    portalOrigin={hubStatus.portalOrigin}
+                    applicationId={hubStatus.applicationId}
+                    quotationId={cotacaoEnviadaId}
+                  />
+                )}
                 <button
                   type="button"
                   onClick={onClose}

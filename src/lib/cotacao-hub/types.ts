@@ -1,5 +1,29 @@
 export interface Destination { external_id: string; name: string; address: string }
 export interface Supplier { external_id: string; legal_name: string; contacts: { name: string; email: string }[] }
+
+/**
+ * Emissor SSO do comprador (CCR-013 / H7 do Hub).
+ *
+ * A origem é um IdP jwt_jwks registrado: assina assertions curtas que o
+ * Hub valida contra o JWKS público desta instalação
+ * (GET /api/cotacao-hub/jwks). O subject mapeia 1:1 o usuário ativo do
+ * Insight — o provisionamento no Hub (subjectBindings) é quem resolve a
+ * identidade; a assertion NÃO cria binding. Segredos ficam em variável de
+ * ambiente (INSIGHT_HUB_CONFIG_JSON), nunca no repositório.
+ */
+export interface ConfigSso {
+  /** Issuer exato registrado no provider do Hub. */
+  issuer: string;
+  /** Audiência exclusiva do Hub (aud do JWT). */
+  audience: string;
+  /** Key id publicado no JWKS e no header do JWT (kid). */
+  keyId: string;
+  /** Chave privada RS256 em PEM (segredo de ambiente). */
+  privateKeyPem: string;
+  /** Prefixo do subject por usuário; default "insight-compras:user:". */
+  subjectPrefix?: string;
+}
+
 export interface ConnectorConfig {
   /**
    * "production": conexão real e explícita (HTTPS, credenciais privadas via
@@ -12,6 +36,8 @@ export interface ConnectorConfig {
   webhookKeyId: string; webhookSecret: string; storageFile: string; buyerName: string;
   destinations: Destination[]; suppliers: Supplier[]; units: Record<string, string>;
   allowedActorIds: string[];
+  /** Presente quando a instalação emite acesso individual ao portal do Hub. */
+  sso?: ConfigSso;
 }
 export interface QuoteItem {
   external_id: string; description: string; requested_quantity: string; requested_unit: string;

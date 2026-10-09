@@ -7,6 +7,7 @@ import {
   parseMarcasAceitas,
   type SupplierInfo,
 } from "@/lib/cotacao-hub/payload";
+import { AbrirNoHub } from "@/components/cotacao-hub/AbrirNoHub";
 
 interface ItemEdicaoState {
   quantidade: number;
@@ -868,10 +869,17 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
               <h3 className="font-semibold text-sm text-slate-800 mb-1">Cotações enviadas recentemente</h3>
               <ul className="text-xs text-slate-600 space-y-1">
                 {status.submissions.map(s => (
-                  <li key={s.externalId} className="flex items-center gap-1.5">
+                  <li key={s.externalId} className="flex items-center gap-1.5 flex-wrap">
                     <span>{s.state === "sent" ? "✅ Enviada" : "⏳ Pendente"}</span>
                     <span>—</span>
                     <span className="font-mono text-slate-700">{s.quotationId || s.externalId}</span>
+                    {s.quotationId && (
+                      <AbrirNoHub
+                        portalOrigin={status.portalOrigin}
+                        applicationId={status.applicationId}
+                        quotationId={s.quotationId}
+                      />
+                    )}
                   </li>
                 ))}
               </ul>

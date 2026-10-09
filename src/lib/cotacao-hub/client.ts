@@ -33,13 +33,14 @@ export class HubClient {
     this.tokenExpires = Date.now() + Math.max(0, dados.expires_in - 30) * 1000;
     return token;
   }
-  async request(method: string, path: string, body?: unknown, key?: string, etag?: string): Promise<{ body: any; etag: string | null }> {
+  async request(method: string, path: string, body?: unknown, key?: string, etag?: string, headersExtra?: Record<string, string>): Promise<{ body: any; etag: string | null }> {
     if (!path.startsWith("/api/v1/") || path.includes("..")) throw new Error("Rota Hub inválida.");
     const token = await this.authorize();
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (key) headers["Idempotency-Key"] = key;
     if (etag) headers["If-Match"] = etag;
+    if (headersExtra) Object.assign(headers, headersExtra);
     const response = await fetch(`${this.cfg.apiBaseUrl}${path}`, { method, headers,
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15_000), redirect: "error" });
     if (!response.ok) {
