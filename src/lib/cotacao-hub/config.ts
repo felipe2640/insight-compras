@@ -43,8 +43,66 @@ export function validateConfig(input: unknown): ConnectorConfig {
   }
   return cfg;
 }
-export async function loadConfig(): Promise<ConnectorConfig> {
+export function getDefaultCarreiroConfig(): ConnectorConfig {
+  return {
+    mode: "test-carreiro",
+    tenantId: "carreiro",
+    hubTenantId: "10000000-0000-4000-8000-000000000001",
+    sourceSystem: "insight-compras",
+    apiBaseUrl: "https://api.insightdireto.com.br",
+    portalOrigin: "https://cotacao.insightdireto.com.br",
+    applicationId: "20000000-0000-4000-8000-000000000001",
+    clientId: "carreiro-preview-client",
+    clientSecret: "carreiro-preview-secret-at-least-32-chars",
+    webhookKeyId: "key-carreiro-preview",
+    webhookSecret: "carreiro-webhook-secret-at-least-32-chars",
+    storageFile: "/tmp/carreiro-cotacao-ledger.json",
+    buyerName: "Comprador Rede Carreiro",
+    destinations: [
+      { external_id: "1", name: "Carreiro Pedro II (Matriz)", address: "Pedro II - PI" },
+      { external_id: "2", name: "Melo / Piripiri", address: "Piripiri - PI" },
+      { external_id: "3", name: "Carreiro Esperantina", address: "Esperantina - PI" },
+      { external_id: "4", name: "Carreiro Barras", address: "Barras - PI" },
+      { external_id: "5", name: "Carreiro Campo Maior", address: "Campo Maior - PI" },
+      { external_id: "6", name: "Carreiro Parnaíba", address: "Parnaíba - PI" },
+      { external_id: "7", name: "Carreiro Teresina", address: "Teresina - PI" },
+      { external_id: "8", name: "Melo / Pedro II", address: "Pedro II - PI" },
+    ],
+    suppliers: [
+      {
+        external_id: "1",
+        legal_name: "Distribuidora Peças Brasil (Piloto)",
+        contacts: [{ name: "Contato Fornecedor 1", email: "felipe@insightdireto.com.br" }]
+      },
+      {
+        external_id: "2",
+        legal_name: "Auto Peças Nacional (Piloto)",
+        contacts: [{ name: "Contato Fornecedor 2", email: "compras@carreiro.com.br" }]
+      },
+      {
+        external_id: "3",
+        legal_name: "Melo Distribuidora (Piloto)",
+        contacts: [{ name: "Contato Fornecedor 3", email: "cotacao@insightdireto.com.br" }]
+      }
+    ],
+    units: {
+      default: "UN"
+    },
+    allowedActorIds: []
+  };
+}
+export async function loadConfig(tenantId?: string): Promise<ConnectorConfig> {
+  if (process.env.INSIGHT_HUB_CONFIG_JSON) {
+    return validateConfig(JSON.parse(process.env.INSIGHT_HUB_CONFIG_JSON));
+  }
+  const file = process.env.INSIGHT_HUB_TEST_CONFIG;
+  if (file && isAbsolute(file)) {
+    return validateConfig(JSON.parse(await readFile(file, "utf8")));
+  }
   const mode = process.env.INSIGHT_HUB_TEST_MODE;
+  if (mode === "test-carreiro" || mode === "test-preview" || tenantId === "carreiro") {
+    return getDefaultCarreiroConfig();
+  }
   if (!mode) {
     throw new Error("Conector disponível somente no laboratório de testes desta branch.");
   }
@@ -54,10 +112,6 @@ export async function loadConfig(): Promise<ConnectorConfig> {
   if (process.env.NODE_ENV === "production" && mode !== "test-carreiro" && mode !== "test-preview") {
     throw new Error("Conector disponível somente no laboratório desta branch.");
   }
-  if (process.env.INSIGHT_HUB_CONFIG_JSON) {
-    return validateConfig(JSON.parse(process.env.INSIGHT_HUB_CONFIG_JSON));
-  }
-  const file = process.env.INSIGHT_HUB_TEST_CONFIG;
   if (!file || !isAbsolute(file)) throw new Error("Configure INSIGHT_HUB_TEST_CONFIG com um arquivo privado absoluto.");
   return validateConfig(JSON.parse(await readFile(file, "utf8")));
 }
