@@ -39,7 +39,9 @@ export async function POST(request: NextRequest) {
     );
     const [inventory, pendingRaw] = await Promise.all([
       context.carregarInventario(filter),
-      listarIdsProdutosEmPedidosAtivos(context.tenant.id, input.filialId ?? 1),
+      // Sem filial em foco (cotação multi-loja) consulta o tenant inteiro;
+      // nunca cai para a filial 1 em silêncio.
+      listarIdsProdutosEmPedidosAtivos(context.tenant.id, input.filialId),
     ]);
 
     // Se a cotação for compilada a partir de pedidos existentes, esses produtos não devem ser bloqueados por si mesmos

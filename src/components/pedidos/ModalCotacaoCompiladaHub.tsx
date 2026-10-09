@@ -66,6 +66,8 @@ interface EdicaoLinhaPedido {
 interface ModalCotacaoCompiladaHubProps {
   pedidos: Pedido[];
   nomesFiliais: Record<number, string>;
+  /** Nome institucional do cliente (white-label) — nunca fixo no código. */
+  nomeCliente: string;
   onClose: () => void;
   onSucesso: (mensagem: string) => void;
 }
@@ -100,6 +102,7 @@ function extrairQuantidadeItem(it: ItemPedido): number {
 export function ModalCotacaoCompiladaHub({
   pedidos,
   nomesFiliais,
+  nomeCliente,
   onClose,
   onSucesso,
 }: ModalCotacaoCompiladaHubProps) {
@@ -143,7 +146,10 @@ export function ModalCotacaoCompiladaHub({
             if (!r.ok) return [];
             const corpo = (await r.json()) as { itens?: ItemPedido[] };
             const lista = corpo.itens ?? [];
-            const filialId = p.filialId ?? 1;
+            // A loja de destino vem do pedido; sem valor, os itens ficam de
+            // fora e o envio é bloqueado com erro explícito — nunca filial 1.
+            if (typeof p.filialId !== "number") return [];
+            const filialId = p.filialId;
             const filialNome = p.filialNome ?? nomesFiliais[filialId] ?? `Loja ${filialId}`;
 
             return lista.map((item) => ({
@@ -492,8 +498,24 @@ export function ModalCotacaoCompiladaHub({
     return Array.from(mapa.values());
   }, [itensCompilados, edicoesLinhas, obterProdutoResolvido]);
 
-  // Totalizadores sem converter 0 em 1
-  const totalLojas = new Set(pedidos.map((p) => p.filialId ?? 1)).size;
+  // Pedidos com loja de destino válida (a seleção só cotará estes)
+  const pedidosComFilial = useMemo(
+    () =>
+      pedidos.filter(
+        (p): p is Pedido & { filialId: number } =>
+          typeof p.filialId === "number" && Number.isInteger(p.filialId) && p.filialId > 0,
+      ),
+    [pedidos],
+  );
+
+  // Pedidos sem loja cadastrada: bloqueiam o envio com erro explícito
+  const pedidosSemFilial = useMemo(
+    () => pedidos.filter((p) => typeof p.filialId !== "number").map((p) => p.id),
+    [pedidos],
+  );
+
+  // Totalizadores sem converter 0 em 1 e sem assumir filial 1
+  const totalLojas = new Set(pedidosComFilial.map((p) => p.filialId)).size;
   const totalValorEstimado = itensCompilados.reduce((s, i) => s + (i.valorTotal || 0), 0);
   const totalUnidades = itensCompilados.reduce((s, it) => {
     const key = `${it.pedidoId}-${it.id}`;
@@ -509,6 +531,11 @@ export function ModalCotacaoCompiladaHub({
 
   // Disparo da cotação compilada com validação rígida de produto e idempotência
   const enviarCotacao = async () => {
+    if (pedidosSemFilial.length > 0) {
+      setFeedbackEnvio(`Pedidos sem loja de destino cadastrada (impossível cotar): ${pedidosSemFilial.map((id) => `#${id}`).join(", ")}. Complete o cadastro da loja e tente novamente.`);
+      return;
+    }
+
     if (itensNaoResolvidos.length > 0) {
       setFeedbackEnvio(`Não é possível enviar a cotação: os seguintes itens não foram encontrados no catálogo de produtos: ${itensNaoResolvidos.join(", ")}.`);
       return;
@@ -538,15 +565,15 @@ export function ModalCotacaoCompiladaHub({
         };
       });
 
-      // 2. Mapear destinos
+      // 2. Mapear destinos a partir apenas dos pedidos com loja cadastrada
       const destinationsMap = new Map<string, { external_id: string; name: string; address: string }>();
-      for (const p of pedidos) {
-        const fid = String(p.filialId ?? 1);
-        const fnome = p.filialNome ?? nomesFiliais[Number(fid)] ?? `Loja ${fid}`;
+      for (const p of pedidosComFilial) {
+        const fid = String(p.filialId);
+        const fnome = p.filialNome ?? nomesFiliais[p.filialId] ?? `Loja ${fid}`;
         destinationsMap.set(fid, {
           external_id: fid,
           name: fnome,
-          address: `Filial ${fnome} - Rede Carreiro`,
+          address: `Filial ${fnome} - ${nomeCliente}`,
         });
       }
 
@@ -750,6 +777,23 @@ export function ModalCotacaoCompiladaHub({
                       Desmarcar fornecedores sem e-mail
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* Alerta bloqueante para pedidos sem loja de destino (nunca filial 1) */}
+              {pedidosSemFilial.length > 0 && (
+                <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900 flex items-start gap-2.5 shadow-xs">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-rose-950">
+                      Pedidos sem loja de destino definida ({pedidosSemFilial.length}):
+                    </span>{" "}
+                    <span className="font-mono text-rose-800">{pedidosSemFilial.map((id) => `#${id}`).join(", ")}</span>
+                    <p className="text-[11px] text-rose-700 mt-1">
+                      O envio de cotação exige uma loja de destino real para cada pedido. Nenhum destino
+                      padrão é assumido em silêncio — complete o cadastro da loja e tente novamente.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -1251,7 +1295,12 @@ export function ModalCotacaoCompiladaHub({
         {!cotacaoEnviadaId && (
           <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-3">
             <div className="text-xs text-slate-500">
-              {itensNaoResolvidos.length > 0 ? (
+              {pedidosSemFilial.length > 0 ? (
+                <span className="text-rose-700 font-semibold flex items-center gap-1">
+                  <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+                  {pedidosSemFilial.length} pedido(s) sem loja de destino.
+                </span>
+              ) : itensNaoResolvidos.length > 0 ? (
                 <span className="text-rose-700 font-semibold flex items-center gap-1">
                   <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
                   {itensNaoResolvidos.length} item(ns) não homologado(s) no catálogo.
@@ -1287,6 +1336,7 @@ export function ModalCotacaoCompiladaHub({
                 disabled={
                   enviando ||
                   carregando ||
+                  pedidosSemFilial.length > 0 ||
                   selectedSuppliers.length === 0 ||
                   fornecedoresFaltandoEmail.length > 0 ||
                   itensConsolidados.length === 0 ||
@@ -1296,6 +1346,7 @@ export function ModalCotacaoCompiladaHub({
                   "flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold text-white shadow-sm transition-all",
                   enviando ||
                   carregando ||
+                  pedidosSemFilial.length > 0 ||
                   selectedSuppliers.length === 0 ||
                   fornecedoresFaltandoEmail.length > 0 ||
                   itensConsolidados.length === 0 ||
@@ -1304,7 +1355,9 @@ export function ModalCotacaoCompiladaHub({
                     : "bg-blue-600 hover:bg-blue-700 shadow-blue-500/20"
                 )}
                 title={
-                  itensNaoResolvidos.length > 0
+                  pedidosSemFilial.length > 0
+                    ? `Pedidos sem loja de destino: ${pedidosSemFilial.map((id) => `#${id}`).join(", ")}`
+                    : itensNaoResolvidos.length > 0
                     ? `Itens não homologados no catálogo: ${itensNaoResolvidos.join(", ")}`
                     : fornecedoresFaltandoEmail.length > 0
                     ? "Preencha ou desmarque os fornecedores sem e-mail para prosseguir"

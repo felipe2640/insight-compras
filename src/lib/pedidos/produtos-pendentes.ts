@@ -13,7 +13,12 @@ interface LinhaProdutoPendenteDb {
  */
 export async function listarIdsProdutosEmPedidosAtivos(
   tenantId: string,
-  filialId: number,
+  /**
+   * Filial em foco. Ausente = todas as lojas do tenant (envio multi-loja).
+   * Nunca existe fallback para a filial 1: sem valor, o filtro simplesmente
+   * não restringe por loja (CONTEXT.md, §Filial).
+   */
+  filialId?: number,
 ): Promise<ReadonlySet<number>> {
   if (!supabaseConfigurado()) return new Set();
 
@@ -22,7 +27,7 @@ export async function listarIdsProdutosEmPedidosAtivos(
       "aprendizado_item",
       `select=produto_id,aprendizado_snapshot!inner(status,filial_id,layout_id)` +
         `&tenant_id=eq.${encodeURIComponent(tenantId)}` +
-        `&filial_id=eq.${filialId}` +
+        (filialId === undefined ? `` : `&filial_id=eq.${filialId}`) +
         `&aprendizado_snapshot.status=in.(exportado,enviado,confirmado)` +
         `&aprendizado_snapshot.layout_id=neq.analise` +
         `&limit=10000`,

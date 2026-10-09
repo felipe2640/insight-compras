@@ -28,7 +28,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { cn } from "@/lib/utils";
 import { Pedido, ItemPedido, StatusPedido } from "@/lib/pedidos/tipos";
 import { ROTULOS_STATUS, obterProximoStatus } from "@/lib/pedidos/ciclo-vida";
-import { useNomesFiliais } from "@/lib/cockpit/contexto-tenant";
+import { useNomesFiliais, useTenantAtivo } from "@/lib/cockpit/contexto-tenant";
 import { ModalCotacaoCompiladaHub } from "@/components/pedidos/ModalCotacaoCompiladaHub";
 
 const dinheiro = (v: number) =>
@@ -67,6 +67,7 @@ export default function PaginaPedidos() {
   // Nome da loja do CADASTRO do tenant. A coluna dizia "Loja 1", "Loja 2" —
   // número de filial não é como o comprador chama a loja dele.
   const nomesFiliais = useNomesFiliais();
+  const tenant = useTenantAtivo();
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [configurado, setConfigurado] = useState(true);
   const [dias, setDias] = useState(30);
@@ -226,7 +227,12 @@ export default function PaginaPedidos() {
   };
 
   const lojasSelecionadasDistintas = useMemo(() => {
-    return new Set(pedidosSelecionados.map((p) => p.filialId ?? 1)).size;
+    // Sem fallback: pedido sem loja cadastrada não conta como loja 1.
+    return new Set(
+      pedidosSelecionados
+        .map((p) => p.filialId)
+        .filter((v): v is number => typeof v === "number"),
+    ).size;
   }, [pedidosSelecionados]);
 
   const itensTotaisSelecionados = useMemo(() => {
@@ -948,6 +954,7 @@ export default function PaginaPedidos() {
           <ModalCotacaoCompiladaHub
             pedidos={pedidosSelecionados}
             nomesFiliais={nomesFiliais}
+            nomeCliente={tenant.nome}
             onClose={() => setModalCotacaoAberto(false)}
             onSucesso={(msg) => {
               setFeedbackSucesso(msg);
