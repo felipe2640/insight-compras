@@ -758,7 +758,10 @@ export function CockpitPrincipal({
               </div>
 
               {/* Um botão por modelo: o comprador exporta o de sempre num clique. */}
-              <EnviarCotacaoHub itens={itensSelecionadosParaExportacao} filialId={lojaFocoId} />
+              <EnviarCotacaoHub
+                itens={itensSelecionadosParaExportacao.length > 0 ? itensSelecionadosParaExportacao : (itensFiltrados as LinhaCockpitMatriz[])}
+                filialId={lojaFocoId}
+              />
               <BotoesExportacao
                 itens={itensFiltrados as LinhaCockpitMatriz[]}
                 itensSelecionados={itensSelecionadosParaExportacao}

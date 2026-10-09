@@ -41,6 +41,7 @@ import {
   gerarConsultaDaxPedidosCompra,
   gerarConsultaDaxItensPedidosCompra,
   gerarConsultaDaxCotacoes,
+  CONSULTA_DAX_FORNECEDORES_EMAIL,
 } from "./consultas-homologadas";
 import {
   mapearProdutosDax,
@@ -102,6 +103,7 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   private readonly desconsiderarInativos?: boolean;
   private readonly termosDescricaoInativos?: readonly string[];
   private readonly filiais: readonly FilialCadastradaTenant[];
+  private cacheFornecedoresComEmail: { dados: readonly { id: string; name: string; email: string }[]; timestamp: number } | null = null;
 
   public readonly descricaoFonte = "Power BI";
   public readonly natureza = "real" as const;
@@ -734,4 +736,40 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
     }
   }
 
+  /**
+   * Consulta os fornecedores com a coluna de e-mail (AEMAIL) no modelo do Power BI.
+   * Tenta FORNECEDOR e CADFORN com resiliência e mantém cache de 15 minutos.
+   */
+  public async carregarFornecedoresComEmail(): Promise<readonly { id: string; name: string; email: string }[]> {
+    if (this.cacheFornecedoresComEmail && Date.now() - this.cacheFornecedoresComEmail.timestamp < 15 * 60 * 1000) {
+      return this.cacheFornecedoresComEmail.dados;
+    }
+    const consultas = [
+      CONSULTA_DAX_FORNECEDORES_EMAIL,
+      `EVALUATE FILTER(SELECTCOLUMNS(FORNECEDOR, "FornecedorId", 'FORNECEDOR'[ICODFORN], "NomeFornecedor", 'FORNECEDOR'[ANOMEFORN], "Email", 'FORNECEDOR'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
+      `EVALUATE FILTER(SELECTCOLUMNS(CADFORN, "FornecedorId", 'CADFORN'[ACODFORN], "NomeFornecedor", 'CADFORN'[ANOMEFORN], "Email", 'CADFORN'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
+      `EVALUATE FILTER(SELECTCOLUMNS(CADFORN, "FornecedorId", 'CADFORN'[ICODFORN], "NomeFornecedor", 'CADFORN'[ANOMEFORN], "Email", 'CADFORN'[AEMAIL]), NOT ISBLANK([Email]) && [Email] <> "")`,
+    ];
+    for (const dax of consultas) {
+      try {
+        const linhas = await this.clienteDax.executarConsultaDax(dax);
+        if (linhas && linhas.length > 0) {
+          const resultado = linhas
+            .map((l: any) => ({
+              id: String(l.FornecedorId ?? l.ACODFORN ?? l.ICODFORN ?? "").trim(),
+              name: String(l.NomeFornecedor ?? l.ANOMEFORN ?? l.ANOMEFANTASIA ?? "").trim(),
+              email: String(l.Email ?? l.AEMAIL ?? "").trim(),
+            }))
+            .filter((f) => f.id && f.email);
+          if (resultado.length > 0) {
+            this.cacheFornecedoresComEmail = { dados: resultado, timestamp: Date.now() };
+            return resultado;
+          }
+        }
+      } catch (erro) {
+        console.warn("[Adaptador Carreiro] Tentativa de consulta DAX para fornecedores com email falhou:", erro);
+      }
+    }
+    return [];
+  }
 }

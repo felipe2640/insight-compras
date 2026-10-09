@@ -943,3 +943,19 @@ SELECTCOLUMNS(
 )
   `.trim();
 }
+
+/**
+ * 12. Cadastro de Fornecedores com Contato e E-mail (AEMAIL).
+ */
+export const CONSULTA_DAX_FORNECEDORES_EMAIL = `
+EVALUATE
+FILTER(
+    SELECTCOLUMNS(
+        FORNECEDOR,
+        "FornecedorId", 'FORNECEDOR'[ACODFORN],
+        "NomeFornecedor", 'FORNECEDOR'[ANOMEFORN],
+        "Email", 'FORNECEDOR'[AEMAIL]
+    ),
+    NOT ISBLANK([Email]) && [Email] <> ""
+)
+`.trim();

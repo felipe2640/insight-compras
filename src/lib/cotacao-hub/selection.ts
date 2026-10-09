@@ -9,6 +9,11 @@ export const selectionSchema = z.object({ externalId: z.string().min(1).max(255)
   supplierIds: z.array(z.string().regex(/^[1-9][0-9]*$/)).min(1).max(100),
   items: z.array(z.object({ produtoId: z.number().int().positive().safe(),
     quantity: z.string().regex(/^[1-9][0-9]{0,13}$/) }).strict()).min(1).max(500),
+  suppliersData: z.array(z.object({
+    id: z.string().regex(/^[1-9][0-9]*$/),
+    name: z.string().min(1).max(255),
+    email: z.string().email(),
+  }).strict()).optional(),
 }).strict();
 export function createSnapshot(cfg: ConnectorConfig, user: UsuarioAutenticado, tenant: ConfiguracaoTenant,
   products: readonly Produto[], pending: ReadonlySet<number>, input: unknown): Snapshot {
@@ -21,7 +26,8 @@ export function createSnapshot(cfg: ConnectorConfig, user: UsuarioAutenticado, t
   const allowed = user.allowedSupplierIds ? new Set(user.allowedSupplierIds) : new Set<number>();
   const restricted = user.role === "COMPRADOR" && cfg.mode === "synthetic-local";
   for (const id of selection.supplierIds) {
-    if (!cfg.suppliers.some(s => s.external_id === id) || (restricted && !allowed.has(Number(id)))) throw new Error("Fornecedor fora da carteira/conexão.");
+    const isKnown = cfg.suppliers.some(s => s.external_id === id) || (cfg.mode !== "synthetic-local" && selection.suppliersData?.some(s => s.id === id));
+    if (!isKnown || (restricted && !allowed.has(Number(id)))) throw new Error("Fornecedor fora da carteira/conexão.");
   }
   const categories = user.allowedCategoryIds ? new Set(user.allowedCategoryIds) : null;
   const seen = new Set<number>();
