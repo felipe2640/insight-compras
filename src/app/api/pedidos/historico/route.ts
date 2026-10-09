@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
       if (itensErp && itensErp.length > 0) {
         const itens = itensErp.map((it) => ({
           id: it.id,
+          produtoId: it.produtoId || null,
           sku: it.sku ?? (it.produtoId ? String(it.produtoId).padStart(6, "0") : `PROD-${it.produtoId}`),
           descricao: it.descricao || "Item de Compra ERP",
           qtdComprador: it.quantidade,

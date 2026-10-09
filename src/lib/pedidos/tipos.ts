@@ -53,8 +53,11 @@ export interface Pedido {
 
 export interface ItemPedido {
   readonly id: number;
+  readonly produtoId?: number | null;
   readonly sku: string | null;
   readonly descricao: string | null;
+  readonly marca?: string | null;
+  readonly referenciaFabricante?: string | null;
   readonly qtdComprador: number;
   readonly qtdTransferencia: number;
   readonly qtdModelo: number | null;

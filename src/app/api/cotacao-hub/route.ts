@@ -106,10 +106,28 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    let catalogProducts: { id: number; sku: string; descricao: string; marca: string; fabricante: string; referencia: string }[] = [];
+    try {
+      const filter = aplicarGuardrailInventarioServerSide(context.usuario, {});
+      const inv = await context.carregarInventario(filter);
+      catalogProducts = inv.produtos.map(p => ({
+        id: p.id,
+        sku: p.codigoSku,
+        descricao: p.descricao,
+        marca: p.marca || "",
+        fabricante: p.fabricante || "",
+        referencia: p.referenciaFabricante || "",
+      }));
+    } catch (e) {
+      console.warn("[cotacao-hub] Erro ao carregar catálogo para prévia:", e);
+    }
+
     return NextResponse.json({
       portalOrigin: config.portalOrigin,
       applicationId: config.applicationId,
       suppliers: Array.from(supplierMap.values()),
+      units: config.units,
+      catalogProducts,
       submissions: sends.map(s => ({ externalId: s.snapshot.externalId, quotationId: s.quotationId, state: s.state })),
       drafts: ledger.drafts.filter(d => sends.some(s => s.quotationId === d.quotationId)),
     }, { headers: { "Cache-Control": "no-store" } });

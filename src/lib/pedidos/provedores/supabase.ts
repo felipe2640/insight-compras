@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Provedor Supabase (PostgREST) do Ciclo de Vida de Pedidos
  * Camada: Aplicação / Pedidos / Provedores (src/lib/pedidos/provedores/supabase.ts)
  * 100% em Português do Brasil (pt-BR).
@@ -34,6 +34,7 @@ interface LinhaSnapshotDb {
 
 interface LinhaItemDb {
   id: number;
+  produto_id?: number | null;
   sku: string | null;
   descricao: string | null;
   qtd_comprador: number;
@@ -120,7 +121,7 @@ export class RepositorioPedidosSupabase implements RepositorioPedidos {
   public async listarItensDoPedido(tenantId: string, pedidoId: number): Promise<readonly ItemPedido[]> {
     const linhas = await sbSelecionar<LinhaItemDb>(
       "aprendizado_item",
-      `select=id,sku,descricao,qtd_comprador,qtd_transferencia_comprador,qtd_modelo,custo` +
+      `select=id,produto_id,sku,descricao,qtd_comprador,qtd_transferencia_comprador,qtd_modelo,custo` +
         `&tenant_id=eq.${encodeURIComponent(tenantId)}&snapshot_id=eq.${pedidoId}` +
         `&order=sku.asc&limit=5000`
     );
@@ -130,6 +131,7 @@ export class RepositorioPedidosSupabase implements RepositorioPedidos {
       const custo = l.custo === null ? null : Number(l.custo);
       return {
         id: l.id,
+        produtoId: l.produto_id ? Number(l.produto_id) : null,
         sku: l.sku,
         descricao: l.descricao,
         qtdComprador: qtd,

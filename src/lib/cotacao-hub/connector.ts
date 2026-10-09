@@ -77,29 +77,6 @@ export function createConnector(config: ConnectorConfig) {
           }, current.etag);
         }
         send.state = "sent";
-        if ((config.mode === "test-carreiro" || config.mode === "test-preview") && quote.id) {
-          const winnerSupplier = snapshot.supplierIds[0] || "1";
-          const draftId = `draft-${snapshot.externalId}`;
-          if (!ledger.drafts.some(d => d.id === draftId)) {
-            ledger.drafts.push({
-              id: draftId,
-              quotationId: quote.id,
-              awardRunId: `award-${snapshot.externalId}`,
-              resultHash: digest(snapshot.externalId),
-              supplierId: send.suppliers[winnerSupplier] || `supp-${winnerSupplier}`,
-              supplierExternalId: winnerSupplier,
-              destinationId: snapshot.destinations[0]?.external_id || "1",
-              state: "review",
-              items: snapshot.items.map(item => ({
-                external_id: item.external_id,
-                description: item.description,
-                acquisition_quantity: item.requested_quantity,
-                requested_unit: item.requested_unit,
-                unit_price: (Math.random() * 45 + 15).toFixed(2),
-              })),
-            });
-          }
-        }
         await save();
         return { quotationId: quote.id, state: send.state, externalId: snapshot.externalId };
       });

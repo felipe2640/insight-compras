@@ -8,10 +8,38 @@ interface SupplierInfo {
   email?: string;
 }
 
+interface ItemEdicaoState {
+  quantidade: number;
+  description: string;
+  requested_reference: string;
+  requested_brand: string;
+  accepted_brands: string;
+  observacao?: string;
+}
+
+const MARCAS_POPULARES = [
+  "Gates",
+  "Dayco",
+  "Contitech",
+  "Bosch",
+  "Cofap",
+  "Nakata",
+  "Monroe",
+  "TRW",
+  "SABÓ",
+  "Fremax",
+  "Varga",
+  "Magneti Marelli",
+  "SKF",
+  "NGK",
+];
+
 interface Status {
   portalOrigin: string;
   applicationId: string;
   suppliers: SupplierInfo[];
+  units?: Record<string, string>;
+  catalogProducts?: { id: number; sku: string; descricao: string; marca: string; fabricante: string; referencia: string }[];
   submissions: { externalId: string; quotationId?: string; state: string }[];
   drafts: { id: string; supplierExternalId: string; destinationId: string; state: string; items: Record<string, string>[] }[];
 }
@@ -46,7 +74,35 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
   const [searchFilter, setSearchFilter] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [edicoes, setEdicoes] = useState<Record<number, ItemEdicaoState>>({});
+  const [itemEmEdicao, setItemEmEdicao] = useState<number | null>(null);
+  const [observacoesGerais, setObservacoesGerais] = useState("");
   const attempt = useRef<{ fingerprint: string; externalId: string; deadline: string }>();
+
+  const toggleMarcaAlternativa = (produtoId: number, marca: string) => {
+    setEdicoes(prev => {
+      const ed = prev[produtoId];
+      const atual = ed?.accepted_brands || "";
+      const list = atual ? atual.split(",").map(b => b.trim()).filter(Boolean) : [];
+      const jaTem = list.some(m => m.toLowerCase() === marca.toLowerCase());
+      const novaLista = jaTem
+        ? list.filter(m => m.toLowerCase() !== marca.toLowerCase())
+        : [...list, marca];
+      return {
+        ...prev,
+        [produtoId]: {
+          ...(ed ?? {
+            quantidade: 1,
+            description: "",
+            requested_reference: "",
+            requested_brand: "",
+            accepted_brands: "",
+          }),
+          accepted_brands: novaLista.join(", "),
+        },
+      };
+    });
+  };
 
   const load = async () => {
     const response = await fetch("/api/cotacao-hub", { cache: "no-store" });
@@ -69,19 +125,40 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
     };
   }, []);
 
-  // Extrai itens elegíveis com quantidade efetiva
+  // Extrai itens elegíveis com quantidade efetiva (sem converter 0 para 1)
   const valid = useMemo(() => {
     return itens
       .map(i => {
-        const qtd = (Number.isSafeInteger(i.pedidoCustom) && i.pedidoCustom > 0)
-          ? i.pedidoCustom
-          : (Number.isSafeInteger(i.sugestaoFinalCompra) && i.sugestaoFinalCompra > 0)
-            ? i.sugestaoFinalCompra
-            : (itens.length <= 50 ? 1 : 0);
-        return { item: i, quantidade: qtd };
+        const temCustom = Number.isSafeInteger(i.pedidoCustom) && i.pedidoCustom !== null && i.pedidoCustom !== undefined;
+        const temSugestao = Number.isSafeInteger(i.sugestaoFinalCompra) && i.sugestaoFinalCompra !== null && i.sugestaoFinalCompra !== undefined;
+        const qtd = temCustom
+          ? Math.max(0, i.pedidoCustom)
+          : temSugestao
+            ? Math.max(0, i.sugestaoFinalCompra)
+            : 0;
+        return { item: i, quantidadeOriginal: qtd };
       })
-      .filter(x => x.quantidade > 0);
+      .filter(x => x.quantidadeOriginal > 0);
   }, [itens]);
+
+  // Sincroniza edições com os dados reais dos itens quando a lista mudar
+  useEffect(() => {
+    setEdicoes(prev => {
+      const next = { ...prev };
+      for (const { item, quantidadeOriginal } of valid) {
+        if (!next[item.produtoId]) {
+          next[item.produtoId] = {
+            quantidade: quantidadeOriginal,
+            description: item.descricao || "",
+            requested_reference: item.referenciaFabricante || "",
+            requested_brand: item.marca || "",
+            accepted_brands: "",
+          };
+        }
+      }
+      return next;
+    });
+  }, [valid]);
 
   // Fornecedores vinculados diretamente aos itens selecionados
   const fornecedoresDosItens = useMemo(() => {
@@ -205,13 +282,46 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
         };
       });
 
+      const itemsPayload = valid.map(x => {
+        const ed = edicoes[x.item.produtoId] ?? {
+          quantidade: x.quantidadeOriginal,
+          description: x.item.descricao || "",
+          requested_reference: x.item.referenciaFabricante || "",
+          requested_brand: x.item.marca || "",
+          accepted_brands: "",
+        };
+
+        const acceptedList = ed.accepted_brands
+          ? ed.accepted_brands.split(",").map(b => b.trim()).filter(Boolean)
+          : [];
+
+        const qtdEfetiva = Math.max(1, Number(ed.quantidade) || x.quantidadeOriginal);
+
+        const descOriginal = ed.description || x.item.descricao || "";
+        const descFinal = [
+          descOriginal.trim(),
+          ed.observacao?.trim() ? `Obs: ${ed.observacao.trim()}` : null,
+          observacoesGerais.trim() ? `Condições: ${observacoesGerais.trim()}` : null,
+        ]
+          .filter(Boolean)
+          .join(" | ")
+          .slice(0, 500);
+
+        return {
+          produtoId: x.item.produtoId,
+          quantity: String(qtdEfetiva),
+          ...(descFinal ? { description: descFinal } : {}),
+          ...(ed.requested_reference.trim() ? { requested_reference: ed.requested_reference.trim() } : {}),
+          ...(ed.requested_brand.trim() ? { requested_brand: ed.requested_brand.trim() } : {}),
+          ...(acceptedList.length > 0 ? { accepted_brands: acceptedList } : {}),
+        };
+      }).sort((a, b) => a.produtoId - b.produtoId);
+
       const selection = {
         filialId,
         supplierIds: [...selectedSuppliers].sort(),
         suppliersData,
-        items: valid
-          .map(x => ({ produtoId: x.item.produtoId, quantity: String(x.quantidade) }))
-          .sort((a, b) => a.produtoId - b.produtoId),
+        items: itemsPayload,
       };
 
       const fingerprint = JSON.stringify(selection);
@@ -369,7 +479,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
             </div>
           ) : (
             <>
-              {/* Resumo dos Itens Selecionados */}
+              {/* Resumo dos Itens Selecionados com Edição */}
               <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 mb-4">
                 <div className="flex justify-between items-center mb-1">
                   <span className="font-semibold text-sm text-slate-800">
@@ -384,18 +494,253 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
                     Nenhum item com quantidade de compra selecionado na tabela. Selecione itens ou ajuste as quantidades na grade do Cockpit.
                   </p>
                 ) : (
-                  <div className="mt-2 max-h-32 overflow-y-auto rounded border bg-white p-2 text-xs divide-y divide-slate-100">
-                    {valid.map(({ item, quantidade }) => (
-                      <div key={item.produtoId} className="py-1 flex justify-between items-center">
-                        <span className="truncate pr-2">
-                          <strong className="text-slate-900">{item.codigoSku}</strong> — {item.descricao}
-                          {item.nomeFornecedor && <span className="text-blue-700 font-medium ml-1">({item.nomeFornecedor})</span>}
-                        </span>
-                        <span className="font-bold text-blue-700 whitespace-nowrap">{quantidade} un</span>
-                      </div>
-                    ))}
+                  <div className="mt-2 max-h-64 overflow-y-auto rounded border bg-white p-2 text-xs divide-y divide-slate-100 space-y-1">
+                    {valid.map(({ item, quantidadeOriginal }) => {
+                      const ed = edicoes[item.produtoId] ?? {
+                        quantidade: quantidadeOriginal,
+                        description: item.descricao || "",
+                        requested_reference: item.referenciaFabricante || "",
+                        requested_brand: item.marca || "",
+                        accepted_brands: "",
+                      };
+                      const unidade = status?.units?.[String(item.produtoId)] || status?.units?.["default"] || "UN";
+                      const isEditing = itemEmEdicao === item.produtoId;
+
+                      const marcaExibida = ed.requested_brand || item.marca || "";
+                      const refExibida = ed.requested_reference || item.referenciaFabricante || "";
+
+                      return (
+                        <div key={item.produtoId} className="p-2.5 bg-white space-y-2">
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-slate-900 font-mono font-bold bg-slate-100 px-1.5 py-0.5 rounded text-[11px] border border-slate-200">
+                                  {item.codigoSku}
+                                </span>
+                                <span className="font-semibold text-slate-800">{ed.description || item.descricao}</span>
+                                {item.nomeFornecedor && (
+                                  <span className="text-blue-700 font-medium text-[11px]">({item.nomeFornecedor})</span>
+                                )}
+                              </div>
+
+                              {/* Badges de Atributos em Destaque */}
+                              <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                                {marcaExibida ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-800 border border-blue-200">
+                                    🏷️ Marca: <strong>{marcaExibida}</strong>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                    ⚠️ Marca não informada
+                                  </span>
+                                )}
+
+                                {refExibida ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-800 border border-slate-300">
+                                    🔢 Ref: <strong>{refExibida}</strong>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                    ⚠️ Ref. não informada
+                                  </span>
+                                )}
+
+                                {ed.accepted_brands && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-purple-50 text-purple-800 border border-purple-200">
+                                    ✅ Aceita: <strong>{ed.accepted_brands}</strong>
+                                  </span>
+                                )}
+
+                                {ed.observacao && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                    💬 Obs: <strong>{ed.observacao}</strong>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="font-bold text-blue-700 whitespace-nowrap bg-blue-50 px-2 py-0.5 rounded border border-blue-100 text-xs">
+                                {ed.quantidade} {unidade}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setItemEmEdicao(isEditing ? null : item.produtoId)}
+                                className={`px-2 py-1 rounded text-xs font-semibold transition-colors ${
+                                  isEditing
+                                    ? "bg-slate-200 text-slate-800 hover:bg-slate-300"
+                                    : "bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
+                                }`}
+                                title={isEditing ? "Fechar edição" : "Editar item para cotação"}
+                              >
+                                {isEditing ? "✕ Fechar" : "✏️ Ajustar Marca / Ref."}
+                              </button>
+                            </div>
+                          </div>
+
+                          {isEditing && (
+                            <div className="mt-2.5 p-3 bg-blue-50/40 rounded-lg border border-blue-200 space-y-3 text-xs">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                    Marca Solicitada (Preferencial)
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="Ex: Gates, Bosch, Dayco..."
+                                    value={ed.requested_brand}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setEdicoes(prev => ({
+                                        ...prev,
+                                        [item.produtoId]: { ...prev[item.produtoId], requested_brand: val },
+                                      }));
+                                    }}
+                                    className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                    Referência do Fabricante / Código de Fábrica
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="Ex: K015433XS, 10098, CT488..."
+                                    value={ed.requested_reference}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setEdicoes(prev => ({
+                                        ...prev,
+                                        [item.produtoId]: { ...prev[item.produtoId], requested_reference: val },
+                                      }));
+                                    }}
+                                    className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Seleção rápida de marcas alternativas */}
+                              <div className="rounded-md border border-slate-200 bg-white p-2.5 space-y-1.5">
+                                <label className="block text-[11px] font-semibold text-slate-700">
+                                  Marcas Alternativas Aceitas (clique para marcar ou desmarcar):
+                                </label>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {MARCAS_POPULARES.map(marca => {
+                                    const list = ed.accepted_brands
+                                      ? ed.accepted_brands.split(",").map(s => s.trim().toLowerCase())
+                                      : [];
+                                    const selecionada = list.includes(marca.toLowerCase());
+                                    return (
+                                      <button
+                                        key={marca}
+                                        type="button"
+                                        onClick={() => toggleMarcaAlternativa(item.produtoId, marca)}
+                                        className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
+                                          selecionada
+                                            ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                            : "bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100"
+                                        }`}
+                                      >
+                                        {selecionada ? `✓ ${marca}` : `+ ${marca}`}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                <input
+                                  type="text"
+                                  placeholder="Outras marcas alternativas (separadas por vírgula)..."
+                                  value={ed.accepted_brands}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setEdicoes(prev => ({
+                                      ...prev,
+                                      [item.produtoId]: { ...prev[item.produtoId], accepted_brands: val },
+                                    }));
+                                  }}
+                                  className="w-full px-2.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                              </div>
+
+                              {/* Observação comercial do item */}
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                  Observação Comercial do Item
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="Ex: Produto de primeira linha, embalagem original de fábrica..."
+                                  value={ed.observacao || ""}
+                                  onChange={e => {
+                                    const val = e.target.value;
+                                    setEdicoes(prev => ({
+                                      ...prev,
+                                      [item.produtoId]: { ...prev[item.produtoId], observacao: val },
+                                    }));
+                                  }}
+                                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-blue-200/60">
+                                <div>
+                                  <label className="block text-[11px] font-medium text-slate-600 mb-0.5">Descrição na cotação</label>
+                                  <input
+                                    type="text"
+                                    value={ed.description}
+                                    onChange={e => {
+                                      const val = e.target.value;
+                                      setEdicoes(prev => ({
+                                        ...prev,
+                                        [item.produtoId]: { ...prev[item.produtoId], description: val },
+                                      }));
+                                    }}
+                                    className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-[11px] font-medium text-slate-600 mb-0.5">Quantidade ({unidade})</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={ed.quantidade}
+                                    onChange={e => {
+                                      const val = Math.max(1, parseInt(e.target.value, 10) || 1);
+                                      setEdicoes(prev => ({
+                                        ...prev,
+                                        [item.produtoId]: { ...prev[item.produtoId], quantidade: val },
+                                      }));
+                                    }}
+                                    className="w-full px-2 py-1 rounded border border-slate-300 text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
+              </div>
+
+              {/* Observações Gerais da Cotação */}
+              <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3 space-y-1.5 shadow-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                    📝 Observações Gerais da Cotação (opcional)
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Instruções comerciais para os fornecedores: condições de pagamento, prazo de entrega ou faturamento.
+                </p>
+                <textarea
+                  rows={2}
+                  value={observacoesGerais}
+                  onChange={e => setObservacoesGerais(e.target.value)}
+                  placeholder="Ex: Faturamento 28/35/42 ddl. Frete CIF. Entregas até as 17h."
+                  className="w-full text-xs p-2 rounded border border-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900"
+                />
               </div>
 
               {/* Seção 1: Fornecedores dos Itens */}

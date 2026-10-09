@@ -19,8 +19,11 @@ function criarPedidosDemo(tenantId: string): { pedidos: Pedido[]; itensPorPedido
   const itens1001: ItemPedido[] = [
     {
       id: 1,
+      produtoId: 1,
       sku: "AM-MON-001",
       descricao: "Amortecedor Dianteiro Monr. G8000",
+      marca: "Monroe",
+      referenciaFabricante: "G8000",
       qtdComprador: 12,
       qtdTransferencia: 0,
       qtdModelo: 12,
@@ -29,8 +32,11 @@ function criarPedidosDemo(tenantId: string): { pedidos: Pedido[]; itensPorPedido
     },
     {
       id: 2,
+      produtoId: 2,
       sku: "KT-MON-002",
       descricao: "Kit Batente + Coifa Diant. Monroe",
+      marca: "Monroe",
+      referenciaFabricante: "KBM-100",
       qtdComprador: 12,
       qtdTransferencia: 0,
       qtdModelo: 10,
@@ -42,8 +48,11 @@ function criarPedidosDemo(tenantId: string): { pedidos: Pedido[]; itensPorPedido
   const itens1002: ItemPedido[] = [
     {
       id: 3,
+      produtoId: 3,
       sku: "PA-COF-002",
       descricao: "Pastilha Freio Diant. Cerâmica Cofap",
+      marca: "Cofap",
+      referenciaFabricante: "COF-002",
       qtdComprador: 20,
       qtdTransferencia: 4,
       qtdModelo: 20,
@@ -52,8 +61,11 @@ function criarPedidosDemo(tenantId: string): { pedidos: Pedido[]; itensPorPedido
     },
     {
       id: 4,
+      produtoId: 4,
       sku: "PA-COF-003",
       descricao: "Pastilha Freio Traseira Cofap",
+      marca: "Cofap",
+      referenciaFabricante: "COF-003",
       qtdComprador: 10,
       qtdTransferencia: 0,
       qtdModelo: 10,
@@ -65,8 +77,11 @@ function criarPedidosDemo(tenantId: string): { pedidos: Pedido[]; itensPorPedido
   const itens1003: ItemPedido[] = [
     {
       id: 5,
+      produtoId: 5,
       sku: "DS-VAR-003",
       descricao: "Disco Freio Ventilado BD0540 Varga",
+      marca: "Varga",
+      referenciaFabricante: "BD0540",
       qtdComprador: 8,
       qtdTransferencia: 2,
       qtdModelo: 10,
@@ -78,8 +93,11 @@ function criarPedidosDemo(tenantId: string): { pedidos: Pedido[]; itensPorPedido
   const itens1004: ItemPedido[] = [
     {
       id: 6,
+      produtoId: 6,
       sku: "CX-DIR-004",
       descricao: "Caixa Direção Hidráulica Reman. TRW",
+      marca: "TRW",
+      referenciaFabricante: "TRW-500",
       qtdComprador: 4,
       qtdTransferencia: 0,
       qtdModelo: 4,
@@ -88,8 +106,11 @@ function criarPedidosDemo(tenantId: string): { pedidos: Pedido[]; itensPorPedido
     },
     {
       id: 7,
+      produtoId: 7,
       sku: "BD-DIR-005",
       descricao: "Bomba Direção Hidráulica ZF",
+      marca: "ZF",
+      referenciaFabricante: "ZF-300",
       qtdComprador: 4,
       qtdTransferencia: 0,
       qtdModelo: 3,

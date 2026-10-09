@@ -13,6 +13,10 @@ import {
   UserCheck,
   Building2,
   FileSpreadsheet,
+  FileText,
+  Tag,
+  Hash,
+  Check,
 } from "lucide-react";
 import { Pedido, ItemPedido } from "@/lib/pedidos/tipos";
 import { cn } from "@/lib/utils";
@@ -23,10 +27,40 @@ interface SupplierInfo {
   email?: string;
 }
 
+const MARCAS_POPULARES = [
+  "Gates",
+  "Dayco",
+  "Contitech",
+  "Bosch",
+  "Cofap",
+  "Nakata",
+  "Monroe",
+  "TRW",
+  "SABÓ",
+  "Fremax",
+  "Varga",
+  "Magneti Marelli",
+  "SKF",
+  "NGK",
+  "Valeo",
+  "Fras-le",
+] as const;
+
+interface CatalogProductInfo {
+  id: number;
+  sku: string;
+  descricao: string;
+  marca: string;
+  fabricante: string;
+  referencia: string;
+}
+
 interface HubStatus {
   portalOrigin: string;
   applicationId: string;
   suppliers: SupplierInfo[];
+  units?: Record<string, string>;
+  catalogProducts?: CatalogProductInfo[];
   submissions: { externalId: string; quotationId?: string; state: string }[];
   drafts: { id: string; supplierExternalId: string; destinationId: string; state: string; items: Record<string, string>[] }[];
 }
@@ -35,6 +69,15 @@ interface ItemComFilial extends ItemPedido {
   filialId: number;
   filialNome: string;
   pedidoId: number;
+}
+
+interface EdicaoLinhaPedido {
+  quantidade: number;
+  description: string;
+  requested_reference: string;
+  requested_brand: string;
+  accepted_brands: string;
+  observacao?: string;
 }
 
 interface ModalCotacaoCompiladaHubProps {
@@ -61,6 +104,16 @@ function resolverNomeExibicao(f: { id: string; name: string; email?: string }): 
   return f.name || `Fornecedor ${idLimpo || f.id}`;
 }
 
+function extrairQuantidadeItem(it: ItemPedido): number {
+  if (Number.isSafeInteger(it.qtdComprador) && it.qtdComprador !== null && it.qtdComprador !== undefined) {
+    return Math.max(0, it.qtdComprador);
+  }
+  if (Number.isSafeInteger(it.quantidade) && it.quantidade !== null && it.quantidade !== undefined) {
+    return Math.max(0, it.quantidade);
+  }
+  return 0;
+}
+
 export function ModalCotacaoCompiladaHub({
   pedidos,
   nomesFiliais,
@@ -71,6 +124,13 @@ export function ModalCotacaoCompiladaHub({
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
   const [hubStatus, setHubStatus] = useState<HubStatus | null>(null);
   const [itensCompilados, setItensCompilados] = useState<ItemComFilial[]>([]);
+
+  // Edição de itens e observações
+  const [edicoesLinhas, setEdicoesLinhas] = useState<Record<string, EdicaoLinhaPedido>>({});
+  const [linhaEmEdicao, setLinhaEmEdicao] = useState<string | null>(null);
+  const [skuEmEdicao, setSkuEmEdicao] = useState<string | null>(null);
+  const [observacoesGerais, setObservacoesGerais] = useState("");
+  const attemptRef = React.useRef<{ fingerprint: string; externalId: string; deadline: string }>();
 
   // Fornecedores e e-mails
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
@@ -136,6 +196,138 @@ export function ModalCotacaoCompiladaHub({
       ativo = false;
     };
   }, [pedidos, nomesFiliais]);
+
+  // Função pura para resolver o produto no catálogo com ID real e dados de fabricante
+  const obterProdutoResolvido = React.useCallback((it: ItemComFilial) => {
+    // 1. Tenta por produtoId exato
+    if (it.produtoId && it.produtoId > 0 && hubStatus?.catalogProducts) {
+      const cat = hubStatus.catalogProducts.find((cp) => cp.id === it.produtoId);
+      if (cat) {
+        return {
+          produtoId: cat.id,
+          sku: cat.sku || it.sku || `PROD-${cat.id}`,
+          descricao: it.descricao || cat.descricao || "Sem descrição",
+          marca: cat.marca || it.marca || "",
+          referencia: cat.referencia || it.referenciaFabricante || "",
+        };
+      }
+    }
+    // 2. Tenta por SKU no catálogo (exato ou sem zeros à esquerda)
+    if (it.sku && hubStatus?.catalogProducts) {
+      const skuLimpo = it.sku.trim().toUpperCase();
+      const skuSemZeros = skuLimpo.replace(/^0+/, "");
+      const cat = hubStatus.catalogProducts.find((cp) => {
+        const cpSku = cp.sku.trim().toUpperCase();
+        const cpSkuSemZeros = cpSku.replace(/^0+/, "");
+        return (
+          cpSku === skuLimpo ||
+          (skuSemZeros.length > 0 && cpSkuSemZeros === skuSemZeros) ||
+          (skuSemZeros.length > 0 && cpSku === skuSemZeros)
+        );
+      });
+      if (cat) {
+        return {
+          produtoId: cat.id,
+          sku: cat.sku,
+          descricao: it.descricao || cat.descricao,
+          marca: cat.marca || it.marca || "",
+          referencia: cat.referencia || it.referenciaFabricante || "",
+        };
+      }
+    }
+
+    // 3. Fallback seguro se ainda não estiver no catálogo carregado
+    const idNum =
+      it.produtoId && it.produtoId > 0
+        ? it.produtoId
+        : it.id > 0
+        ? it.id
+        : Number(it.sku?.replace(/\D/g, "")) || 0;
+
+    return {
+      produtoId: idNum,
+      sku: it.sku || `PROD-${idNum}`,
+      descricao: it.descricao || "Sem descrição",
+      marca: it.marca || "",
+      referencia: it.referenciaFabricante || "",
+    };
+  }, [hubStatus]);
+
+  // Inicializa e atualiza o estado de edição quando itens ou catálogo forem carregados
+  useEffect(() => {
+    if (!itensCompilados.length) return;
+    setEdicoesLinhas((prev) => {
+      const next = { ...prev };
+      for (const it of itensCompilados) {
+        const key = `${it.pedidoId}-${it.id}`;
+        const prod = obterProdutoResolvido(it);
+        const qtdOriginal = extrairQuantidadeItem(it);
+        const atual = next[key];
+        next[key] = {
+          quantidade: atual ? atual.quantidade : qtdOriginal,
+          description: atual?.description || it.descricao || prod?.descricao || "",
+          requested_reference:
+            atual?.requested_reference || it.referenciaFabricante || prod?.referencia || "",
+          requested_brand:
+            atual?.requested_brand || it.marca || prod?.marca || "",
+          accepted_brands: atual?.accepted_brands || "",
+          observacao: atual?.observacao || "",
+        };
+      }
+      return next;
+    });
+  }, [itensCompilados, hubStatus?.catalogProducts, obterProdutoResolvido]);
+
+  // Atualiza marca, referência, alternativas ou observação para todas as filiais de um produto
+  const atualizarAtributosPorSku = React.useCallback(
+    (sku: string, campos: Partial<EdicaoLinhaPedido>, itensDoSku: { key: string }[]) => {
+      setEdicoesLinhas((prev) => {
+        const next = { ...prev };
+        for (const { key } of itensDoSku) {
+          if (next[key]) {
+            next[key] = {
+              ...next[key],
+              ...campos,
+            };
+          }
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  // Adiciona ou remove marca alternativa aceita com um único clique
+  const toggleMarcaAlternativa = React.useCallback(
+    (sku: string, marca: string, itensDoSku: { key: string }[]) => {
+      const primeiraKey = itensDoSku[0]?.key;
+      const edAtual = primeiraKey ? edicoesLinhas[primeiraKey] : undefined;
+      const listaAtual = edAtual?.accepted_brands
+        ? edAtual.accepted_brands.split(",").map((b) => b.trim()).filter(Boolean)
+        : [];
+
+      const jaTem = listaAtual.some((m) => m.toLowerCase() === marca.toLowerCase());
+      const novaLista = jaTem
+        ? listaAtual.filter((m) => m.toLowerCase() !== marca.toLowerCase())
+        : [...listaAtual, marca];
+
+      atualizarAtributosPorSku(sku, { accepted_brands: novaLista.join(", ") }, itensDoSku);
+    },
+    [edicoesLinhas, atualizarAtributosPorSku]
+  );
+
+  // Verificação de segurança: itens que não puderam ser homologados no catálogo
+  const itensNaoResolvidos = useMemo(() => {
+    if (carregando || !itensCompilados.length) return [];
+    const naoEncontrados: string[] = [];
+    for (const it of itensCompilados) {
+      const res = obterProdutoResolvido(it);
+      if (!res) {
+        naoEncontrados.push(it.sku || `Item #${it.id}`);
+      }
+    }
+    return Array.from(new Set(naoEncontrados));
+  }, [itensCompilados, obterProdutoResolvido, carregando]);
 
   // Lista de fornecedores associados aos pedidos
   const fornecedoresDosPedidos = useMemo(() => {
@@ -255,19 +447,28 @@ export function ModalCotacaoCompiladaHub({
       });
   }, [selectedSuppliers, todosFornecedores, supplierEmails]);
 
-  // Agrupamento consolidado dos itens por SKU
+  // Agrupamento consolidado dos itens por SKU (considerando as edições)
   const itensConsolidados = useMemo(() => {
     const mapa = new Map<string, {
       sku: string;
       descricao: string;
       quantidadeTotal: number;
-      porLoja: { filialId: number; filialNome: string; quantidade: number }[];
+      porLoja: {
+        key: string;
+        itemOriginal: ItemComFilial;
+        filialId: number;
+        filialNome: string;
+        quantidade: number;
+      }[];
     }>();
 
     for (const it of itensCompilados) {
-      const sku = it.sku || `PROD-${it.id}`;
-      const qtd = it.qtdComprador || it.quantidade || 1;
-      const desc = it.descricao || "Item sem descrição";
+      const prod = obterProdutoResolvido(it);
+      const sku = prod?.sku || it.sku || `PROD-${it.id}`;
+      const desc = it.descricao || prod?.descricao || "Item sem descrição";
+      const key = `${it.pedidoId}-${it.id}`;
+      const ed = edicoesLinhas[key];
+      const qtd = ed !== undefined ? ed.quantidade : extrairQuantidadeItem(it);
 
       if (!mapa.has(sku)) {
         mapa.set(sku, {
@@ -281,6 +482,8 @@ export function ModalCotacaoCompiladaHub({
       const registro = mapa.get(sku)!;
       registro.quantidadeTotal += qtd;
       registro.porLoja.push({
+        key,
+        itemOriginal: it,
         filialId: it.filialId,
         filialNome: it.filialNome,
         quantidade: qtd,
@@ -288,12 +491,16 @@ export function ModalCotacaoCompiladaHub({
     }
 
     return Array.from(mapa.values());
-  }, [itensCompilados]);
+  }, [itensCompilados, edicoesLinhas, obterProdutoResolvido]);
 
-  // Totalizadores
+  // Totalizadores sem converter 0 em 1
   const totalLojas = new Set(pedidos.map((p) => p.filialId ?? 1)).size;
   const totalValorEstimado = itensCompilados.reduce((s, i) => s + (i.valorTotal || 0), 0);
-  const totalUnidades = itensCompilados.reduce((s, i) => s + (i.qtdComprador || i.quantidade || 1), 0);
+  const totalUnidades = itensCompilados.reduce((s, it) => {
+    const key = `${it.pedidoId}-${it.id}`;
+    const ed = edicoesLinhas[key];
+    return s + (ed !== undefined ? ed.quantidade : extrairQuantidadeItem(it));
+  }, 0);
 
   // Desmarcar fornecedores sem e-mail
   const desmarcarSemEmail = () => {
@@ -301,8 +508,13 @@ export function ModalCotacaoCompiladaHub({
     setSelectedSuppliers((prev) => prev.filter((id) => !idsSemEmail.has(id)));
   };
 
-  // Disparo da cotação compilada
+  // Disparo da cotação compilada com validação rígida de produto e idempotência
   const enviarCotacao = async () => {
+    if (itensNaoResolvidos.length > 0) {
+      setFeedbackEnvio(`Não é possível enviar a cotação: os seguintes itens não foram encontrados no catálogo de produtos: ${itensNaoResolvidos.join(", ")}.`);
+      return;
+    }
+
     if (fornecedoresFaltandoEmail.length > 0) {
       setFeedbackEnvio(`Preencha o e-mail ou desmarque os fornecedores sem e-mail: ${fornecedoresFaltandoEmail.map((f) => f.name).join(", ")}`);
       return;
@@ -339,26 +551,68 @@ export function ModalCotacaoCompiladaHub({
         });
       }
 
-      // 3. Mapear itens para envio
-      // Cada item no Cotação Hub possui destination_external_id apontando para sua respectiva loja
-      const itemsPayload = itensCompilados.map((it, idx) => {
-        const skuNum = Number(it.sku?.replace(/\D/g, "")) || (it.id > 0 ? it.id : idx + 101);
-        const qtd = it.qtdComprador || it.quantidade || 1;
+      // 3. Mapear itens para envio utilizando IDs reais e permitindo customizações confirmadas
+      const itemsPayload = itensCompilados.map((it) => {
+        const prod = obterProdutoResolvido(it);
+        if (!prod) {
+          throw new Error(`Item ${it.sku || it.id} não possui produto homologado no catálogo.`);
+        }
+
+        const key = `${it.pedidoId}-${it.id}`;
+        const ed = edicoesLinhas[key] ?? {
+          quantidade: extrairQuantidadeItem(it),
+          description: it.descricao || prod.descricao,
+          requested_reference: it.referenciaFabricante || prod.referencia,
+          requested_brand: it.marca || prod.marca,
+          accepted_brands: "",
+        };
+
+        const acceptedList = ed.accepted_brands
+          ? ed.accepted_brands.split(",").map(b => b.trim()).filter(Boolean)
+          : [];
+
+        const qtd = Math.max(1, Number(ed.quantidade) || extrairQuantidadeItem(it) || 1);
+
+        let descFinal = (ed.description && ed.description.trim()) ? ed.description.trim() : (it.descricao || prod.descricao);
+        if (ed.observacao && ed.observacao.trim()) {
+          descFinal = `${descFinal} | Obs: ${ed.observacao.trim()}`;
+        }
+        if (observacoesGerais.trim()) {
+          descFinal = `${descFinal} [Obs Geral: ${observacoesGerais.trim()}]`;
+        }
+        if (descFinal.length > 500) {
+          descFinal = descFinal.slice(0, 500);
+        }
 
         return {
-          produtoId: skuNum,
+          produtoId: prod.produtoId,
           quantity: String(qtd),
           filialId: it.filialId,
-          description: it.descricao || `Item ${it.sku}`,
+          description: descFinal,
+          ...(ed.requested_reference.trim() ? { requested_reference: ed.requested_reference.trim() } : {}),
+          ...(ed.requested_brand.trim() ? { requested_brand: ed.requested_brand.trim() } : {}),
+          ...(acceptedList.length > 0 ? { accepted_brands: acceptedList } : {}),
         };
       });
 
-      const externalId = crypto.randomUUID();
-      const deadline = new Date(Date.now() + 24 * 3600_000).toISOString();
+      // Impede envios duplicados com fingerprint e preserva externalId em retentativas
+      const fingerprint = JSON.stringify({
+        pedidoIds: pedidos.map(p => p.id).sort(),
+        supplierIds: [...selectedSuppliers].sort(),
+        items: itemsPayload.map(i => ({ p: i.produtoId, q: i.quantity, f: i.filialId, r: i.requested_reference, b: i.requested_brand, ab: i.accepted_brands })),
+      });
+
+      if (attemptRef.current?.fingerprint !== fingerprint) {
+        attemptRef.current = {
+          fingerprint,
+          externalId: crypto.randomUUID(),
+          deadline: new Date(Date.now() + 24 * 3600_000).toISOString(),
+        };
+      }
 
       const payload = {
-        externalId,
-        deadline,
+        externalId: attemptRef.current.externalId,
+        deadline: attemptRef.current.deadline,
         pedidoIds: pedidos.map((p) => p.id),
         supplierIds: [...selectedSuppliers].sort(),
         suppliersData,
@@ -378,7 +632,7 @@ export function ModalCotacaoCompiladaHub({
         throw new Error(resultado?.erro || "Falha na comunicação com o Cotação Hub.");
       }
 
-      setCotacaoEnviadaId(resultado?.quotationId || externalId);
+      setCotacaoEnviadaId(resultado?.quotationId || attemptRef.current.externalId);
       onSucesso(`Cotação compilada disparada com sucesso para ${selectedSuppliers.length} fornecedor(es)!`);
     } catch (err) {
       setFeedbackEnvio(err instanceof Error ? err.message : "Erro desconhecido ao enviar cotação.");
@@ -500,6 +754,22 @@ export function ModalCotacaoCompiladaHub({
                 </div>
               )}
 
+              {/* Alerta bloqueante para itens não homologados no catálogo */}
+              {itensNaoResolvidos.length > 0 && (
+                <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900 flex items-start gap-2.5 shadow-xs">
+                  <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-rose-950">
+                      Itens sem homologação no catálogo identificados ({itensNaoResolvidos.length}):
+                    </span>{" "}
+                    <span className="font-mono text-rose-800">{itensNaoResolvidos.join(", ")}</span>
+                    <p className="text-[11px] text-rose-700 mt-1">
+                      Para manter a integridade dos pedidos multi-loja e do catálogo, o envio foi travado. Cadastre os itens no catálogo antes de disparar.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Cards de Resumo da Compilação */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3">
@@ -553,7 +823,7 @@ export function ModalCotacaoCompiladaHub({
                 </div>
               </div>
 
-              {/* Sanfona / Lista de Itens Compilados por Loja */}
+              {/* Sanfona / Lista de Itens Compilados por Loja com Edição */}
               <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-xs">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
@@ -561,32 +831,275 @@ export function ModalCotacaoCompiladaHub({
                     Itens Consolidados para Cotação ({itensConsolidados.length} produtos)
                   </h3>
                   <span className="text-[11px] text-slate-500">
-                    O Cotação Hub enviará as quantidades discriminadas para cada filial de entrega
+                    Discriminação e edição por filial de entrega
                   </span>
                 </div>
 
-                <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/40 text-xs divide-y divide-slate-100">
-                  {itensConsolidados.map((item) => (
-                    <div key={item.sku} className="p-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 bg-white">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-bold text-slate-900">{item.sku}</span>
-                          <span className="truncate text-slate-700 font-medium">{item.descricao}</span>
-                        </div>
-                        <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-slate-500">
-                          {item.porLoja.map((l, idx) => (
-                            <span key={idx} className="rounded bg-slate-100 px-1.5 py-0.2 border border-slate-200">
-                              {l.filialNome}: <strong className="text-slate-800">{l.quantidade} un</strong>
+                <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/40 text-xs divide-y divide-slate-100">
+                  {itensConsolidados.map((item) => {
+                    const primeiraLoja = item.porLoja[0];
+                    const edPrincipal = (primeiraLoja && edicoesLinhas[primeiraLoja.key]) ?? {
+                      quantidade: item.quantidadeTotal,
+                      description: item.descricao,
+                      requested_reference: "",
+                      requested_brand: "",
+                      accepted_brands: "",
+                      observacao: "",
+                    };
+                    const prodResolvido = primeiraLoja ? obterProdutoResolvido(primeiraLoja.itemOriginal) : undefined;
+                    const marcaExibida = edPrincipal.requested_brand || prodResolvido?.marca || "";
+                    const refExibida = edPrincipal.requested_reference || prodResolvido?.referencia || "";
+                    const aceitasExibidas = edPrincipal.accepted_brands || "";
+                    const isExpanded = skuEmEdicao === item.sku;
+
+                    return (
+                      <div key={item.sku} className="p-3 bg-white space-y-2.5 transition-colors">
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono font-bold text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded text-[11px] border border-slate-200">
+                                {item.sku}
+                              </span>
+                              <span className="text-slate-800 font-semibold">{item.descricao}</span>
+                            </div>
+
+                            {/* Badges de Atributos Críticos: Marca, Ref, Aceitas e Obs */}
+                            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                              {marcaExibida ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-blue-50 text-blue-800 border border-blue-200">
+                                  <Tag className="h-3 w-3 text-blue-600" />
+                                  Marca: <strong>{marcaExibida}</strong>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                  ⚠️ Marca não informada
+                                </span>
+                              )}
+
+                              {refExibida ? (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-800 border border-slate-300">
+                                  <Hash className="h-3 w-3 text-slate-600" />
+                                  Ref: <strong>{refExibida}</strong>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                  ⚠️ Ref. não informada
+                                </span>
+                              )}
+
+                              {aceitasExibidas && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-purple-50 text-purple-800 border border-purple-200">
+                                  <Check className="h-3 w-3 text-purple-600" />
+                                  Aceita: <strong>{aceitasExibidas}</strong>
+                                </span>
+                              )}
+
+                              {edPrincipal.observacao && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  💬 Obs: <strong>{edPrincipal.observacao}</strong>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2.5 shrink-0 sm:pt-0.5">
+                            <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200 text-xs">
+                              Total: {item.quantidadeTotal} un
                             </span>
-                          ))}
+                            <button
+                              type="button"
+                              onClick={() => setSkuEmEdicao(isExpanded ? null : item.sku)}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold transition-colors ${
+                                isExpanded
+                                  ? "bg-slate-200 text-slate-800 hover:bg-slate-300"
+                                  : "bg-blue-600 text-white hover:bg-blue-700 shadow-xs"
+                              }`}
+                            >
+                              {isExpanded ? "✕ Fechar" : "✏️ Ajustar Marca / Ref. / Marcas Aceitas"}
+                            </button>
+                          </div>
                         </div>
+
+                        {/* Painel de Edição Expandido do SKU */}
+                        {isExpanded && (
+                          <div className="mt-2.5 rounded-lg border border-blue-200 bg-blue-50/30 p-3 space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                  Marca Solicitada (Preferencial)
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="Ex: Gates, Bosch, Dayco..."
+                                  value={edPrincipal.requested_brand}
+                                  onChange={(e) =>
+                                    atualizarAtributosPorSku(item.sku, { requested_brand: e.target.value }, item.porLoja)
+                                  }
+                                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                  Referência do Fabricante / Código de Fábrica
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="Ex: K015433XS, 10098, CT488..."
+                                  value={edPrincipal.requested_reference}
+                                  onChange={(e) =>
+                                    atualizarAtributosPorSku(item.sku, { requested_reference: e.target.value }, item.porLoja)
+                                  }
+                                  className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Seleção de Múltiplas Marcas Alternativas Aceitas */}
+                            <div className="rounded-md border border-slate-200 bg-white p-2.5 space-y-1.5">
+                              <label className="block text-[11px] font-semibold text-slate-700">
+                                Marcas Alternativas Aceitas (clique para marcar ou desmarcar):
+                              </label>
+                              <div className="flex flex-wrap gap-1.5">
+                                {MARCAS_POPULARES.map((marca) => {
+                                  const list = edPrincipal.accepted_brands
+                                    ? edPrincipal.accepted_brands.split(",").map((s) => s.trim().toLowerCase())
+                                    : [];
+                                  const selecionada = list.includes(marca.toLowerCase());
+                                  return (
+                                    <button
+                                      key={marca}
+                                      type="button"
+                                      onClick={() => toggleMarcaAlternativa(item.sku, marca, item.porLoja)}
+                                      className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
+                                        selecionada
+                                          ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                          : "bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100"
+                                      }`}
+                                    >
+                                      {selecionada ? `✓ ${marca}` : `+ ${marca}`}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Outras marcas alternativas (separadas por vírgula)..."
+                                value={edPrincipal.accepted_brands}
+                                onChange={(e) =>
+                                  atualizarAtributosPorSku(item.sku, { accepted_brands: e.target.value }, item.porLoja)
+                                }
+                                className="w-full px-2.5 py-1 rounded border border-slate-300 text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              />
+                            </div>
+
+                            {/* Observação comercial do item */}
+                            <div>
+                              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                                Observação Comercial do Item (específico para os fornecedores)
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ex: Produto de primeira linha, homologado montadora, garantia 1 ano..."
+                                value={edPrincipal.observacao || ""}
+                                onChange={(e) =>
+                                  atualizarAtributosPorSku(item.sku, { observacao: e.target.value }, item.porLoja)
+                                }
+                                className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 text-xs bg-white text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              />
+                            </div>
+
+                            {/* Discriminação por Filial */}
+                            <div className="pt-2 border-t border-blue-200/60 space-y-1.5">
+                              <span className="text-[11px] font-semibold text-slate-700 block">
+                                Quantidade e Destino por Filial:
+                              </span>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {item.porLoja.map((l) => {
+                                  const edLoja = edicoesLinhas[l.key] ?? {
+                                    quantidade: l.quantidade,
+                                    description: item.descricao,
+                                    requested_reference: edPrincipal.requested_reference,
+                                    requested_brand: edPrincipal.requested_brand,
+                                    accepted_brands: edPrincipal.accepted_brands,
+                                    observacao: edPrincipal.observacao,
+                                  };
+                                  const prod = obterProdutoResolvido(l.itemOriginal);
+                                  const prodId = prod?.produtoId;
+                                  const unidade = (prodId && hubStatus?.units?.[String(prodId)]) || hubStatus?.units?.["default"] || "UN";
+
+                                  return (
+                                    <div
+                                      key={l.key}
+                                      className="flex items-center justify-between p-2 rounded bg-white border border-slate-200 text-xs"
+                                    >
+                                      <span className="font-medium text-slate-800 truncate mr-2">{l.filialNome}</span>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <input
+                                          type="number"
+                                          min="1"
+                                          value={edLoja.quantidade}
+                                          onChange={(e) => {
+                                            const val = Math.max(1, parseInt(e.target.value, 10) || 1);
+                                            setEdicoesLinhas((prev) => ({
+                                              ...prev,
+                                              [l.key]: { ...prev[l.key], quantidade: val },
+                                            }));
+                                          }}
+                                          className="w-16 px-2 py-0.5 rounded border border-slate-300 text-xs text-center font-bold text-blue-700 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                        />
+                                        <span className="text-[11px] font-semibold text-slate-500">{unidade}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Visualização compacta das filiais quando recolhido */}
+                        {!isExpanded && (
+                          <div className="flex flex-wrap gap-2 pl-2 border-l-2 border-blue-200 text-[11px] text-slate-600">
+                            {item.porLoja.map((l) => {
+                              const edLoja = edicoesLinhas[l.key];
+                              const qtd = edLoja !== undefined ? edLoja.quantidade : l.quantidade;
+                              const prod = obterProdutoResolvido(l.itemOriginal);
+                              const prodId = prod?.produtoId;
+                              const unidade = (prodId && hubStatus?.units?.[String(prodId)]) || hubStatus?.units?.["default"] || "UN";
+                              return (
+                                <span key={l.key} className="bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                                  <strong>{l.filialNome}</strong>: {qtd} {unidade}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                      <div className="shrink-0 text-right font-mono font-bold text-blue-700 sm:pl-3">
-                        Total: {item.quantidadeTotal} un
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+              </div>
+
+              {/* Bloco de Observações Gerais da Cotação */}
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <FileText className="h-4 w-4 text-blue-600" />
+                  <label htmlFor="obs-gerais" className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                    Observações Gerais da Cotação (opcional)
+                  </label>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Instruções comerciais para os fornecedores: condições de pagamento desejadas, prazo de entrega ou faturamento.
+                </p>
+                <textarea
+                  id="obs-gerais"
+                  rows={2}
+                  value={observacoesGerais}
+                  onChange={(e) => setObservacoesGerais(e.target.value)}
+                  placeholder="Ex: Pagamento 28/35/42 ddl. Frete CIF. Entregas até as 17h."
+                  className="w-full rounded-lg border border-slate-300 bg-slate-50/50 p-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
               </div>
 
               {/* Seleção de Fornecedores */}
@@ -737,7 +1250,12 @@ export function ModalCotacaoCompiladaHub({
         {!cotacaoEnviadaId && (
           <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-3">
             <div className="text-xs text-slate-500">
-              {fornecedoresFaltandoEmail.length > 0 ? (
+              {itensNaoResolvidos.length > 0 ? (
+                <span className="text-rose-700 font-semibold flex items-center gap-1">
+                  <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+                  {itensNaoResolvidos.length} item(ns) não homologado(s) no catálogo.
+                </span>
+              ) : fornecedoresFaltandoEmail.length > 0 ? (
                 <span className="text-amber-800 font-semibold flex items-center gap-1">
                   <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
                   {fornecedoresFaltandoEmail.length} fornecedor(es) precisa(m) de e-mail.
@@ -770,7 +1288,8 @@ export function ModalCotacaoCompiladaHub({
                   carregando ||
                   selectedSuppliers.length === 0 ||
                   fornecedoresFaltandoEmail.length > 0 ||
-                  itensConsolidados.length === 0
+                  itensConsolidados.length === 0 ||
+                  itensNaoResolvidos.length > 0
                 }
                 className={cn(
                   "flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold text-white shadow-sm transition-all",
@@ -778,12 +1297,15 @@ export function ModalCotacaoCompiladaHub({
                   carregando ||
                   selectedSuppliers.length === 0 ||
                   fornecedoresFaltandoEmail.length > 0 ||
-                  itensConsolidados.length === 0
+                  itensConsolidados.length === 0 ||
+                  itensNaoResolvidos.length > 0
                     ? "bg-slate-400 cursor-not-allowed opacity-60"
                     : "bg-blue-600 hover:bg-blue-700 shadow-blue-500/20"
                 )}
                 title={
-                  fornecedoresFaltandoEmail.length > 0
+                  itensNaoResolvidos.length > 0
+                    ? `Itens não homologados no catálogo: ${itensNaoResolvidos.join(", ")}`
+                    : fornecedoresFaltandoEmail.length > 0
                     ? "Preencha ou desmarque os fornecedores sem e-mail para prosseguir"
                     : selectedSuppliers.length === 0
                     ? "Selecione ao menos 1 fornecedor"

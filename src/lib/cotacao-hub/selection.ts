@@ -15,6 +15,9 @@ export const selectionSchema = z.object({
     quantity: z.string().regex(/^[1-9][0-9]{0,13}$/),
     filialId: z.number().int().positive().safe().optional(),
     description: z.string().max(500).optional(),
+    requested_reference: z.string().max(100).optional(),
+    requested_brand: z.string().max(100).optional(),
+    accepted_brands: z.array(z.string().min(1).max(100)).max(20).optional(),
   }).strict()).min(1).max(500),
   destinations: z.array(z.object({
     external_id: z.string().min(1),
@@ -90,7 +93,15 @@ export function createSnapshot(
   const seen = new Set<string>();
   const activeDestinations = new Map<string, typeof cfg.destinations[0]>();
 
-  const items = selection.items.map(({ produtoId, quantity, filialId: itemFilialId, description: customDesc }) => {
+  const items = selection.items.map(({
+    produtoId,
+    quantity,
+    filialId: itemFilialId,
+    description: customDesc,
+    requested_reference: customRef,
+    requested_brand: customBrand,
+    accepted_brands: customAcceptedBrands,
+  }) => {
     const effectiveFilialId = itemFilialId ?? selection.filialId;
     if (!effectiveFilialId) throw new Error("Item sem loja de destino definida.");
 
@@ -117,14 +128,30 @@ export function createSnapshot(
       : (Object.hasOwn(cfg.units, "default") ? cfg.units["default"] : undefined);
     if (!unit) throw new Error(`Produto ${produtoId} sem unidade homologada.`);
 
+    // Marca solicitada: usa o ajuste confirmado se informado; senão preserva o catálogo
+    const brand = customBrand !== undefined
+      ? (customBrand.trim() || undefined)
+      : (product.marca?.trim() || undefined);
+
+    // Referência do fabricante: usa o ajuste confirmado se informado; senão preserva o catálogo
+    const reference = customRef !== undefined
+      ? (customRef.trim() || undefined)
+      : (product.referenciaFabricante?.trim() || undefined);
+
+    // Marcas alternativas aceitas
+    const acceptedBrands = customAcceptedBrands && customAcceptedBrands.length > 0
+      ? customAcceptedBrands.map(b => b.trim()).filter(Boolean)
+      : undefined;
+
     return {
       external_id: JSON.stringify([String(product.id), destination.external_id]),
-      description: customDesc || product.descricao,
+      description: (customDesc && customDesc.trim()) ? customDesc.trim() : product.descricao,
       requested_quantity: quantity,
       requested_unit: unit,
       destination_external_id: destination.external_id,
-      ...(product.marca ? { requested_brand: product.marca } : {}),
-      ...(product.referenciaFabricante ? { requested_reference: product.referenciaFabricante } : {}),
+      ...(brand ? { requested_brand: brand } : {}),
+      ...(reference ? { requested_reference: reference } : {}),
+      ...(acceptedBrands && acceptedBrands.length > 0 ? { accepted_brands: acceptedBrands } : {}),
     };
   });
 

@@ -10,6 +10,7 @@ export interface ConnectorConfig {
 export interface QuoteItem {
   external_id: string; description: string; requested_quantity: string; requested_unit: string;
   destination_external_id: string; requested_brand?: string; requested_reference?: string;
+  accepted_brands?: string[];
 }
 export interface Snapshot {
   externalId: string; actorId: string; deadline: string; items: QuoteItem[];
