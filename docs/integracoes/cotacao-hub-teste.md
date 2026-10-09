@@ -1,24 +1,14 @@
-# Integração Cotação Hub — branch de teste
+# Integração Cotação Hub — laboratório e produção
 
-Esta branch contém o conector sintético do Insight Compras para o Cotação Hub.
-Ela implementa seleção no cockpit, envio HTTP OAuth, cadastro idempotente de
-fornecedores, cotação, abertura, convites e recebimento de decisão assinada em
-rascunhos agrupados por fornecedor e destino.
+A integração tem dois regimes, separados no código e na configuração:
 
-O laboratório exige `INSIGHT_HUB_TEST_MODE=synthetic-local` e um arquivo JSON
-privado em `INSIGHT_HUB_TEST_CONFIG` com caminho absoluto. A configuração aceita
-somente API e portal em localhost, ledger próprio e credenciais sintéticas.
-`NODE_ENV=production` e Vercel são recusados. O widget fica indisponível sem
-essa configuração; não há fallback para banco compartilhado ou Excel.
+- **Produção** (`mode: "production"`): conexão real e explícita, HTTPS, credenciais privadas via `INSIGHT_HUB_CONFIG_JSON` (Vercel) e ledger durável em Supabase (tabelas de `20261009120000_cotacao_hub_ledger.sql`). Falha de comunicação é falha: não existe resposta simulada, "Enviada" fabricada nem credencial/cadastro padrão embutido.
+- **Laboratório** (`mode: "synthetic-local"`): arquivo JSON privado em `INSIGHT_HUB_TEST_CONFIG` com caminho absoluto, API em localhost, ledger próprio em arquivo com lock, e recusa em `NODE_ENV=production` e Vercel.
 
-Para testar a jornada integrada, use o comando `node test/e2e/connections-run.mjs`
-na branch de teste do Cotação Hub. O comando inicia Hub, PostgreSQL, SMTP e
-receptores HTTPS descartáveis e importa este checkout. Consulte o manual do
-Hub em `docs/operations/test-connections.md`.
+A jornada integrada do laboratório é a `node test/e2e/connections-run.mjs` na branch de teste do Cotação Hub (`codex/test-conexoes-insight-diario`): ela sobe Hub, PostgreSQL, SMTP e receptores HTTPS descartáveis, semeia a instalação buyer e importa `src/lib/cotacao-hub/connector.ts` deste checkout via `createConnector(config, { env })`. Consulte `docs/operations/test-connections.md` do Hub.
 
-Validação local desta branch: `npm run typecheck` e `npm test -- --run
-tests/cotacao-hub`.
+O conector continua expondo `submit` / `receive` / `retryInbox` / `status` com o contrato original da jornada (quantidade inteira positiva em string decimal, itens com `requested_brand`/`requested_reference`, destinos homologados, assinatura HMAC `timestamp.eventId.corpo`).
 
-Este é um artefato de teste autorizado em 08/10/2026. Não é deployment, não
-certifica SSO/autenticação real do sistema hospedeiro e não representa aprovação
-de G1.
+Validação local desta branch: `npm run typecheck` e `npm test -- --run tests/cotacao-hub`.
+
+Este artefato de teste foi autorizado em 08/10/2026 e atualizado em 09/10/2026. Não é deployment, não certifica SSO/autenticação real do sistema hospedeiro e não representa aprovação de G1.
