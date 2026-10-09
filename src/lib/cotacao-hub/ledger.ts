@@ -36,8 +36,12 @@ export class FileLedger {
         try { await output.writeFile(JSON.stringify(data)); await output.sync(); }
         finally { await output.close(); }
         await rename(temporary, file);
-        const dir = await open(directory, "r");
-        try { await dir.sync(); } finally { await dir.close(); }
+        if (process.platform !== "win32") {
+          try {
+            const dir = await open(directory, "r");
+            try { await dir.sync(); } finally { await dir.close(); }
+          } catch {}
+        }
       };
       return await fn(data, save);
     } finally { await handle.close(); await unlink(lock); }

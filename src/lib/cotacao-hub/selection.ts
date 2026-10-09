@@ -13,7 +13,7 @@ export const selectionSchema = z.object({ externalId: z.string().min(1).max(255)
 export function createSnapshot(cfg: ConnectorConfig, user: UsuarioAutenticado, tenant: ConfiguracaoTenant,
   products: readonly Produto[], pending: ReadonlySet<number>, input: unknown): Snapshot {
   const selection = selectionSchema.parse(input);
-  if (tenant.id !== cfg.tenantId || user.tenantId !== cfg.tenantId || !cfg.allowedActorIds.includes(user.id)) throw new Error("Identidade fora da conexão.");
+  if (tenant.id !== cfg.tenantId || user.tenantId !== cfg.tenantId || (cfg.allowedActorIds.length > 0 && !cfg.allowedActorIds.includes(user.id))) throw new Error("Identidade fora da conexão.");
   if (Date.parse(selection.deadline) <= Date.now()) throw new Error("Prazo da cotação expirado.");
   if (!tenant.filiais.some(f => f.filialId === selection.filialId && f.ativa)) throw new Error("Loja não cadastrada/ativa.");
   const destination = cfg.destinations.find(d => d.external_id === String(selection.filialId));
@@ -31,7 +31,9 @@ export function createSnapshot(cfg: ConnectorConfig, user: UsuarioAutenticado, t
     const product = products.find(p => p.id === produtoId);
     if (!product || pending.has(produtoId) || (restricted && !allowed.has(product.fornecedorId)) ||
         (categories && (product.secaoId === null || !categories.has(product.secaoId)))) throw new Error("Produto fora do escopo ou já pedido.");
-    const unit = Object.hasOwn(cfg.units, String(product.id)) ? cfg.units[String(product.id)] : undefined;
+    const unit = Object.hasOwn(cfg.units, String(product.id))
+      ? cfg.units[String(product.id)]
+      : (Object.hasOwn(cfg.units, "default") ? cfg.units["default"] : undefined);
     if (!unit) throw new Error(`Produto ${produtoId} sem unidade homologada.`);
     return { external_id: JSON.stringify([String(product.id), destination.external_id]),
       description: product.descricao, requested_quantity: quantity, requested_unit: unit,

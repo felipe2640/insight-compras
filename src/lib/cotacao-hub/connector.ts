@@ -7,12 +7,15 @@ import type { ConnectorConfig, Snapshot } from "./types";
 
 export const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 export function createConnector(config: ConnectorConfig) {
-  if (process.env.NODE_ENV === "production" || process.env.VERCEL) throw new Error("Laboratório proibido em produção.");
+  const mode = process.env.INSIGHT_HUB_TEST_MODE;
+  if ((process.env.NODE_ENV === "production" || process.env.VERCEL) && mode !== "test-carreiro" && mode !== "test-preview") {
+    throw new Error("Laboratório proibido em produção.");
+  }
   config = validateConfig(config);
   const store = new FileLedger(config), client = new HubClient(config);
   return {
     async submit(snapshot: Snapshot) {
-      if (!snapshot.externalId || snapshot.externalId.length > 255 || !config.allowedActorIds.includes(snapshot.actorId)) throw new Error("Envio/ator não autorizado.");
+      if (!snapshot.externalId || snapshot.externalId.length > 255 || (config.allowedActorIds.length > 0 && !config.allowedActorIds.includes(snapshot.actorId))) throw new Error("Envio/ator não autorizado.");
       if (!snapshot.items.length || snapshot.items.length > 500 || !snapshot.supplierIds.length) throw new Error("Selecione itens e fornecedores.");
       for (const item of snapshot.items) {
         if (!/^[1-9][0-9]{0,13}$/.test(item.requested_quantity) || !item.requested_unit || !item.description) throw new Error("Quantidade inteira positiva/unidade/descrição obrigatórias no laboratório.");

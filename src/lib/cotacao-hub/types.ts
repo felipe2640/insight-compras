@@ -1,7 +1,7 @@
 export interface Destination { external_id: string; name: string; address: string }
 export interface Supplier { external_id: string; legal_name: string; contacts: { name: string; email: string }[] }
 export interface ConnectorConfig {
-  mode: "synthetic-local"; tenantId: string; hubTenantId: string; sourceSystem: string;
+  mode: "synthetic-local" | "test-carreiro" | "test-preview"; tenantId: string; hubTenantId: string; sourceSystem: string;
   apiBaseUrl: string; portalOrigin: string; applicationId: string; clientId: string; clientSecret: string;
   webhookKeyId: string; webhookSecret: string; storageFile: string; buyerName: string;
   destinations: Destination[]; suppliers: Supplier[]; units: Record<string, string>;
