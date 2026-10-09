@@ -67,7 +67,7 @@ Código vigente na branch (verificação de tipos passou; **sem suítes executad
 
 ## 6. Plano de publicação do Insight
 
-**Versão exata a publicar**: `codex/test-cotacao-hub` @ **`8265061bd6abfd3b9587f3d7c6bd7739d4974245`** (preview READY `dpl_GG3mw6zUmHdQTNn9BHZbuL1PmpLj`).
+**Versão a publicar**: a ponta vigente de `codex/test-cotacao-hub` no momento da publicação — confirmar com `git ls-remote origin refs/heads/codex/test-cotao-hub` e conferir o SHA no preview READY correspondente do projeto `comprascarreiro` (auto-deploy a cada push). Referência no fechamento deste documento: `6a0c0c50f6ea37e693c3f42621d1768034b02712` (histórico: integração completa em `8265061`, docs de ativação em `6a0c0c5`).
 
 Ordem recomendada (cada etapa é bloqueadora para a seguinte):
 
