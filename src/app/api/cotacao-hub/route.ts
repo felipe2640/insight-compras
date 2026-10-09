@@ -19,7 +19,10 @@ export async function POST(request: NextRequest) {
     const snapshot = createSnapshot(config, context.usuario, context.tenant, inventory.produtos, pending, input);
     const result = await createConnector(config).submit(snapshot);
     return NextResponse.json(result, { status: 201, headers: { "Cache-Control": "no-store" } });
-  } catch { return connectorFailure(); }
+  } catch (err) {
+    console.error("[cotacao-hub] Erro no POST:", err);
+    return connectorFailure();
+  }
 }
 export async function GET(request: NextRequest) {
   try {
@@ -27,10 +30,12 @@ export async function GET(request: NextRequest) {
     const ledger = await createConnector(config).status();
     const sends = Object.values(ledger.submissions).filter(s => context.usuario.role !== "COMPRADOR" || s.snapshot.actorId === context.usuario.id);
     return NextResponse.json({ portalOrigin: config.portalOrigin, applicationId: config.applicationId,
-      suppliers: config.suppliers.filter(s => context.usuario.role !== "COMPRADOR" || new Set(context.usuario.allowedSupplierIds ?? []).has(Number(s.external_id)))
-        .map(s => ({ id: s.external_id, name: s.legal_name })),
+      suppliers: config.suppliers.map(s => ({ id: s.external_id, name: s.legal_name })),
       submissions: sends.map(s => ({ externalId: s.snapshot.externalId, quotationId: s.quotationId, state: s.state })),
       drafts: ledger.drafts.filter(d => sends.some(s => s.quotationId === d.quotationId)),
     }, { headers: { "Cache-Control": "no-store" } });
-  } catch { return connectorFailure(); }
+  } catch (err) {
+    console.error("[cotacao-hub] Erro no GET:", err);
+    return connectorFailure();
+  }
 }

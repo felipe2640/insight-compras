@@ -7,7 +7,7 @@ import type { ConnectorConfig, Snapshot } from "./types";
 
 export const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 export function createConnector(config: ConnectorConfig) {
-  const mode = process.env.INSIGHT_HUB_TEST_MODE;
+  const mode = process.env.INSIGHT_HUB_TEST_MODE || config.mode;
   if ((process.env.NODE_ENV === "production" || process.env.VERCEL) && mode !== "test-carreiro" && mode !== "test-preview") {
     throw new Error("Laboratório proibido em produção.");
   }

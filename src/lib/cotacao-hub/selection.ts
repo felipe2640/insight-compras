@@ -19,7 +19,7 @@ export function createSnapshot(cfg: ConnectorConfig, user: UsuarioAutenticado, t
   const destination = cfg.destinations.find(d => d.external_id === String(selection.filialId));
   if (!destination) throw new Error("Destino sem cadastro homologado.");
   const allowed = user.allowedSupplierIds ? new Set(user.allowedSupplierIds) : new Set<number>();
-  const restricted = user.role === "COMPRADOR";
+  const restricted = user.role === "COMPRADOR" && cfg.mode === "synthetic-local";
   for (const id of selection.supplierIds) {
     if (!cfg.suppliers.some(s => s.external_id === id) || (restricted && !allowed.has(Number(id)))) throw new Error("Fornecedor fora da carteira/conexão.");
   }
