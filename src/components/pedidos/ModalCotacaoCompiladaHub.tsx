@@ -709,7 +709,7 @@ export function ModalCotacaoCompiladaHub({
                   Cotação Enviada com Sucesso ao Cotação Hub!
                 </h3>
                 <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                  A solicitação unificada foi disparada com sucesso. Os {pedidos.length} pedidos selecionados foram avançados para o estado <strong className="text-amber-800">"Enviado"</strong>.
+                  A solicitação unificada foi disparada com sucesso ao Hub. Os {pedidos.length} pedidos permanecem no estado comercial atual — o envio da cotação fica registrado na integração, e a decisão aprovada volta como rascunho para revisão.
                 </p>
               </div>
 

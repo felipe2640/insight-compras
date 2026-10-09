@@ -12,6 +12,7 @@ import {
   CapacidadeCotacoesERP,
   CapacidadeEntradasConfirmadas,
   CapacidadePedidosERP,
+  CapacidadeContatosFornecedores,
   EntradaConfirmadaERP,
   FiltroCargaInventario,
   FiltroRastreamentoERP,
@@ -737,10 +738,20 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   }
 
   /**
+   * Capacidade tipada (ADR-0003): contatos de fornecedores com e-mail.
+   * Ter o sub-objeto é ter a capacidade — o TypeScript obriga a checar.
+   */
+  public readonly contatosFornecedores: CapacidadeContatosFornecedores = {
+    carregarFornecedoresComEmail: () => this.consultarFornecedoresComEmail(),
+  };
+
+  /**
    * Consulta os fornecedores com a coluna de e-mail (AEMAIL) no modelo do Power BI.
    * Tenta FORNECEDOR e CADFORN com resiliência e mantém cache de 15 minutos.
+   * Nomes derivados de domínio de e-mail são rótulo de exibição de último
+   * recurso — o cadastro autorizado continua sendo a fonte oficial.
    */
-  public async carregarFornecedoresComEmail(): Promise<readonly { id: string; name: string; email: string }[]> {
+  private async consultarFornecedoresComEmail(): Promise<readonly { id: string; name: string; email: string }[]> {
     if (this.cacheFornecedoresComEmail && Date.now() - this.cacheFornecedoresComEmail.timestamp < 15 * 60 * 1000) {
       return this.cacheFornecedoresComEmail.dados;
     }

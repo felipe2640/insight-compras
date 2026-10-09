@@ -192,6 +192,7 @@ export type CapacidadeDesligavelTenant =
   | "pedidosERP"
   | "cotacoesERP"
   | "entradasConfirmadas"
+  | "contatosFornecedores"
   | "sugestoesErp";
 
 /** Qual adaptador atende este cliente, e como a fonte dele se chama. */

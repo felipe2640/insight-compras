@@ -236,6 +236,24 @@ export interface CapacidadeEntradasConfirmadas {
   listarEntradas(produtoIds: readonly number[], dias: number): Promise<readonly EntradaConfirmadaERP[]>;
 }
 
+/** Fornecedor com contato individual (e-mail), vindo da fonte autorizada. */
+export interface FornecedorComEmail {
+  readonly id: string;
+  readonly name: string;
+  readonly email: string;
+}
+
+/**
+ * Capacidade: contatos individuais de fornecedores com e-mail.
+ *
+ * Usada pela integração de cotação para montar convites. O e-mail é da
+ * FONTE (ex.: AEMAIL no Power BI da Carreiro) — o navegador nunca é
+ * autoridade de cadastro; correção explícita é revalidada no servidor.
+ */
+export interface CapacidadeContatosFornecedores {
+  carregarFornecedoresComEmail(): Promise<readonly FornecedorComEmail[]>;
+}
+
 /**
  * Interface unificada e agnóstica para qualquer provedor de inventário.
  *
@@ -274,6 +292,9 @@ export interface InventoryAdapter {
   /** Presente quando a fonte lista cotações do ERP. */
   readonly cotacoesERP?: CapacidadeCotacoesERP;
 
-  /** Presente quando a fonte diz o que entrou de verdade (conferência). */
+  /** A fonte diz o que entrou de verdade (conferência). */
   readonly entradasConfirmadas?: CapacidadeEntradasConfirmadas;
+
+  /** Presente quando a fonte entrega contatos de fornecedores com e-mail. */
+  readonly contatosFornecedores?: CapacidadeContatosFornecedores;
 }
