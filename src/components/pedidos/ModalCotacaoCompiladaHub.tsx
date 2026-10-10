@@ -486,7 +486,25 @@ export function ModalCotacaoCompiladaHub({
 
   // Totalizadores sem converter 0 em 1 e sem assumir filial 1
   const totalLojas = new Set(pedidosComFilial.map((p) => p.filialId)).size;
-  const totalValorEstimado = itensCompilados.reduce((s, i) => s + (i.valorTotal || 0), 0);
+  // Valor estimado acompanha a PRÉVIA: usa a quantidade editada (ou a
+  // original) × o valor unitário da própria linha do pedido — ERP traz
+  // VALORUNIT; snapshot local guarda o custo unitário. Sem unitário,
+  // deriva do total da linha (valorTotal ÷ quantidade original).
+  const totalValorEstimado = useMemo(() => {
+    return itensCompilados.reduce((s, it) => {
+      const key = `${it.pedidoId}-${it.id}`;
+      const ed = edicoesLinhas[key];
+      const qtd = ed !== undefined ? ed.quantidade : extrairQuantidadeItem(it);
+      const qtdOriginal = extrairQuantidadeItem(it);
+      const unitario =
+        it.valorUnitario && it.valorUnitario > 0
+          ? it.valorUnitario
+          : it.valorTotal > 0 && qtdOriginal > 0
+          ? it.valorTotal / qtdOriginal
+          : it.custo ?? 0;
+      return s + qtd * (Number.isFinite(unitario) ? unitario : 0);
+    }, 0);
+  }, [itensCompilados, edicoesLinhas]);
   const totalUnidades = itensCompilados.reduce((s, it) => {
     const key = `${it.pedidoId}-${it.id}`;
     const ed = edicoesLinhas[key];
@@ -896,7 +914,7 @@ export function ModalCotacaoCompiladaHub({
                     </span>
                   </div>
                   <p className="mt-1 text-[11px] text-emerald-700">
-                    Soma de custo dos pedidos selecionados
+                    Custo estimado na quantidade atual da prévia (unitário do pedido)
                   </p>
                 </div>
               </div>
