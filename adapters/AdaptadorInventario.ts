@@ -254,6 +254,30 @@ export interface CapacidadeContatosFornecedores {
   carregarFornecedoresComEmail(): Promise<readonly FornecedorComEmail[]>;
 }
 
+/** Produto do catálogo, já enriquecido com as marcas dos similares cadastrados. */
+export interface ProdutoCatalogoCotacao {
+  /** Código base na fonte (ACODPRODUTO_BASE, ex.: "018215"). */
+  readonly codigo: string;
+  readonly descricao: string;
+  readonly marca: string;
+  readonly referencia: string;
+  /** Marcas dos produtos similares cadastrados (tabela de similaridade da fonte). */
+  readonly marcasSimilares: readonly string[];
+}
+
+/**
+ * Capacidade: resolver UM RECORTES de produtos por código base.
+ *
+ * Existe para que telas pontuais (cotação compilada, disparo do cockpit)
+ * resolvam marca/referência/similares de dezenas de itens SEM pagar a
+ * carga completa de inventário (que existe para a grade, não para o
+ * modal). A capacidade declara o recorte na fonte — quem não a tem segue
+ * pagando o caminho completo (ADR-0003).
+ */
+export interface CapacidadeCatalogoCotacao {
+  resolverProdutos(codigos: readonly string[]): Promise<readonly ProdutoCatalogoCotacao[]>;
+}
+
 /**
  * Interface unificada e agnóstica para qualquer provedor de inventário.
  *
@@ -297,4 +321,7 @@ export interface InventoryAdapter {
 
   /** Presente quando a fonte entrega contatos de fornecedores com e-mail. */
   readonly contatosFornecedores?: CapacidadeContatosFornecedores;
+
+  /** Presente quando a fonte resolve um recorte do catálogo por código base. */
+  readonly catalogoCotacao?: CapacidadeCatalogoCotacao;
 }

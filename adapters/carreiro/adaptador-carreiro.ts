@@ -13,6 +13,8 @@ import {
   CapacidadeEntradasConfirmadas,
   CapacidadePedidosERP,
   CapacidadeContatosFornecedores,
+  CapacidadeCatalogoCotacao,
+  ProdutoCatalogoCotacao,
   EntradaConfirmadaERP,
   FiltroCargaInventario,
   FiltroRastreamentoERP,
@@ -43,6 +45,9 @@ import {
   gerarConsultaDaxItensPedidosCompra,
   gerarConsultaDaxCotacoes,
   CONSULTA_DAX_FORNECEDORES_EMAIL,
+  gerarConsultaDaxProdutosPorCodigoBase,
+  gerarConsultaDaxMarcasSimilaresPorCodigoBase,
+  LIMITE_CODIGOS_CATALOGO_COTACAO,
 } from "./consultas-homologadas";
 import {
   mapearProdutosDax,
@@ -746,6 +751,18 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
   };
 
   /**
+   * Capacidade tipada (ADR-0003): recorte de catálogo por código base.
+   *
+   * Marca/referência/descrição de uma lista de itens + marcas dos similares
+   * CADASTRADOS (PRODUTOS_SEMELHANTES). Existe para o fluxo de cotação não
+   * pagar a carga completa de inventário (grade) só para preencher o modal.
+   * Códigos higienizados aqui: a consulta só recebe [A-Za-z0-9-|].
+   */
+  public readonly catalogoCotacao: CapacidadeCatalogoCotacao = {
+    resolverProdutos: (codigos) => this.resolverProdutosCatalogoCotacao(codigos),
+  };
+
+  /**
    * Consulta os fornecedores com a coluna de e-mail (AEMAIL) no modelo do Power BI.
    * Tenta FORNECEDOR e CADFORN com resiliência e mantém cache de 15 minutos.
    * Nomes derivados de domínio de e-mail são rótulo de exibição de último
@@ -794,5 +811,71 @@ export class AdaptadorInventarioCarreiro implements InventoryAdapter {
       }
     }
     return [];
+  }
+
+  /**
+   * Resolver do recorte de catálogo (capacidade catalogoCotacao).
+   *
+   * Duas consultas leves validadas ao vivo (10/10/2026): produtos por
+   * ACODPRODUTO_BASE (~0,6 s) e pares de similaridade com a marca de ambos
+   * os lados por LOOKUPVALUE (~0,4 s). Um par (A, B) contribui nas duas
+   * direções — pediu A, a marca de B é aceitável, e vice-versa.
+   */
+  private async resolverProdutosCatalogoCotacao(codigos: readonly string[]): Promise<readonly ProdutoCatalogoCotacao[]> {
+    const bases = [
+      ...new Set(
+        codigos
+          .map((bruto) => String(bruto ?? "").trim())
+          .map((bruto) => (bruto.includes("|") ? bruto.split("|")[0]!.trim() : bruto))
+          .filter((codigo) => /^[A-Za-z0-9-]{1,40}$/.test(codigo)),
+      ),
+    ].slice(0, LIMITE_CODIGOS_CATALOGO_COTACAO);
+    if (bases.length === 0) return [];
+
+    const mapa = new Map<string, { descricao: string; marca: string; referencia: string; marcas: Set<string> }>();
+    try {
+      const linhas = await this.clienteDax.executarConsultaDax(gerarConsultaDaxProdutosPorCodigoBase(bases));
+      for (const linhaBruta of linhas ?? []) {
+        const l = normalizarLinhaDax(linhaBruta as Record<string, unknown>);
+        const codigo = String(l.CodigoBase ?? "").trim();
+        if (!codigo || mapa.has(codigo)) continue; // mesmo base por empresa: primeira vence
+        mapa.set(codigo, {
+          descricao: String(l.Descricao ?? "").trim(),
+          marca: String(l.Marca ?? "").trim(),
+          referencia: String(l.RefFabricante ?? "").trim(),
+          marcas: new Set<string>(),
+        });
+      }
+    } catch (erro) {
+      console.warn("[Adaptador Carreiro] Consulta DAX do recorte de catalogo falhou:", erro);
+      return [];
+    }
+    if (mapa.size === 0) return [];
+
+    try {
+      const pares = await this.clienteDax.executarConsultaDax(gerarConsultaDaxMarcasSimilaresPorCodigoBase(bases));
+      for (const parBruto of pares ?? []) {
+        const par = normalizarLinhaDax(parBruto as Record<string, unknown>);
+        const origem = String(par.Origem ?? "").trim();
+        const similar = String(par.Similar ?? "").trim();
+        const marcaOrigem = String(par.MarcaOrigem ?? "").trim();
+        const marcaSimilar = String(par.MarcaSimilar ?? "").trim();
+        const registroOrigem = mapa.get(origem);
+        if (registroOrigem && marcaSimilar) registroOrigem.marcas.add(marcaSimilar);
+        const registroSimilar = mapa.get(similar);
+        if (registroSimilar && marcaOrigem) registroSimilar.marcas.add(marcaOrigem);
+      }
+    } catch (erro) {
+      // Similaridade é enriquecimento: sem ela o item segue com marca/referência.
+      console.warn("[Adaptador Carreiro] Consulta DAX de marcas similares falhou:", erro);
+    }
+
+    return [...mapa.entries()].map(([codigo, dados]) => ({
+      codigo,
+      descricao: dados.descricao,
+      marca: dados.marca,
+      referencia: dados.referencia,
+      marcasSimilares: [...dados.marcas].sort((a, b) => a.localeCompare(b, "pt-BR")),
+    }));
   }
 }

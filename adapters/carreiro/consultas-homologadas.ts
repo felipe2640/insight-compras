@@ -960,3 +960,69 @@ FILTER(
     NOT ISBLANK([Email]) && [Email] <> ""
 )
 `.trim();
+
+/**
+ * 13. Recorte de catálogo por código base (capacidade catalogoCotacao).
+ *
+ * Resolve marca/referência/descrição de uma LISTA de itens sem carregar o
+ * catálogo inteiro (159 mil linhas). Medido ao vivo em 10/10/2026: ~0,6 s
+ * para a lista; PRODUTOS[ACODPRODUTO_BASE] preenchido em 159.730/159.730
+ * linhas, 31.946 bases distintas (o mesmo base repete por empresa com os
+ * mesmos atributos — a primeira ocorrência vence no mapeador).
+ *
+ * Os códigos chegam higienizados: apenas [A-Za-z0-9-|] (validação na
+ * capacidade), no máximo 300 por chamada.
+ */
+export const LIMITE_CODIGOS_CATALOGO_COTACAO = 300;
+
+export function gerarConsultaDaxProdutosPorCodigoBase(codigos: readonly string[]): string {
+  const lista = codigos.map((codigo) => `"${codigo}"`).join(", ");
+  return `
+EVALUATE
+SELECTCOLUMNS(
+    FILTER(PRODUTOS, 'PRODUTOS'[ACODPRODUTO_BASE] IN { ${lista} }),
+    "CodigoBase", 'PRODUTOS'[ACODPRODUTO_BASE],
+    "Marca", 'PRODUTOS'[MARCA],
+    "RefFabricante", 'PRODUTOS'[AREFERENCIA],
+    "Descricao", 'PRODUTOS'[ADESCRICAO],
+    "Inativo", 'PRODUTOS'[LINATIVO]
+)
+`.trim();
+}
+
+/**
+ * 14. Pares de similaridade do recorte, com a marca de AMBOS os lados.
+ *
+ * A marca dos similares é o que alimenta os "chips" de marcas aceitas: só
+ * entra marca que tem similar cadastrado no cliente (PRODUTOS_SEMELHANTES,
+ * 174.185 pares verificados ao vivo). Um par (A, B) contribui nas duas
+ * direções: se A foi pedido, a marca de B é aceitável — e vice-versa.
+ * As duas colunas de marca vêm por LOOKUPVALUE na própria consulta
+ * (validado ao vivo: ~0,4 s; os parênteses no `||` são obrigatórios).
+ *
+ * O tipo do par (TABELA de preço/B etc.) viaja para diagnóstico; a
+ * similaridade cadastrada é a autoridade, não o rótulo do tipo.
+ */
+export const LIMITE_PARES_SIMILARES_COTACAO = 600;
+
+export function gerarConsultaDaxMarcasSimilaresPorCodigoBase(codigos: readonly string[]): string {
+  const lista = codigos.map((codigo) => `"${codigo}"`).join(", ");
+  return `
+EVALUATE
+TOPN(
+    ${LIMITE_PARES_SIMILARES_COTACAO},
+    SELECTCOLUMNS(
+        FILTER(
+            PRODUTOS_SEMELHANTES,
+            ('PRODUTOS_SEMELHANTES'[ACODPRODUTO] IN { ${lista} })
+            || ('PRODUTOS_SEMELHANTES'[ACODPRODUTO_SEMELHANTE] IN { ${lista} })
+        ),
+        "Origem", 'PRODUTOS_SEMELHANTES'[ACODPRODUTO],
+        "Similar", 'PRODUTOS_SEMELHANTES'[ACODPRODUTO_SEMELHANTE],
+        "MarcaOrigem", LOOKUPVALUE(PRODUTOS[MARCA], PRODUTOS[ACODPRODUTO_BASE], 'PRODUTOS_SEMELHANTES'[ACODPRODUTO]),
+        "MarcaSimilar", LOOKUPVALUE(PRODUTOS[MARCA], PRODUTOS[ACODPRODUTO_BASE], 'PRODUTOS_SEMELHANTES'[ACODPRODUTO_SEMELHANTE]),
+        "Tipo", 'PRODUTOS_SEMELHANTES'[TIPO]
+    )
+)
+`.trim();
+}

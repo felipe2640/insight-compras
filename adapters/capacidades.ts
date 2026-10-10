@@ -41,6 +41,9 @@ export function capacidadesEfetivas(
     contatosFornecedores: desligadas.has("contatosFornecedores")
       ? undefined
       : adaptador.contatosFornecedores,
+    catalogoCotacao: desligadas.has("catalogoCotacao")
+      ? undefined
+      : adaptador.catalogoCotacao,
   };
   return efetivo;
 }
@@ -53,6 +56,7 @@ export interface ResumoCapacidades {
   readonly cotacoesERP: boolean;
   readonly entradasConfirmadas: boolean;
   readonly contatosFornecedores: boolean;
+  readonly catalogoCotacao: boolean;
   readonly sugestoesErp: boolean;
 }
 
@@ -64,6 +68,7 @@ export function resumirCapacidades(adaptador: InventoryAdapter): ResumoCapacidad
     cotacoesERP: Boolean(adaptador.cotacoesERP),
     entradasConfirmadas: Boolean(adaptador.entradasConfirmadas),
     contatosFornecedores: Boolean(adaptador.contatosFornecedores),
+    catalogoCotacao: Boolean(adaptador.catalogoCotacao),
     sugestoesErp: adaptador.forneceSugestoesErp,
   };
 }
