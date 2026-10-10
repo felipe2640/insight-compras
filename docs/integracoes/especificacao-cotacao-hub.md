@@ -58,7 +58,7 @@ Quantidade **zero não é inflada para 1**: é rejeitada com erro explícito (sc
 
 ### 2.1 Marca, referência e marcas aceitas (resolução na fonte)
 
-- `POST /api/cotacao-hub/resolver-produtos` (corpo `{ codigos: string[] }`, máx. 300) resolve marca/referência/descrição e **marcas similares cadastradas** de um recorte de itens pela capacidade tipada `catalogoCotacao` do adaptador — duas consultas DAX leves (medido ao vivo em 10/10/2026: ~0,6 s produtos por `ACODPRODUTO_BASE` + ~0,4 s pares de similaridade), em vez da carga completa de inventário que o GET embutia antes.
+- `POST /api/cotacao-hub/resolver-produtos` (corpo `{ codigos: string[] }`, máx. 300) resolve marca/referência/descrição e **marcas similares cadastradas** de um recorte de itens pela capacidade tipada `catalogoCotacao` do adaptador — duas consultas DAX leves (medido ao vivo em 10/10/2026: ~0,6 s produtos por `ACODPRODUTO_BASE` + ~0,4 s pares de similaridade), em vez da carga completa de inventário que o GET embutia antes. A rota é **independente da conexão com o Hub** (marca vem do catálogo da fonte; a falta de configuração da conexão não pode deixar o comprador sem marca na prévia — o envio ao Hub continua exigindo a conexão completa, fail-closed).
 - Os **chips de marcas aceitas** listam apenas marcas com similar cadastrado para aquele item na fonte (na Carreiro, tabela `PRODUTOS_SEMELHANTES`); a marca já solicitada nunca aparece como sugestão. Sem similar cadastrado, apenas entrada manual.
 - O modal da cotação compilada **bloqueia o envio até a resolução concluir** (com estado visível e "Repetir resolução"): a falha silenciosa anterior — catálogo ausente, todos os itens sem marca — não pode mais passar despercebida.
 

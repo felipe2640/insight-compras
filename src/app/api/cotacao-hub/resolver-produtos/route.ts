@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { connectorContext, connectorFailure } from "@/lib/cotacao-hub/server-context";
+import { contextoDaRequisicao, ErroContexto } from "@/lib/contexto/contexto-requisicao";
+import { respostaErroContexto } from "@/lib/contexto/resposta-erro";
+import { exigirOrigemMesma } from "@/lib/cotacao-hub/server-context";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +16,7 @@ const corpoSchema = z.object({
  * POST /api/cotacao-hub/resolver-produtos
  *
  * Resolve marca, referência, descrição e MARCAS SIMILARES CADASTRADAS de um
- * recorte de itens, usando a capacidade tipada `catalogoCotacao` da fonte.
+ * recorte de itens, usando a capacidade tipada `catalogoCotacao` da FONTE.
  *
  * Por que esta rota existe: a lista de catálogo vinha embutida no
  * GET /api/cotacao-hub, que pagava a carga COMPLETA de inventário
@@ -24,14 +26,24 @@ const corpoSchema = z.object({
  * marca. Aqui a fonte resolve APENAS os itens pedidos (duas consultas
  * leves, ~1 s no total, validadas ao vivo).
  *
+ * Deliberadamente INDEPENDENTE da conexão com o Hub: marca/referência vêm
+ * do catálogo da fonte (Power BI), não do Cotação Hub — a falta de
+ * INSIGHT_HUB_CONFIG_JSON não pode deixar o comprador sem marca na prévia.
+ * O envio ao Hub continua exigindo a conexão completa (fail-closed).
+ *
  * Visibilidade: mesmo membro autenticado do tenant que vê o histórico de
- * pedidos da rede; a resposta carrega atributos de cadastro (marca/ref),
- * sem preços. A carteira não restringe — o histórico já é rede-wide por
- * decisão documentada na rota irmã.
+ * pedidos da rede (rede-wide por decisão da rota irmã); a resposta carrega
+ * atributos de cadastro (marca/ref), sem preços — estritamente menos que a
+ * grade do cockpit já mostra.
  */
 export async function POST(request: NextRequest) {
   try {
-    const { context } = await connectorContext(request, true);
+    exigirOrigemMesma(request);
+  } catch {
+    return Response.json({ erro: "Origem da requisição não autorizada." }, { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
+  try {
+    const context = await contextoDaRequisicao(request);
     if (Number(request.headers.get("content-length") ?? 0) > 64_000) return new Response(null, { status: 413 });
     const corpo = corpoSchema.parse(await request.json());
 
@@ -53,7 +65,11 @@ export async function POST(request: NextRequest) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (erro) {
+    if (erro instanceof ErroContexto) return respostaErroContexto(erro);
     console.error("[cotacao-hub] Erro no resolver-produtos:", erro);
-    return connectorFailure(erro instanceof Error ? erro.message : undefined);
+    return Response.json(
+      { erro: "Não foi possível resolver os itens no catálogo da fonte." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
   }
 }
