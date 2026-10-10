@@ -3,8 +3,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { LinhaCockpitMatriz } from "@/tipos/cockpit";
 import {
   fingerprintSelecao,
+  marcasAceitasSugeridas,
   nomeExibicaoFornecedor,
+  normalizarCodigoBase,
   parseMarcasAceitas,
+  type ProdutoResolvido,
   type SupplierInfo,
 } from "@/lib/cotacao-hub/payload";
 import { AbrirNoHub } from "@/components/cotacao-hub/AbrirNoHub";
@@ -24,7 +27,6 @@ interface Status {
   applicationId: string;
   suppliers: SupplierInfo[];
   units?: Record<string, string>;
-  catalogProducts?: { id: number; sku: string; descricao: string; marca: string; fabricante: string; referencia: string }[];
   submissions: { externalId: string; quotationId?: string; state: string }[];
   drafts: { id: string; supplierExternalId: string; destinationId: string; state: string; items: Record<string, string>[] }[];
 }
@@ -32,6 +34,9 @@ interface Status {
 
 export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCockpitMatriz[]; filialId: number }) {
   const [status, setStatus] = useState<Status | null>(null);
+  // Marca/referência dos itens vêm da própria grade; a resolução traz só as
+  // MARCAS SIMILARES CADASTRADAS para os chips de marcas aceitas.
+  const [produtosResolvidos, setProdutosResolvidos] = useState<Map<string, ProdutoResolvido> | null>(null);
   const [open, setOpen] = useState(false);
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
   const [supplierEmails, setSupplierEmails] = useState<Record<string, string>>({});
@@ -104,19 +109,45 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
       .filter(x => x.quantidadeOriginal > 0);
   }, [itens]);
 
-  // Marcas dinâmicas extraídas do catálogo do tenant e dos itens (White-Label: sem marcas fixas)
-  const marcasCatalogo = useMemo(() => {
-    const set = new Set<string>();
-    if (status?.catalogProducts) {
-      for (const p of status.catalogProducts) {
-        if (p.marca && p.marca.trim()) set.add(p.marca.trim());
-      }
+  // Marcas aceitas: apenas as com similar CADASTRADO para cada item —
+  // resolvidas na fonte por recorte (leve), não o catálogo inteiro.
+  useEffect(() => {
+    let ativo = true;
+    const codigos = [
+      ...new Set(
+        valid
+          .map(({ item }) => normalizarCodigoBase(item.produtoId || item.codigoSku))
+          .filter((codigo) => codigo.length > 0),
+      ),
+    ].slice(0, 300);
+    if (codigos.length === 0) {
+      setProdutosResolvidos(new Map());
+      return;
     }
-    for (const { item } of valid) {
-      if (item.marca && item.marca.trim()) set.add(item.marca.trim());
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [status?.catalogProducts, valid]);
+    fetch("/api/cotacao-hub/resolver-produtos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ codigos }),
+    })
+      .then(async (resposta) => {
+        const corpo = await resposta.json().catch(() => null);
+        if (!resposta.ok) throw new Error(corpo?.erro ?? "Falha na resolução");
+        return corpo as { produtos: ProdutoResolvido[] };
+      })
+      .then((corpo) => {
+        if (!ativo) return;
+        const mapa = new Map<string, ProdutoResolvido>();
+        for (const produto of corpo.produtos ?? []) mapa.set(produto.codigo, produto);
+        setProdutosResolvidos(mapa);
+      })
+      .catch(() => {
+        // Chips são sugestão: sem resolução, o campo manual continua válido.
+        if (ativo) setProdutosResolvidos(new Map());
+      });
+    return () => {
+      ativo = false;
+    };
+  }, [valid]);
 
   // Sincroniza edições com os dados reais dos itens quando a lista mudar
   useEffect(() => {
@@ -600,33 +631,47 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
                                 </div>
                               </div>
 
-                              {/* Seleção rápida de marcas alternativas */}
+                              {/* Seleção rápida de marcas alternativas aceitas */}
                               <div className="rounded-md border border-slate-200 bg-white p-2.5 space-y-1.5">
                                 <label className="block text-[11px] font-semibold text-slate-700">
-                                  Marcas Alternativas Aceitas (clique para marcar ou desmarcar):
+                                  Marcas aceitas com similar cadastrado (clique para marcar ou desmarcar):
                                 </label>
-                              {marcasCatalogo.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {marcasCatalogo.slice(0, 20).map(marca => {
-                                    const list = parseMarcasAceitas(ed.accepted_brands).map(s => s.toLowerCase());
-                                    const selecionada = list.includes(marca.toLowerCase());
+                                {(() => {
+                                  const sugestoes = marcasAceitasSugeridas(
+                                    produtosResolvidos?.get(normalizarCodigoBase(item.produtoId)),
+                                    ed.requested_brand,
+                                  );
+                                  if (sugestoes.length === 0) {
                                     return (
-                                      <button
-                                        key={marca}
-                                        type="button"
-                                        onClick={() => toggleMarcaAlternativa(item.produtoId, marca)}
-                                        className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
-                                          selecionada
-                                            ? "bg-blue-600 text-white border-blue-600 shadow-xs"
-                                            : "bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100"
-                                        }`}
-                                      >
-                                        {selecionada ? `✓ ${marca}` : `+ ${marca}`}
-                                      </button>
+                                      <p className="text-[11px] text-slate-500">
+                                        Nenhuma marca similar cadastrada para este item — digite manualmente apenas se
+                                        aceitar outra marca por decisão própria.
+                                      </p>
                                     );
-                                  })}
-                                </div>
-                              )}
+                                  }
+                                  return (
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {sugestoes.map((marca) => {
+                                        const list = parseMarcasAceitas(ed.accepted_brands).map((s) => s.toLowerCase());
+                                        const selecionada = list.includes(marca.toLowerCase());
+                                        return (
+                                          <button
+                                            key={marca}
+                                            type="button"
+                                            onClick={() => toggleMarcaAlternativa(item.produtoId, marca)}
+                                            className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
+                                              selecionada
+                                                ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                                : "bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100"
+                                            }`}
+                                          >
+                                            {selecionada ? `✓ ${marca}` : `+ ${marca}`}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })()}
                                 <input
                                   type="text"
                                   placeholder="Outras marcas alternativas (separadas por vírgula)..."

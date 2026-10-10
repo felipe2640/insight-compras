@@ -97,6 +97,42 @@ export interface SupplierInfo {
   email?: string;
 }
 
+/** Produto resolvido pela fonte autorizada (capacidade catalogoCotacao). */
+export interface ProdutoResolvido {
+  codigo: string;
+  descricao: string;
+  marca: string;
+  referencia: string;
+  marcasSimilares: string[];
+}
+
+/**
+ * Normaliza SKU/produtoId para o código base da fonte: remove o sufixo de
+ * empresa ("018215|guid" -> "018215") e completa zeros à esquerda em códigos
+ * puramente numéricos com menos de 6 dígitos (2633 -> "002633").
+ */
+export function normalizarCodigoBase(valor: string | number | null | undefined): string {
+  const bruto = String(valor ?? "").trim();
+  const semGuid = bruto.includes("|") ? (bruto.split("|")[0] ?? "").trim() : bruto;
+  if (/^\d{1,6}$/.test(semGuid)) return semGuid.padStart(6, "0");
+  return semGuid;
+}
+
+/**
+ * Chips de marcas aceitas de um item: apenas marcas com similar CADASTRADO
+ * na fonte (decisão do comprador 10/10/2026), sem a marca já solicitada.
+ */
+export function marcasAceitasSugeridas(
+  produto: ProdutoResolvido | null | undefined,
+  marcaSolicitada: string,
+): string[] {
+  if (!produto) return [];
+  const propria = marcaSolicitada.trim().toLowerCase();
+  return produto.marcasSimilares
+    .filter((marca) => marca.trim() !== "" && marca.trim().toLowerCase() !== propria)
+    .slice(0, 20);
+}
+
 /** Divide um texto de marcas separadas por vírgula em lista normalizada. */
 export function parseMarcasAceitas(texto: string | undefined | null): string[] {
   if (!texto) return [];

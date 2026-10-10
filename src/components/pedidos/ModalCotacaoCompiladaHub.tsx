@@ -22,29 +22,22 @@ import { Pedido, ItemPedido } from "@/lib/pedidos/tipos";
 import { cn } from "@/lib/utils";
 import {
   fingerprintSelecao,
+  marcasAceitasSugeridas,
   nomeExibicaoFornecedor,
+  normalizarCodigoBase,
   parseMarcasAceitas,
+  type ProdutoResolvido,
   type SupplierInfo,
 } from "@/lib/cotacao-hub/payload";
 import { AbrirNoHub } from "@/components/cotacao-hub/AbrirNoHub";
 
 
 
-interface CatalogProductInfo {
-  id: number;
-  sku: string;
-  descricao: string;
-  marca: string;
-  fabricante: string;
-  referencia: string;
-}
-
 interface HubStatus {
   portalOrigin: string;
   applicationId: string;
   suppliers: SupplierInfo[];
   units?: Record<string, string>;
-  catalogProducts?: CatalogProductInfo[];
   submissions: { externalId: string; quotationId?: string; state: string }[];
   drafts: { id: string; supplierExternalId: string; destinationId: string; state: string; items: Record<string, string>[] }[];
 }
@@ -94,6 +87,11 @@ export function ModalCotacaoCompiladaHub({
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
   const [hubStatus, setHubStatus] = useState<HubStatus | null>(null);
   const [itensCompilados, setItensCompilados] = useState<ItemComFilial[]>([]);
+
+  // Resolução de catálogo (marca/referência/similares) pela fonte autorizada
+  const [produtosResolvidos, setProdutosResolvidos] = useState<Map<string, ProdutoResolvido> | null>(null);
+  const [resolvendo, setResolvendo] = useState(false);
+  const [erroResolucao, setErroResolucao] = useState<string | null>(null);
 
   // Edição de itens e observações
   const [edicoesLinhas, setEdicoesLinhas] = useState<Record<string, EdicaoLinhaPedido>>({});
@@ -170,61 +168,67 @@ export function ModalCotacaoCompiladaHub({
     };
   }, [pedidos, nomesFiliais]);
 
-  // Função pura para resolver o produto no catálogo com ID real e dados de fabricante
-  const obterProdutoResolvido = React.useCallback((it: ItemComFilial) => {
-    // 1. Tenta por produtoId exato
-    if (it.produtoId && it.produtoId > 0 && hubStatus?.catalogProducts) {
-      const cat = hubStatus.catalogProducts.find((cp) => cp.id === it.produtoId);
-      if (cat) {
-        return {
-          produtoId: cat.id,
-          sku: cat.sku || it.sku || `PROD-${cat.id}`,
-          descricao: it.descricao || cat.descricao || "Sem descrição",
-          marca: cat.marca || it.marca || "",
-          referencia: cat.referencia || it.referenciaFabricante || "",
-        };
-      }
+  // Resolve marca/referência/marcas similares dos itens na fonte autorizada.
+  // Leve (~1 s): duas consultas DAX por recorte, não a carga completa.
+  const resolverCatalogo = React.useCallback(async (itens: ItemComFilial[]) => {
+    const codigos = [
+      ...new Set(
+        itens
+          .map((it) => normalizarCodigoBase(it.sku || it.produtoId || it.id))
+          .filter((codigo) => codigo.length > 0),
+      ),
+    ].slice(0, 300);
+    if (codigos.length === 0) {
+      setProdutosResolvidos(new Map());
+      return;
     }
-    // 2. Tenta por SKU no catálogo (exato ou sem zeros à esquerda)
-    if (it.sku && hubStatus?.catalogProducts) {
-      const skuLimpo = it.sku.trim().toUpperCase();
-      const skuSemZeros = skuLimpo.replace(/^0+/, "");
-      const cat = hubStatus.catalogProducts.find((cp) => {
-        const cpSku = cp.sku.trim().toUpperCase();
-        const cpSkuSemZeros = cpSku.replace(/^0+/, "");
-        return (
-          cpSku === skuLimpo ||
-          (skuSemZeros.length > 0 && cpSkuSemZeros === skuSemZeros) ||
-          (skuSemZeros.length > 0 && cpSku === skuSemZeros)
-        );
+    setResolvendo(true);
+    setErroResolucao(null);
+    try {
+      const resposta = await fetch("/api/cotacao-hub/resolver-produtos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ codigos }),
       });
-      if (cat) {
-        return {
-          produtoId: cat.id,
-          sku: cat.sku,
-          descricao: it.descricao || cat.descricao,
-          marca: cat.marca || it.marca || "",
-          referencia: cat.referencia || it.referenciaFabricante || "",
-        };
-      }
+      const corpo = await resposta.json().catch(() => null);
+      if (!resposta.ok) throw new Error(corpo?.erro || "Não foi possível resolver os itens no catálogo.");
+      const mapa = new Map<string, ProdutoResolvido>();
+      for (const produto of corpo?.produtos ?? []) mapa.set(produto.codigo, produto);
+      setProdutosResolvidos(mapa);
+    } catch (erro) {
+      setErroResolucao(erro instanceof Error ? erro.message : "Não foi possível resolver os itens no catálogo.");
+    } finally {
+      setResolvendo(false);
     }
+  }, []);
 
-    // 3. Fallback seguro se ainda não estiver no catálogo carregado
+  React.useEffect(() => {
+    if (itensCompilados.length > 0) void resolverCatalogo(itensCompilados);
+  }, [itensCompilados, resolverCatalogo]);
+
+  // Função pura para resolver o produto no recorte resolvido pela fonte.
+  // A marca/referência vêm da FONTE AUTORIZADA (capacidade catalogoCotacao),
+  // não de fallback de tela: sem resolução, o item fica "não homologado" e
+  // o envio é bloqueado — nada sai sem marca em silêncio.
+  const obterProdutoResolvido = React.useCallback((it: ItemComFilial) => {
+    const codigo = normalizarCodigoBase(it.sku || it.produtoId || it.id);
+    const resolvido = produtosResolvidos?.get(codigo) ?? null;
     const idNum =
       it.produtoId && it.produtoId > 0
         ? it.produtoId
         : it.id > 0
         ? it.id
-        : Number(it.sku?.replace(/\D/g, "")) || 0;
-
+        : Number(String(it.sku ?? "").replace(/\D/g, "")) || 0;
     return {
       produtoId: idNum,
-      sku: it.sku || `PROD-${idNum}`,
-      descricao: it.descricao || "Sem descrição",
-      marca: it.marca || "",
-      referencia: it.referenciaFabricante || "",
+      sku: resolvido?.codigo || it.sku || `PROD-${idNum}`,
+      descricao: it.descricao || resolvido?.descricao || "Item sem descrição",
+      marca: resolvido?.marca || it.marca || "",
+      referencia: resolvido?.referencia || it.referenciaFabricante || "",
+      produtoResolvido: resolvido,
+      homologado: produtosResolvidos === null ? null : Boolean(resolvido),
     };
-  }, [hubStatus]);
+  }, [produtosResolvidos]);
 
   // Inicializa e atualiza o estado de edição quando itens ou catálogo forem carregados
   useEffect(() => {
@@ -249,7 +253,7 @@ export function ModalCotacaoCompiladaHub({
       }
       return next;
     });
-  }, [itensCompilados, hubStatus?.catalogProducts, obterProdutoResolvido]);
+  }, [itensCompilados, produtosResolvidos, obterProdutoResolvido]);
 
   // Atualiza marca, referência, alternativas ou observação para todas as filiais de um produto
   const atualizarAtributosPorSku = React.useCallback(
@@ -287,34 +291,18 @@ export function ModalCotacaoCompiladaHub({
     [edicoesLinhas, atualizarAtributosPorSku]
   );
 
-  // Marcas dinâmicas extraídas do catálogo do tenant e dos itens (White-Label: sem marcas fixas)
-  const marcasCatalogo = useMemo(() => {
-    const set = new Set<string>();
-    if (hubStatus?.catalogProducts) {
-      for (const p of hubStatus.catalogProducts) {
-        if (p.marca && p.marca.trim()) set.add(p.marca.trim());
-      }
-    }
-    for (const it of itensCompilados) {
-      const prod = obterProdutoResolvido(it);
-      const m = prod?.marca || it.marca;
-      if (m && m.trim()) set.add(m.trim());
-    }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [hubStatus?.catalogProducts, itensCompilados, obterProdutoResolvido]);
-
-  // Verificação de segurança: itens que não puderam ser homologados no catálogo
+  // Verificação de segurança: itens sem homologação no catálogo da fonte
   const itensNaoResolvidos = useMemo(() => {
-    if (carregando || !itensCompilados.length) return [];
+    if (carregando || !itensCompilados.length || produtosResolvidos === null) return [];
     const naoEncontrados: string[] = [];
     for (const it of itensCompilados) {
       const res = obterProdutoResolvido(it);
-      if (!res) {
+      if (res.homologado === false) {
         naoEncontrados.push(it.sku || `Item #${it.id}`);
       }
     }
     return Array.from(new Set(naoEncontrados));
-  }, [itensCompilados, obterProdutoResolvido, carregando]);
+  }, [itensCompilados, obterProdutoResolvido, carregando, produtosResolvidos]);
 
   // Lista de fornecedores associados aos pedidos
   const fornecedoresDosPedidos = useMemo(() => {
@@ -513,6 +501,14 @@ export function ModalCotacaoCompiladaHub({
 
   // Disparo da cotação compilada com validação rígida de produto e idempotência
   const enviarCotacao = async () => {
+    if (resolvendo) {
+      setFeedbackEnvio("Aguarde: estamos resolvendo marca e referência dos itens na fonte.");
+      return;
+    }
+    if (erroResolucao) {
+      setFeedbackEnvio("O catálogo não foi resolvido. Use 'Repetir resolução' e tente novamente — o envio não sai sem marca por engano.");
+      return;
+    }
     if (pedidosSemFilial.length > 0) {
       setFeedbackEnvio(`Pedidos sem loja de destino cadastrada (impossível cotar): ${pedidosSemFilial.map((id) => `#${id}`).join(", ")}. Complete o cadastro da loja e tente novamente.`);
       return;
@@ -559,10 +555,24 @@ export function ModalCotacaoCompiladaHub({
         });
       }
 
-      // 3. Mapear itens para envio utilizando IDs reais e permitindo customizações confirmadas
-      const itemsPayload = itensCompilados.map((it) => {
+      // 3. Mapear itens para envio utilizando IDs reais e permitindo customizações
+      // confirmadas. Mesma loja + mesmo produto (vários pedidos da mesma
+      // filial) soma em UMA linha: o Hub recebe uma linha por
+      // produto × destino, sem duplicata que o servidor rejeitaria.
+      interface ItemAgrupado {
+        produtoId: number;
+        filialId: number;
+        quantity: string;
+        description?: string;
+        requested_reference?: string;
+        requested_brand?: string;
+        accepted_brands?: string[];
+        observacao?: string;
+      }
+      const itensAgrupados = new Map<string, ItemAgrupado>();
+      for (const it of itensCompilados) {
         const prod = obterProdutoResolvido(it);
-        if (!prod) {
+        if (!prod || prod.homologado === false) {
           throw new Error(`Item ${it.sku || it.id} não possui produto homologado no catálogo.`);
         }
 
@@ -576,7 +586,6 @@ export function ModalCotacaoCompiladaHub({
         };
 
         const acceptedList = parseMarcasAceitas(ed.accepted_brands);
-
         const qtd = Math.max(1, Number(ed.quantidade) || extrairQuantidadeItem(it) || 1);
 
         // Descrição permanece a descrição; observação (item + condições
@@ -590,17 +599,24 @@ export function ModalCotacaoCompiladaHub({
           .join(" | ")
           .slice(0, 2000);
 
-        return {
+        const chaveProdutoFilial = `${prod.produtoId}:${it.filialId}`;
+        const existente = itensAgrupados.get(chaveProdutoFilial);
+        if (existente) {
+          existente.quantity = String(Number(existente.quantity) + qtd);
+          continue;
+        }
+        itensAgrupados.set(chaveProdutoFilial, {
           produtoId: prod.produtoId,
-          quantity: String(qtd),
           filialId: it.filialId,
+          quantity: String(qtd),
           ...(descFinal ? { description: descFinal } : {}),
           ...(ed.requested_reference.trim() ? { requested_reference: ed.requested_reference.trim() } : {}),
           ...(ed.requested_brand.trim() ? { requested_brand: ed.requested_brand.trim() } : {}),
           ...(acceptedList.length > 0 ? { accepted_brands: acceptedList } : {}),
           ...(observacao ? { observacao } : {}),
-        };
-      });
+        });
+      }
+      const itemsPayload = [...itensAgrupados.values()];
 
       // Impede envios duplicados com fingerprint canônico e preserva
       // externalId em retentativas; qualquer edição gera nova tentativa.
@@ -771,6 +787,34 @@ export function ModalCotacaoCompiladaHub({
                 </div>
               )}
 
+              {/* Resolução de catálogo (marca/referência/similares) em andamento ou falha */}
+              {(resolvendo || erroResolucao) && (
+                <div className={`rounded-xl border p-3 text-xs flex items-center justify-between gap-2.5 shadow-xs ${erroResolucao ? "border-rose-300 bg-rose-50 text-rose-900" : "border-blue-200 bg-blue-50/70 text-blue-900"}`}>
+                  <div className="flex items-center gap-2">
+                    {resolvendo ? (
+                      <>
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-600" />
+                        <span>Resolvendo marca, referência e marcas similares dos itens na fonte autorizada…</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+                        <span>{erroResolucao}</span>
+                      </>
+                    )}
+                  </div>
+                  {!resolvendo && erroResolucao && (
+                    <button
+                      type="button"
+                      onClick={() => void resolverCatalogo(itensCompilados)}
+                      className="shrink-0 rounded bg-rose-200 px-2 py-1 text-[11px] font-bold text-rose-950 hover:bg-rose-300 transition-colors"
+                    >
+                      Repetir resolução
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Alerta bloqueante para pedidos sem loja de destino (nunca filial 1) */}
               {pedidosSemFilial.length > 0 && (
                 <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900 flex items-start gap-2.5 shadow-xs">
@@ -868,6 +912,11 @@ export function ModalCotacaoCompiladaHub({
                     Discriminação e edição por filial de entrega
                   </span>
                 </div>
+                <p className="mb-2 text-[11px] text-slate-500">
+                  No Hub, cada loja de destino recebe a sua própria linha de item (o agrupamento por SKU aqui
+                  é só para editar marca/referência em conjunto). Pedidos da mesma loja com o mesmo produto
+                  são somados em uma única linha.
+                </p>
 
                 <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/40 text-xs divide-y divide-slate-100">
                   {itensConsolidados.map((item) => {
@@ -992,30 +1041,42 @@ export function ModalCotacaoCompiladaHub({
                             {/* Seleção de Múltiplas Marcas Alternativas Aceitas */}
                             <div className="rounded-md border border-slate-200 bg-white p-2.5 space-y-1.5">
                               <label className="block text-[11px] font-semibold text-slate-700">
-                                Marcas Alternativas Aceitas (clique para marcar ou desmarcar):
+                                Marcas aceitas com similar cadastrado (clique para marcar ou desmarcar):
                               </label>
-                              {marcasCatalogo.length > 0 && (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {marcasCatalogo.slice(0, 20).map((marca) => {
-                                    const list = parseMarcasAceitas(edPrincipal.accepted_brands).map((s) => s.toLowerCase());
-                                    const selecionada = list.includes(marca.toLowerCase());
-                                    return (
-                                      <button
-                                        key={marca}
-                                        type="button"
-                                        onClick={() => toggleMarcaAlternativa(item.sku, marca, item.porLoja)}
-                                        className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
-                                          selecionada
-                                            ? "bg-blue-600 text-white border-blue-600 shadow-xs"
-                                            : "bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100"
-                                        }`}
-                                      >
-                                        {selecionada ? `✓ ${marca}` : `+ ${marca}`}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
+                              {(() => {
+                                const sugestoes = marcasAceitasSugeridas(prodResolvido?.produtoResolvido, edPrincipal.requested_brand);
+                                if (sugestoes.length === 0) {
+                                  return (
+                                    <p className="text-[11px] text-slate-500">
+                                      {prodResolvido?.produtoResolvido
+                                        ? "Nenhuma marca similar cadastrada para este item — digite manualmente apenas se aceitar outra marca por decisão própria."
+                                        : "As marcas aceitas aparecem após a resolução do catálogo; também dá para digitar manualmente."}
+                                    </p>
+                                  );
+                                }
+                                return (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {sugestoes.map((marca) => {
+                                      const list = parseMarcasAceitas(edPrincipal.accepted_brands).map((s) => s.toLowerCase());
+                                      const selecionada = list.includes(marca.toLowerCase());
+                                      return (
+                                        <button
+                                          key={marca}
+                                          type="button"
+                                          onClick={() => toggleMarcaAlternativa(item.sku, marca, item.porLoja)}
+                                          className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
+                                            selecionada
+                                              ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                              : "bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100"
+                                          }`}
+                                        >
+                                          {selecionada ? `✓ ${marca}` : `+ ${marca}`}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                );
+                              })()}
                               <input
                                 type="text"
                                 placeholder="Outras marcas alternativas (separadas por vírgula)..."
@@ -1284,7 +1345,17 @@ export function ModalCotacaoCompiladaHub({
         {!cotacaoEnviadaId && (
           <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-3">
             <div className="text-xs text-slate-500">
-              {pedidosSemFilial.length > 0 ? (
+              {resolvendo ? (
+                <span className="text-blue-700 font-semibold flex items-center gap-1">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Resolvendo catálogo…
+                </span>
+              ) : erroResolucao ? (
+                <span className="text-rose-700 font-semibold flex items-center gap-1">
+                  <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+                  Catálogo não resolvido — use “Repetir resolução”.
+                </span>
+              ) : pedidosSemFilial.length > 0 ? (
                 <span className="text-rose-700 font-semibold flex items-center gap-1">
                   <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
                   {pedidosSemFilial.length} pedido(s) sem loja de destino.
@@ -1325,6 +1396,8 @@ export function ModalCotacaoCompiladaHub({
                 disabled={
                   enviando ||
                   carregando ||
+                  resolvendo ||
+                  Boolean(erroResolucao) ||
                   pedidosSemFilial.length > 0 ||
                   selectedSuppliers.length === 0 ||
                   fornecedoresFaltandoEmail.length > 0 ||
@@ -1335,6 +1408,8 @@ export function ModalCotacaoCompiladaHub({
                   "flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold text-white shadow-sm transition-all",
                   enviando ||
                   carregando ||
+                  resolvendo ||
+                  Boolean(erroResolucao) ||
                   pedidosSemFilial.length > 0 ||
                   selectedSuppliers.length === 0 ||
                   fornecedoresFaltandoEmail.length > 0 ||
@@ -1344,7 +1419,11 @@ export function ModalCotacaoCompiladaHub({
                     : "bg-blue-600 hover:bg-blue-700 shadow-blue-500/20"
                 )}
                 title={
-                  pedidosSemFilial.length > 0
+                  resolvendo
+                    ? "Aguardando a resolução do catálogo"
+                    : erroResolucao
+                    ? "Resolva o catálogo antes de enviar (Repetir resolução)"
+                    : pedidosSemFilial.length > 0
                     ? `Pedidos sem loja de destino: ${pedidosSemFilial.map((id) => `#${id}`).join(", ")}`
                     : itensNaoResolvidos.length > 0
                     ? `Itens não homologados no catálogo: ${itensNaoResolvidos.join(", ")}`
