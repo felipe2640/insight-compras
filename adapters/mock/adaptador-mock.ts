@@ -11,6 +11,8 @@ import {
   CapacidadeCotacoesERP,
   CapacidadeEntradasConfirmadas,
   CapacidadePedidosERP,
+  CapacidadeCatalogoCotacao,
+  ProdutoCatalogoCotacao,
   EntradaConfirmadaERP,
   InventoryAdapter,
   FiltroCargaInventario,
@@ -237,6 +239,39 @@ export class AdaptadorInventarioMock implements InventoryAdapter {
       listarEntradas: (produtoIds, dias) => this.listarEntradas(produtoIds, dias),
     };
   }
+
+  /**
+   * Recorte de catálogo da fonte sintética (capacidade catalogoCotacao).
+   *
+   * O laboratório passa pelo MESMO contrato da fonte real (ADR-0003): o
+   * modal da cotação resolve marca/referência/similares por aqui, sem
+   * carregar a grade inteira. Aceita o SKU ("CAR-000001") ou o produtoId
+   * com pad de 6 ("000001").
+   */
+  public readonly catalogoCotacao: CapacidadeCatalogoCotacao = {
+    resolverProdutos: async (codigos): Promise<readonly ProdutoCatalogoCotacao[]> => {
+      const base = this.obterDatasetBase();
+      const pedidos = new Set(codigos.map((codigo) => String(codigo ?? "").trim()).filter(Boolean));
+      if (pedidos.size === 0) return [];
+      const resultado: ProdutoCatalogoCotacao[] = [];
+      for (const produto of base.produtos) {
+        const codigoNumerico = String(produto.id).padStart(6, "0");
+        if (!pedidos.has(produto.codigoSku) && !pedidos.has(codigoNumerico)) continue;
+        const marcas = new Set<string>();
+        for (const similar of base.similares.get(produto.id) ?? []) {
+          if (similar.marcaSimilar && similar.marcaSimilar !== produto.marca) marcas.add(similar.marcaSimilar);
+        }
+        resultado.push({
+          codigo: produto.codigoSku,
+          descricao: produto.descricao,
+          marca: produto.marca,
+          referencia: produto.referenciaFabricante ?? "",
+          marcasSimilares: [...marcas].sort((a, b) => a.localeCompare(b, "pt-BR")),
+        });
+      }
+      return resultado;
+    },
+  };
 
   private async listarPedidos(filtro: FiltroRastreamentoERP = {}): Promise<readonly PedidoCompraERP[]> {
     const base = this.obterDatasetBase();
