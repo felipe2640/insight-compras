@@ -785,7 +785,7 @@ export function EnviarCotacaoHub({ itens, filialId }: { itens: readonly LinhaCoc
                 </div>
               )}
 
-              {/* Seção 2: Outros Fornecedores Cadastrados na Carreiro */}
+              {/* Seção 2: Demais fornecedores cadastrados da conexão (white-label: rótulos vêm do tenant) */}
               <div className="mb-4 rounded-lg border border-slate-200 p-3 bg-white">
                 <div className="flex justify-between items-center mb-2">
                   <div>
